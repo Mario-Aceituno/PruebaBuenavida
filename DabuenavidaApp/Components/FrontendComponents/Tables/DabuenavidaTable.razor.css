@@ -1,0 +1,184 @@
+﻿.dab-table__container {
+    margin: 16px 24px 24px 24px;
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #e8e8e8;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+    overflow: hidden;
+}
+
+.dab-table__topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid #f0f0f0;
+    background-color: #fafafa;
+}
+
+.dab-table__resultados {
+    font-size: 13px;
+    color: #555555;
+}
+
+    .dab-table__resultados strong {
+        color: #c0392b;
+        font-weight: 700;
+    }
+
+.dab-table__leyenda {
+    display: flex;
+    gap: 18px;
+}
+
+.dab-table__leyenda-item {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.dab-table__leyenda-item--impreso {
+    color: #1a6bbf;
+}
+
+.dab-table__leyenda-item--pendiente {
+    color: #c0392b;
+}
+
+.dab-table__wrapper {
+    overflow-x: auto;
+}
+
+.dab-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+    .dab-table thead tr {
+        background-color: #f7f7f7;
+        border-bottom: 2px solid #e8e8e8;
+    }
+
+    .dab-table th {
+        text-align: left;
+        padding: 11px 14px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #999999;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .dab-table tbody tr {
+        border-bottom: 1px solid #f5f5f5;
+        transition: background-color 0.15s;
+    }
+
+        .dab-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .dab-table tbody tr:hover {
+            background-color: #fff8f8;
+        }
+
+    .dab-table td {
+        padding: 11px 14px;
+        color: #444444;
+        white-space: nowrap;
+    }
+
+.dab-table__numero {
+    color: #c0392b;
+    font-weight: 700;
+    font-size: 13px;
+}
+
+.dab-table__nombre {
+    font-weight: 600;
+    color: #222222;
+}
+
+.dab-table__titulos {
+    color: #1a6bbf;
+    font-weight: 700;
+    text-align: center;
+}
+
+.dab-table__estado {
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.dab-table__estado--impreso {
+    color: #1a6bbf;
+}
+
+.dab-table__estado--pendiente {
+    color: #c0392b;
+}
+
+.dab-table__loading {
+    text-align: center;
+    padding: 60px;
+    color: #aaaaaa;
+    font-size: 14px;
+}
+
+.dab-table__paginacion {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border-top: 1px solid #f0f0f0;
+    background-color: #fafafa;
+}
+
+.dab-table__pag-btn {
+    background-color: #ffffff;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    padding: 7px 18px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #444444;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+    .dab-table__pag-btn:hover:not(:disabled) {
+        background-color: #c0392b;
+        border-color: #c0392b;
+        color: white;
+    }
+
+    .dab-table__pag-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+    }
+
+.dab-table__pag-info {
+    font-size: 13px;
+    color: #666666;
+    font-weight: 500;
+}
+
+@media (max-width: 768px) {
+    .dab-table__container {
+        margin: 16px;
+    }
+
+    .dab-table__topbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .dab-table th,
+    .dab-table td {
+        padding: 10px 10px;
+    }
+}

@@ -1,0 +1,88 @@
+﻿@using DabuenavidaApp.Models
+
+<div class="dab-table__container">
+
+    @* RESULTADOS Y LEYENDA *@
+    <div class="dab-table__topbar">
+        <span class="dab-table__resultados">
+            Resultados: <strong>@Resultado?.TotalRegistros registros encontrados</strong>
+        </span>
+        <div class="dab-table__leyenda">
+            <span class="dab-table__leyenda-item dab-table__leyenda-item--impreso">● Impreso</span>
+            <span class="dab-table__leyenda-item dab-table__leyenda-item--pendiente">● Pendiente</span>
+        </div>
+    </div>
+
+    @* TABLA *@
+    @if (Cargando)
+    {
+        <div class="dab-table__loading">
+            <span>Cargando...</span>
+        </div>
+    }
+    else
+    {
+        <table class="dab-table">
+            <thead>
+                <tr>
+                    <th>N° DABUENAVIDA</th>
+                    <th>NOMBRE DEL CLIENTE</th>
+                    <th>DNI / IDENTIDAD</th>
+                    <th>CENTRO DE COSTO</th>
+                    <th>FECHA CREACIÓN</th>
+                    <th>FECHA VENCIMIENTO</th>
+                    <th>VALOR DAB</th>
+                    <th>N° TÍTULOS</th>
+                    <th>ESTADO IMPRESIÓN</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Resultado?.Data ?? new())
+                {
+                    <tr>
+                        <td class="dab-table__numero">@item.NumeroDabuenavida</td>
+                        <td class="dab-table__nombre">@item.NombreCliente</td>
+                        <td>@item.DNI</td>
+                        <td>@item.CentroDeCosto</td>
+                        <td>@item.FechaCreacion.ToString("dd/MM/yyyy")</td>
+                        <td>@item.FechaVencimiento.ToString("dd/MM/yyyy")</td>
+                        <td>L @item.ValorDAB.ToString("N2")</td>
+                        <td class="dab-table__titulos">@item.NumeroTitulos</td>
+                        <td>
+                            <span class="@(item.EstadoImpresion == "IMPRESO"
+                                                                  ? "dab-table__estado dab-table__estado--impreso"
+                                                                  : "dab-table__estado dab-table__estado--pendiente")">
+                        ● @item.EstadoImpresion
+                    </span>
+                </td>
+            </tr>
+                        }
+            </tbody>
+        </table>
+
+        @* PAGINACIÓN *@
+        <div class="dab-table__paginacion">
+            <button class="dab-table__pag-btn"
+                    disabled="@(PaginaActual <= 1)"
+                    @onclick="OnPaginaAnterior">
+                ← Anterior
+            </button>
+            <span class="dab-table__pag-info">
+                Página @PaginaActual de @Resultado?.TotalPaginas
+            </span>
+            <button class="dab-table__pag-btn"
+                    disabled="@(PaginaActual >= Resultado?.TotalPaginas)"
+                    @onclick="OnPaginaSiguiente">
+                Siguiente →
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public PagedResult? Resultado { get; set; }
+    [Parameter] public bool Cargando { get; set; }
+    [Parameter] public int PaginaActual { get; set; }
+    [Parameter] public EventCallback OnPaginaAnterior { get; set; }
+    [Parameter] public EventCallback OnPaginaSiguiente { get; set; }
+}

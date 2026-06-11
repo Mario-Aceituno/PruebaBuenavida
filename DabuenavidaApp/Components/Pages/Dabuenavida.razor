@@ -1,0 +1,69 @@
+﻿@page "/"
+@using DabuenavidaApp.Models
+@using DabuenavidaApp.Services
+@using DabuenavidaApp.Components.FrontendComponents.Navbars
+@using DabuenavidaApp.Components.FrontendComponents.Filters
+@using DabuenavidaApp.Components.FrontendComponents.Tables
+@inject DabuenavidaService ServicioDabuenavida
+
+<DabuenavidaNav />
+
+<DabuenavidaFilters Filtros="filtros"
+                    OnBuscar="Buscar"
+                    OnLimpiar="Limpiar" />
+
+<DabuenavidaTable Resultado="resultado"
+                  Cargando="cargando"
+                  PaginaActual="paginaActual"
+                  OnPaginaAnterior="PaginaAnterior"
+                  OnPaginaSiguiente="PaginaSiguiente" />
+
+@code {
+    private FiltrosBusqueda filtros = new();
+    private PagedResult? resultado;
+    private bool cargando = false;
+    private int paginaActual = 1;
+    private int tamañoPagina = 20;
+
+    protected override void OnInitialized()
+    {
+        CargarDatos();
+    }
+
+    private void Buscar()
+    {
+        paginaActual = 1;
+        CargarDatos();
+    }
+
+    private void Limpiar()
+    {
+        paginaActual = 1;
+        CargarDatos();
+    }
+
+    private void CargarDatos()
+    {
+        cargando = true;
+        resultado = ServicioDabuenavida.ObtenerDatos(paginaActual, tamañoPagina, filtros);
+        cargando = false;
+    }
+
+    private void PaginaAnterior()
+    {
+        if (paginaActual > 1)
+        {
+            paginaActual--;
+            CargarDatos();
+        }
+    }
+
+    private void PaginaSiguiente()
+    {
+        if (paginaActual < resultado?.TotalPaginas)
+        {
+            paginaActual++;
+            CargarDatos();
+        }
+    }
+}

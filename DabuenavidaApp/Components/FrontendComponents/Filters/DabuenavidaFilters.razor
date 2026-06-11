@@ -1,0 +1,61 @@
+﻿@using DabuenavidaApp.Models
+@using DabuenavidaApp.Services
+@inject DabuenavidaService ServicioDabuenavida
+
+<div class="dab-filters">
+    <div class="dab-filters__header">
+        <span class="dab-filters__title">CRITERIOS DE BÚSQUEDA</span>
+    </div>
+    <div class="dab-filters__body">
+        <div class="dab-filters__group">
+            <label class="dab-filters__label">CENTRO DE COSTO</label>
+            <select class="dab-filters__select" @bind="Filtros.CentroDeCosto">
+                <option value="">Buscar o seleccionar centro de costo...</option>
+                @foreach (var centro in centros)
+                {
+                    <option value="@centro">@centro</option>
+                }
+            </select>
+        </div>
+
+        <div class="dab-filters__group dab-filters__group--wide">
+            <label class="dab-filters__label">BUSCAR POR DNI O N° DABUENAVIDA</label>
+            <div class="dab-filters__input-wrapper">
+                <span class="dab-filters__input-icon">🔍</span>
+                <input class="dab-filters__input"
+                       @bind="Filtros.TextoBusqueda"
+                       @onkeydown="@(e => { if (e.Key == "Enter") OnBuscar.InvokeAsync(); })"
+                       placeholder="Ingrese DNI del cliente o número de Dabuenavida..." />
+            </div>
+        </div>
+
+        <div class="dab-filters__actions">
+            <button class="dab-filters__btn dab-filters__btn--buscar" @onclick="OnBuscar">
+                Buscar
+            </button>
+            <button class="dab-filters__btn dab-filters__btn--limpiar" @onclick="HandleLimpiar">
+                Limpiar
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public FiltrosBusqueda Filtros { get; set; } = new();
+    [Parameter] public EventCallback OnBuscar { get; set; }
+    [Parameter] public EventCallback OnLimpiar { get; set; }
+
+    private List<string> centros = new();
+
+    protected override void OnInitialized()
+    {
+        centros = ServicioDabuenavida.ObtenerCentros();
+    }
+
+    private async Task HandleLimpiar()
+    {
+        Filtros.TextoBusqueda = "";
+        Filtros.CentroDeCosto = "";
+        await OnLimpiar.InvokeAsync();
+    }
+}
