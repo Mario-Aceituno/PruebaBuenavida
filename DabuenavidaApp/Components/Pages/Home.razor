@@ -1,7 +1,93 @@
-﻿@page "/home"
+using System.Net.Http.Json;
+using DabuenavidaApp.Models;
+using Microsoft.Extensions.Configuration;
 
-<PageTitle>Home</PageTitle>
+namespace DabuenavidaApp.Services
+{
+    public class DabuenavidaService
+    {
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly int _pageSize;
 
-<h1>Hello, world!</h1>
+        public DabuenavidaService(IHttpClientFactory httpClientFactory, IConfiguration configuration)
+        {
+            _httpClientFactory = httpClientFactory;
+            _pageSize = configuration.GetValue<int>("Dabuenavida:PageSize", 20);
+        }
 
-Welcome to your new app.
+        public int PageSize => _pageSize;
+
+        public async Task<PagedResult> ObtenerDatos(int pagina)
+        {
+            var client = _httpClientFactory.CreateClient("API");
+
+            var request = new ConsultaRequest
+            {
+                PageNumber = pagina,
+                PageSize = _pageSize
+            };
+
+            var response = await client.PostAsJsonAsync("api/dabuenavida/consulta", request);
+            response.EnsureSuccessStatusCode();
+
+            var consultaResponse = await response.Content
+                .ReadFromJsonAsync<ConsultaResponse>();
+
+            var data = consultaResponse?.Registros?.Select(r => new DabuenavidaModel
+            {
+                NumeroDabuenavida = r.NumeroDaBuenaVida,
+                NombreCliente = r.NombreCliente,
+                DNI = r.DniIdentidad,
+                CentroDeCosto = r.CentroDeCosto,
+                FechaCreacion = DateTime.Parse(r.FechaCreacion),
+                FechaVencimiento = DateTime.Parse(r.FechaVencimiento),
+                ValorDAB = decimal.Parse(r.ValorDab),
+                NumeroTitulos = r.NumeroTitulos,
+                EstadoImpresion = r.EstadoImpresion
+            }).ToList() ?? [];
+
+            return new PagedResult
+            {
+                Data = data,
+                TotalRegistros = consultaResponse?.TotalRegistros ?? 0,
+                Pagina = pagina,
+                TamañoPagina = _pageSize
+            };
+        }
+    }
+}
+@code {
+    private PagedResult? resultado;
+    private bool cargando = false;
+    private int paginaActual = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        cargando = true;
+        resultado = await ServicioDabuenavida.ObtenerDatos(paginaActual);
+        cargando = false;
+    }
+
+    private async Task PaginaAnterior()
+    {
+        if (paginaActual > 1)
+        {
+            paginaActual--;
+            await CargarDatos();
+        }
+    }
+
+    private async Task PaginaSiguiente()
+    {
+        if (paginaActual < resultado?.TotalPaginas)
+        {
+            paginaActual++;
+            await CargarDatos();
+        }
+    }
+}
