@@ -1,28 +1,18 @@
-@foreach (var item in Resultado?.Registros ?? new())
+if (filtros != null)
 {
-    <tr>
-        <td class="dab-table__numero">@item.NumeroDaBuenaVida</td>
-        <td class="dab-table__nombre">@item.NombreCliente</td>
-        <td>@item.DniIdentidad</td>
-        <td>@item.CentroDeCosto</td>
-        <td>@item.FechaCreacion</td>
-        <td>@item.FechaVencimiento</td>
-        <td>@item.ValorDab</td>
-        <td class="dab-table__titulos">@item.NumeroTitulos</td>
-        <td>
-            <span class="@(item.EstadoImpresion == "VIG"
-                ? "dab-table__estado dab-table__estado--impreso"
-                : "dab-table__estado dab-table__estado--pendiente")">
-                ● @item.EstadoImpresion
-            </span>
-        </td>
-    </tr>
-}
+    if (!string.IsNullOrWhiteSpace(filtros.CentroDeCosto))
+        request.CentroDeCosto = filtros.CentroDeCosto.ToString();
 
-@* Cambia los parámetros en @code *@
-@code {
-    [Parameter] public DaBuenaVidaResponse? Resultado { get; set; }
-    [Parameter] public bool Cargando { get; set; }
+    if (!string.IsNullOrWhiteSpace(filtros.TextoBusqueda))
+    {
+        var texto = filtros.TextoBusqueda.Trim();
+
+        if (texto.Contains("--"))
+            request.DniIdentidad = texto.Replace("-", "");
+        else
+            request.NumeroDabuenavida = texto;
+    }
+} bool Cargando { get; set; }
     [Parameter] public int PaginaActual { get; set; }
     [Parameter] public EventCallback OnPaginaAnterior { get; set; }
     [Parameter] public EventCallback OnPaginaSiguiente { get; set; }
