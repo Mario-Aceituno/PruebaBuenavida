@@ -1,6 +1,110 @@
-<div class="dab-filters__group">
-    <label class="dab-filters__label">CENTRO DE COSTO</label>
-    <input class="dab-filters__input"
-           @bind="Filtros.CentroDeCosto"
-           placeholder="Ingrese centro de costo..." />
+@using ManageAdminDMS_UI.Models
+@using ManageAdminDMS_UI.Services
+@inject DabuenadaService ServicioDabuenavida
+
+<div class="dab-filters">
+    <div class="dab-filters__header">
+        <span class="dab-filters__title">CRITERIOS DE BÚSQUEDA</span>
+    </div>
+    <div class="dab-filters__body">
+
+        <div class="dab-filters__group">
+            <label class="dab-filters__label">CENTRO DE COSTO</label>
+            <input class="dab-filters__input"
+                   value="@Filtros.CentroDeCosto"
+                   @oninput="OnCentroDeCostoInput"
+                   placeholder="Ingrese Centro de Costo" />
+            @if (!string.IsNullOrEmpty(_errorCentro))
+            {
+                <span class="dab-filters__error">@_errorCentro</span>
+            }
+        </div>
+
+        <div class="dab-filters__group dab-filters__group--wide">
+            <label class="dab-filters__label">BUSCAR POR DNI O N° DABUENAVIDA</label>
+            <div class="dab-filters__input-wrapper">
+                <span class="dab-filters__input-icon">Q</span>
+                <input class="dab-filters__input"
+                       value="@Filtros.TextoBusqueda"
+                       @oninput="OnTextoBusquedaInput"
+                       @onkeydown="@(e => { if (e.Key == "Enter") OnBuscar.InvokeAsync(); })"
+                       placeholder="Ingrese DNI del cliente o número de Dabuenavida..." />
+            </div>
+            @if (!string.IsNullOrEmpty(_errorTexto))
+            {
+                <span class="dab-filters__error">@_errorTexto</span>
+            }
+        </div>
+
+        <div class="dab-filters__actions">
+            <button class="dab-filters__btn dab-filters__btn--buscar"
+                    @onclick="OnBuscar"
+                    disabled="@(!EsFormularioValido())">
+                Buscar
+            </button>
+            <button class="dab-filters__btn dab-filters__btn--limpiar"
+                    @onclick="HandleLimpiar">
+                Limpiar
+            </button>
+        </div>
+
+    </div>
 </div>
+
+@code {
+    [Parameter] public FiltrosBusqueda Filtros { get; set; } = new();
+    [Parameter] public EventCallback OnBuscar { get; set; }
+    [Parameter] public EventCallback OnLimpiar { get; set; }
+
+    private string _errorCentro = "";
+    private string _errorTexto = "";
+
+    // Solo letras y espacios
+    private void OnCentroDeCostoInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        var limpio = System.Text.RegularExpressions.Regex.Replace(raw, @"[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]", "");
+
+        if (raw != limpio)
+            _errorCentro = "Solo se permiten letras y espacios.";
+        else
+            _errorCentro = "";
+
+        Filtros.CentroDeCosto = limpio;
+    }
+
+    // Solo números (DNI: 8 dígitos, Dabuenavida: 10 dígitos según tu servicio)
+    private void OnTextoBusquedaInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        var limpio = System.Text.RegularExpressions.Regex.Replace(raw, @"[^0-9]", "");
+
+        if (raw != limpio)
+            _errorTexto = "Solo se permiten números.";
+        else
+            _errorTexto = "";
+
+        // Limitar largo máximo a 13 (largo de Dabuenavida según tu servicio)
+        if (limpio.Length > 13)
+        {
+            limpio = limpio[..13];
+            _errorTexto = "Máximo 13 dígitos.";
+        }
+
+        Filtros.TextoBusqueda = limpio;
+    }
+
+    private bool EsFormularioValido()
+    {
+        return string.IsNullOrEmpty(_errorCentro) && string.IsNullOrEmpty(_errorTexto);
+    }
+
+    private async Task HandleLimpiar()
+    {
+        Filtros.TextoBusqueda = "";
+        Filtros.CentroDeCosto = "";
+        _errorCentro = "";
+        _errorTexto = "";
+        await OnLimpiar.InvokeAsync();
+    }
+}
