@@ -1,279 +1,411 @@
-@inject Nav Nav
-@inject AuthService AuthService
-@inject DabuenavIdaService DabuenavIdaService
-@inject ApiExceptionHandler ApiExceptionHandler
-@layout EmptyLayout
-@rendermode InteractiveServer
+@using ManageAdminDMS_UI.Models
 
-@using ManageAdminDMS_UI.Models;
-@using ManageAdminDMS_UI.Services;
-@using ManageAdminDMS_UI.Components.FrontendComponents.Navbars;
-@using ManageAdminDMS_UI.Components.FrontendComponents.Filters;
-@using ManageAdminDMS_UI.Components.FrontendComponents.Tables;
-@using ManageAdminDMS_UI.Components.Shared;
-@using System.Net.Http.Json;
-@using Microsoft.Extensions.Configuration;
+<div class="dab-table__container">
 
-@if (estado == Estado.Cargando)
-{
-    <div class="dab-page">
-        <div class="dab-page__loading">
-            <Loading />
+    @* TOPBAR *@
+    <div class="dab-table__topbar">
+        <span class="dab-table__resultados">
+            Resultados: <strong>@Resultado?.TotalRegistros registros encontrados</strong>
+        </span>
+        <div class="dab-table__leyenda">
+            <span class="dab-table__leyenda-item dab-table__leyenda-item--impreso">● Impreso</span>
+            <span class="dab-table__leyenda-item dab-table__leyenda-item--pendiente">● Pendiente</span>
         </div>
     </div>
-}
-else if (estado == Estado.Denegado)
-{
-    <div class="dab-page">
-        <AccessDenied />
-    </div>
-}
-else
-{
-    <div class="dab-page">
-        <div class="dab-page__navbar">
-            <DabuenavIdaNavbars />
+
+    @* TABLA *@
+    @if (Cargando)
+    {
+        <div class="dab-table__loading">
+            <span>Cargando...</span>
+        </div>
+    }
+    else
+    {
+        <div class="dab-table__wrapper">
+            <table class="dab-table">
+                <thead>
+                    <tr>
+                        <th>N° DABUENAVIDA</th>
+                        <th>NOMBRE DEL CLIENTE</th>
+                        <th>DNI / IDENTIDAD</th>
+                        <th>CENTRO DE COSTO</th>
+                        <th>FECHA CREACIÓN</th>
+                        <th>FECHA VENCIMIENTO</th>
+                        <th>VALOR DAB</th>
+                        <th>N° TÍTULOS</th>
+                        <th>ESTADO IMPRESIÓN</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Resultado?.Data ?? new())
+                    {
+                        <tr>
+                            <td class="dab-table__numero">@item.NumeroDabuenavida</td>
+                            <td class="dab-table__nombre">@item.NombreCliente</td>
+                            <td>@item.DNI</td>
+                            <td>@item.CentroDeCosto</td>
+                            <td>@item.FechaCreacion.ToString("dd/MM/yyyy")</td>
+                            <td>@item.FechaVencimiento.ToString("dd/MM/yyyy")</td>
+                            <td>L @item.ValorDAB.ToString("N2")</td>
+                            <td class="dab-table__titulos">@item.NumeroTitulos</td>
+                            <td>
+                                <span class="@(item.EstadoImpresion == "IMPRESO"
+                                    ? "dab-table__estado dab-table__estado--impreso"
+                                    : "dab-table__estado dab-table__estado--pendiente")">
+                                    ● @item.EstadoImpresion
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         </div>
 
-        <main class="dab-page__content">
-            <DabuenavIdaFilters Filtros="filtros"
-                                OnBuscar="Buscar"
-                                OnLimpiar="Limpiar" />
+        @* PAGINACIÓN *@
+        <div class="dab-table__paginacion">
 
-            <DabuenavIdaTables Resultado="resultado"
-                               Cargando="cargando"
-                               PaginaActual="paginaActual"
-                               OnPaginaAnterior="PaginaAnterior"
-                               OnPaginaSiguiente="PaginaSiguiente" />
-        </main>
-    </div>
-}
+            <button class="dab-table__pag-btn"
+                    disabled="@(PaginaActual <= 1)"
+                    @onclick="OnPaginaAnterior">
+                ← Anterior
+            </button>
+
+            <div class="dab-table__pag-center">
+                <span class="dab-table__pag-label">Página</span>
+                <div class="dab-table__pag-input-wrapper @(_errorPagina ? "dab-table__pag-input-wrapper--error" : "")">
+                    <input class="dab-table__pag-input"
+                           value="@_inputPagina"
+                           @oninput="OnInputPagina"
+                           maxlength="4"
+                           inputmode="numeric"
+                           placeholder="@PaginaActual" />
+                </div>
+                <span class="dab-table__pag-label">de <strong>@Resultado?.TotalPaginas</strong></span>
+                @if (_errorPagina)
+                {
+                    <span class="dab-table__pag-error">Página inválida</span>
+                }
+            </div>
+
+            <button class="dab-table__pag-btn"
+                    disabled="@(PaginaActual >= Resultado?.TotalPaginas)"
+                    @onclick="OnPaginaSiguiente">
+                Siguiente →
+            </button>
+
+        </div>
+    }
+
+</div>
 
 @code {
-    private string mensaje = "Entrando....";
-    private FiltrosBusqueda filtros = new();
-    private PagedResult? resultado;
-    private bool cargando = false;
-    private int paginaActual = 1;
-    private int tamañoPagina = 20;
+    [Parameter] public PagedResult? Resultado { get; set; }
+    [Parameter] public bool Cargando { get; set; }
+    [Parameter] public int PaginaActual { get; set; }
+    [Parameter] public EventCallback OnPaginaAnterior { get; set; }
+    [Parameter] public EventCallback OnPaginaSiguiente { get; set; }
+    [Parameter] public EventCallback<int> OnIrAPagina { get; set; }
 
-    enum Estado { Cargando, Denegado, Permitido }
-    Estado estado = Estado.Cargando;
+    private string _inputPagina = "";
+    private bool _errorPagina = false;
+    private System.Threading.CancellationTokenSource? _cts;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override void OnParametersSet()
     {
-        if (firstRender)
+        // Sincroniza el input cuando cambia la página externamente
+        _inputPagina = PaginaActual.ToString();
+        _errorPagina = false;
+    }
+
+    private async Task OnInputPagina(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+
+        // Solo dígitos, sin letras ni especiales
+        var limpio = System.Text.RegularExpressions.Regex.Replace(raw, @"[^0-9]", "");
+        _inputPagina = limpio;
+
+        if (string.IsNullOrEmpty(limpio))
         {
-            await AuthService.LoadTokenAsync();
-            await CargarDatos();
-            estado = Estado.Permitido;
-            StateHasChanged();
+            _errorPagina = false;
+            return;
         }
-    }
 
-    private async Task CargarDatos()
-    {
-        cargando = true;
-        StateHasChanged();
-        resultado = await DabuenavIdaService.ObtenerDatos(
-            paginaActual, AuthService.Token ?? "", filtros);
-        cargando = false;
-        StateHasChanged();
-    }
-
-    private async Task PaginaAnterior()
-    {
-        if (paginaActual > 1)
+        if (!int.TryParse(limpio, out int pagina)
+            || pagina < 1
+            || pagina > (Resultado?.TotalPaginas ?? 1))
         {
-            paginaActual--;
-            await CargarDatos();
+            _errorPagina = true;
+            return;
         }
-    }
 
-    private async Task PaginaSiguiente()
-    {
-        if (paginaActual < resultado?.TotalPaginas)
+        _errorPagina = false;
+
+        // Debounce: espera 500ms desde el último teclazo antes de hacer el request
+        _cts?.Cancel();
+        _cts = new System.Threading.CancellationTokenSource();
+        var token = _cts.Token;
+
+        try
         {
-            paginaActual++;
-            await CargarDatos();
+            await Task.Delay(500, token);
+            if (!token.IsCancellationRequested)
+                await OnIrAPagina.InvokeAsync(pagina);
         }
-    }
-
-    private async Task Buscar()
-    {
-        paginaActual = 1;
-        await CargarDatos();
-    }
-
-    private async Task Limpiar()
-    {
-        filtros = new();
-        await CargarDatos();
+        catch (TaskCanceledException) { }
     }
 }
-/* ── Página completa ── */
-.dab-page {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-    background-color: #f7f7f7;
-}
-
-/* ── Navbar fijo arriba ── */
-.dab-page__navbar {
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    width: 100%;
-}
-
-/* ── Loading centrado ── */
-.dab-page__loading {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-/* ── Contenido principal ── */
-.dab-page__content {
-    flex: 1;
-    width: 100%;
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 24px 32px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-
-/* ── Tablet ── */
-@media (max-width: 1024px) {
-    .dab-page__content {
-        padding: 0 16px 24px;
-    }
-}
-
-/* ── Mobile ── */
-@media (max-width: 768px) {
-    .dab-page__content {
-        padding: 0 0 20px;
-    }
-}
-.dab-navbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 24px;
-    height: 56px;
-    background-color: #ffffff;
-    border-bottom: 1px solid #eeeeee;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-    box-sizing: border-box;
-    width: 100%;
-}
-
-.dab-navbar__brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-}
-
-.dab-navbar__icon {
-    font-size: 20px;
-    flex-shrink: 0;
-}
-
-.dab-navbar__titles {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.dab-navbar__name {
-    font-size: 13px;
-    font-weight: 700;
-    color: #2c2c2c;
-    white-space: nowrap;
+.dab-table__container {
+    margin: 16px 24px 24px 24px;
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #e8e8e8;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
     overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-.dab-navbar__subtitle {
-    font-size: 9px;
-    font-weight: 600;
+.dab-table__topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid #f0f0f0;
+    background-color: #fafafa;
+}
+
+.dab-table__resultados {
+    font-size: 13px;
+    color: #555555;
+}
+
+.dab-table__resultados strong {
     color: #c0392b;
-    letter-spacing: 1px;
+    font-weight: 700;
+}
+
+.dab-table__leyenda {
+    display: flex;
+    gap: 18px;
+}
+
+.dab-table__leyenda-item {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.dab-table__leyenda-item--impreso {
+    color: #1a6bbf;
+}
+
+.dab-table__leyenda-item--pendiente {
+    color: #c0392b;
+}
+
+.dab-table__wrapper {
+    overflow-x: auto;
+}
+
+.dab-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.dab-table thead tr {
+    background-color: #f7f7f7;
+    border-bottom: 2px solid #e8e8e8;
+}
+
+.dab-table th {
+    text-align: left;
+    padding: 11px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #999999;
+    letter-spacing: 0.8px;
     text-transform: uppercase;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-.dab-navbar__user {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
+.dab-table tbody tr {
+    border-bottom: 1px solid #f5f5f5;
+    transition: background-color 0.15s;
 }
 
-.dab-navbar__avatar {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background-color: #c0392b;
-    color: white;
-    font-size: 12px;
+.dab-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.dab-table tbody tr:hover {
+    background-color: #fff8f8;
+}
+
+.dab-table td {
+    padding: 11px 14px;
+    color: #444444;
+    white-space: nowrap;
+}
+
+.dab-table__numero {
+    color: #c0392b;
     font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    font-size: 13px;
 }
 
-.dab-navbar__userinfo {
-    display: flex;
-    flex-direction: column;
-    text-align: right;
+.dab-table__nombre {
+    font-weight: 600;
+    color: #222222;
 }
 
-.dab-navbar__username {
+.dab-table__titulos {
+    color: #1a6bbf;
+    font-weight: 700;
+    text-align: center;
+}
+
+.dab-table__estado {
     font-size: 12px;
     font-weight: 600;
+    white-space: nowrap;
+}
+
+.dab-table__estado--impreso {
+    color: #1a6bbf;
+}
+
+.dab-table__estado--pendiente {
+    color: #c0392b;
+}
+
+.dab-table__loading {
+    text-align: center;
+    padding: 60px;
+    color: #aaaaaa;
+    font-size: 14px;
+}
+
+/* ── PAGINACIÓN ── */
+.dab-table__paginacion {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border-top: 1px solid #f0f0f0;
+    background-color: #fafafa;
+    flex-wrap: wrap;
+}
+
+.dab-table__pag-btn {
+    background-color: #ffffff;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    padding: 7px 18px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #444444;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.dab-table__pag-btn:hover:not(:disabled) {
+    background-color: #c0392b;
+    border-color: #c0392b;
+    color: white;
+}
+
+.dab-table__pag-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* ── Centro de paginación con input ── */
+.dab-table__pag-center {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.dab-table__pag-label {
+    font-size: 13px;
+    color: #666666;
+    font-weight: 500;
+}
+
+.dab-table__pag-label strong {
     color: #2c2c2c;
+}
+
+.dab-table__pag-input-wrapper {
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    background: white;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: center;
+}
+
+.dab-table__pag-input-wrapper:focus-within {
+    border-color: #c0392b;
+    box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.10);
+}
+
+.dab-table__pag-input-wrapper--error {
+    border-color: #e53e3e !important;
+    box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.12) !important;
+}
+
+.dab-table__pag-input {
+    width: 52px;
+    height: 32px;
+    border: none;
+    outline: none;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #c0392b;
+    background: transparent;
+    padding: 0 6px;
+}
+
+.dab-table__pag-input::placeholder {
+    color: #bbbbbb;
+    font-weight: 400;
+}
+
+.dab-table__pag-error {
+    font-size: 11px;
+    color: #e53e3e;
+    font-weight: 500;
     white-space: nowrap;
 }
 
-.dab-navbar__userrole {
-    font-size: 10px;
-    color: #999999;
-    white-space: nowrap;
-}
-
-/* ── Tablet: oculta subtítulo y rol ── */
+/* ── Responsive ── */
 @media (max-width: 768px) {
-    .dab-navbar {
-        padding: 0 16px;
+    .dab-table__container {
+        margin: 16px;
     }
 
-    .dab-navbar__subtitle {
-        display: none;
+    .dab-table__topbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
     }
 
-    .dab-navbar__userrole {
-        display: none;
-    }
-}
-
-/* ── Mobile: oculta userinfo, solo avatar ── */
-@media (max-width: 480px) {
-    .dab-navbar__userinfo {
-        display: none;
+    .dab-table th,
+    .dab-table td {
+        padding: 10px 10px;
     }
 
-    .dab-navbar__name {
+    .dab-table__paginacion {
+        gap: 10px;
+    }
+
+    .dab-table__pag-btn {
+        padding: 7px 12px;
         font-size: 12px;
     }
 }
