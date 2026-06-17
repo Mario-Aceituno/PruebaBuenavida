@@ -1,145 +1,279 @@
-/* ── Overlay ── */
-.loading-screen {
-    position: fixed;
-    inset: 0;
-    background-color: #f7f7f7;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;
+@inject Nav Nav
+@inject AuthService AuthService
+@inject DabuenavIdaService DabuenavIdaService
+@inject ApiExceptionHandler ApiExceptionHandler
+@layout EmptyLayout
+@rendermode InteractiveServer
+
+@using ManageAdminDMS_UI.Models;
+@using ManageAdminDMS_UI.Services;
+@using ManageAdminDMS_UI.Components.FrontendComponents.Navbars;
+@using ManageAdminDMS_UI.Components.FrontendComponents.Filters;
+@using ManageAdminDMS_UI.Components.FrontendComponents.Tables;
+@using ManageAdminDMS_UI.Components.Shared;
+@using System.Net.Http.Json;
+@using Microsoft.Extensions.Configuration;
+
+@if (estado == Estado.Cargando)
+{
+    <div class="dab-page">
+        <div class="dab-page__loading">
+            <Loading />
+        </div>
+    </div>
+}
+else if (estado == Estado.Denegado)
+{
+    <div class="dab-page">
+        <AccessDenied />
+    </div>
+}
+else
+{
+    <div class="dab-page">
+        <div class="dab-page__navbar">
+            <DabuenavIdaNavbars />
+        </div>
+
+        <main class="dab-page__content">
+            <DabuenavIdaFilters Filtros="filtros"
+                                OnBuscar="Buscar"
+                                OnLimpiar="Limpiar" />
+
+            <DabuenavIdaTables Resultado="resultado"
+                               Cargando="cargando"
+                               PaginaActual="paginaActual"
+                               OnPaginaAnterior="PaginaAnterior"
+                               OnPaginaSiguiente="PaginaSiguiente" />
+        </main>
+    </div>
 }
 
-/* ── Card ── */
-.loading-screen__card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    padding: 48px 56px;
-    background: #ffffff;
-    border: 1px solid #eeeeee;
-    border-radius: 12px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07);
-    min-width: 300px;
-}
+@code {
+    private string mensaje = "Entrando....";
+    private FiltrosBusqueda filtros = new();
+    private PagedResult? resultado;
+    private bool cargando = false;
+    private int paginaActual = 1;
+    private int tamañoPagina = 20;
 
-/* ── Logo area ── */
-.loading-screen__logo-area {
-    position: relative;
-    width: 64px;
-    height: 64px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+    enum Estado { Cargando, Denegado, Permitido }
+    Estado estado = Estado.Cargando;
 
-.loading-screen__logo-circle {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: #fff5f5;
-    border: 1.5px solid #fad7d3;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1;
-}
-
-.loading-screen__icon {
-    width: 26px;
-    height: 26px;
-}
-
-/* Anillo pulsante */
-.loading-screen__pulse-ring {
-    position: absolute;
-    inset: -6px;
-    border-radius: 50%;
-    border: 2px solid rgba(192, 57, 43, 0.25);
-    animation: loading-pulse 1.6s ease-out infinite;
-}
-
-@keyframes loading-pulse {
-    0%   { transform: scale(0.92); opacity: 1; }
-    100% { transform: scale(1.18); opacity: 0; }
-}
-
-/* ── Text ── */
-.loading-screen__text-area {
-    text-align: center;
-}
-
-.loading-screen__title {
-    font-size: 15px;
-    font-weight: 600;
-    color: #2c2c2c;
-    margin: 0 0 4px 0;
-    letter-spacing: 0.1px;
-}
-
-.loading-screen__subtitle {
-    font-size: 12px;
-    color: #999999;
-    margin: 0;
-    letter-spacing: 0.2px;
-}
-
-/* ── Barra de progreso indeterminada ── */
-.loading-screen__bar-track {
-    width: 180px;
-    height: 3px;
-    background: #f0f0f0;
-    border-radius: 99px;
-    overflow: hidden;
-}
-
-.loading-screen__bar-fill {
-    height: 100%;
-    width: 45%;
-    background: #c0392b;
-    border-radius: 99px;
-    animation: loading-slide 1.4s ease-in-out infinite;
-}
-
-@keyframes loading-slide {
-    0%   { transform: translateX(-120%); }
-    50%  { transform: translateX(80%); }
-    100% { transform: translateX(220%); }
-}
-
-/* ── Dots ── */
-.loading-screen__dots {
-    display: flex;
-    gap: 6px;
-}
-
-.loading-screen__dots span {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: #d9d9d9;
-    animation: loading-dot 1.2s ease-in-out infinite;
-}
-
-.loading-screen__dots span:nth-child(1) { animation-delay: 0s; }
-.loading-screen__dots span:nth-child(2) { animation-delay: 0.2s; }
-.loading-screen__dots span:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes loading-dot {
-    0%, 80%, 100% { background: #d9d9d9; transform: scale(1); }
-    40%           { background: #c0392b; transform: scale(1.35); }
-}
-
-/* ── Reduced motion ── */
-@media (prefers-reduced-motion: reduce) {
-    .loading-screen__pulse-ring,
-    .loading-screen__bar-fill,
-    .loading-screen__dots span {
-        animation: none;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.LoadTokenAsync();
+            await CargarDatos();
+            estado = Estado.Permitido;
+            StateHasChanged();
+        }
     }
 
-    .loading-screen__bar-fill {
-        width: 100%;
-        opacity: 0.5;
+    private async Task CargarDatos()
+    {
+        cargando = true;
+        StateHasChanged();
+        resultado = await DabuenavIdaService.ObtenerDatos(
+            paginaActual, AuthService.Token ?? "", filtros);
+        cargando = false;
+        StateHasChanged();
+    }
+
+    private async Task PaginaAnterior()
+    {
+        if (paginaActual > 1)
+        {
+            paginaActual--;
+            await CargarDatos();
+        }
+    }
+
+    private async Task PaginaSiguiente()
+    {
+        if (paginaActual < resultado?.TotalPaginas)
+        {
+            paginaActual++;
+            await CargarDatos();
+        }
+    }
+
+    private async Task Buscar()
+    {
+        paginaActual = 1;
+        await CargarDatos();
+    }
+
+    private async Task Limpiar()
+    {
+        filtros = new();
+        await CargarDatos();
+    }
+}
+/* ── Página completa ── */
+.dab-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: #f7f7f7;
+}
+
+/* ── Navbar fijo arriba ── */
+.dab-page__navbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    width: 100%;
+}
+
+/* ── Loading centrado ── */
+.dab-page__loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── Contenido principal ── */
+.dab-page__content {
+    flex: 1;
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 24px 32px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* ── Tablet ── */
+@media (max-width: 1024px) {
+    .dab-page__content {
+        padding: 0 16px 24px;
+    }
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+    .dab-page__content {
+        padding: 0 0 20px;
+    }
+}
+.dab-navbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 56px;
+    background-color: #ffffff;
+    border-bottom: 1px solid #eeeeee;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.dab-navbar__brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.dab-navbar__icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.dab-navbar__titles {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.dab-navbar__name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #2c2c2c;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dab-navbar__subtitle {
+    font-size: 9px;
+    font-weight: 600;
+    color: #c0392b;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dab-navbar__user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.dab-navbar__avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background-color: #c0392b;
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.dab-navbar__userinfo {
+    display: flex;
+    flex-direction: column;
+    text-align: right;
+}
+
+.dab-navbar__username {
+    font-size: 12px;
+    font-weight: 600;
+    color: #2c2c2c;
+    white-space: nowrap;
+}
+
+.dab-navbar__userrole {
+    font-size: 10px;
+    color: #999999;
+    white-space: nowrap;
+}
+
+/* ── Tablet: oculta subtítulo y rol ── */
+@media (max-width: 768px) {
+    .dab-navbar {
+        padding: 0 16px;
+    }
+
+    .dab-navbar__subtitle {
+        display: none;
+    }
+
+    .dab-navbar__userrole {
+        display: none;
+    }
+}
+
+/* ── Mobile: oculta userinfo, solo avatar ── */
+@media (max-width: 480px) {
+    .dab-navbar__userinfo {
+        display: none;
+    }
+
+    .dab-navbar__name {
+        font-size: 12px;
     }
 }
