@@ -1,39 +1,145 @@
-<div class="loading-screen">
-    <div class="loading-screen__card">
+/* ── Overlay ── */
+.loading-screen {
+    position: fixed;
+    inset: 0;
+    background-color: #f7f7f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
 
-        <div class="loading-screen__logo-area">
-            <div class="loading-screen__pulse-ring"></div>
-            <div class="loading-screen__logo-circle">
-                <svg viewBox="0 0 24 24" fill="none" class="loading-screen__icon">
-                    <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="#c0392b" stroke-width="1.8"
-                          stroke-linejoin="round"/>
-                    <path d="M2 17l10 5 10-5" stroke="#c0392b" stroke-width="1.8"
-                          stroke-linejoin="round"/>
-                    <path d="M2 12l10 5 10-5" stroke="#c0392b" stroke-width="1.8"
-                          stroke-linejoin="round"/>
-                </svg>
-            </div>
-        </div>
+/* ── Card ── */
+.loading-screen__card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 48px 56px;
+    background: #ffffff;
+    border: 1px solid #eeeeee;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07);
+    min-width: 300px;
+}
 
-        <div class="loading-screen__text-area">
-            <p class="loading-screen__title">@Titulo</p>
-            <p class="loading-screen__subtitle">@Subtitulo</p>
-        </div>
+/* ── Logo area ── */
+.loading-screen__logo-area {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
-        <div class="loading-screen__bar-track">
-            <div class="loading-screen__bar-fill"></div>
-        </div>
+.loading-screen__logo-circle {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #fff5f5;
+    border: 1.5px solid #fad7d3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
 
-        <div class="loading-screen__dots">
-            <span></span>
-            <span></span>
-            <span></span>
-        </div>
+.loading-screen__icon {
+    width: 26px;
+    height: 26px;
+}
 
-    </div>
-</div>
+/* Anillo pulsante */
+.loading-screen__pulse-ring {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid rgba(192, 57, 43, 0.25);
+    animation: loading-pulse 1.6s ease-out infinite;
+}
 
-@code {
-    [Parameter] public string Titulo { get; set; } = "Cargando dashboard";
-    [Parameter] public string Subtitulo { get; set; } = "Preparando tu información...";
+@keyframes loading-pulse {
+    0%   { transform: scale(0.92); opacity: 1; }
+    100% { transform: scale(1.18); opacity: 0; }
+}
+
+/* ── Text ── */
+.loading-screen__text-area {
+    text-align: center;
+}
+
+.loading-screen__title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #2c2c2c;
+    margin: 0 0 4px 0;
+    letter-spacing: 0.1px;
+}
+
+.loading-screen__subtitle {
+    font-size: 12px;
+    color: #999999;
+    margin: 0;
+    letter-spacing: 0.2px;
+}
+
+/* ── Barra de progreso indeterminada ── */
+.loading-screen__bar-track {
+    width: 180px;
+    height: 3px;
+    background: #f0f0f0;
+    border-radius: 99px;
+    overflow: hidden;
+}
+
+.loading-screen__bar-fill {
+    height: 100%;
+    width: 45%;
+    background: #c0392b;
+    border-radius: 99px;
+    animation: loading-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes loading-slide {
+    0%   { transform: translateX(-120%); }
+    50%  { transform: translateX(80%); }
+    100% { transform: translateX(220%); }
+}
+
+/* ── Dots ── */
+.loading-screen__dots {
+    display: flex;
+    gap: 6px;
+}
+
+.loading-screen__dots span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #d9d9d9;
+    animation: loading-dot 1.2s ease-in-out infinite;
+}
+
+.loading-screen__dots span:nth-child(1) { animation-delay: 0s; }
+.loading-screen__dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-screen__dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes loading-dot {
+    0%, 80%, 100% { background: #d9d9d9; transform: scale(1); }
+    40%           { background: #c0392b; transform: scale(1.35); }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+    .loading-screen__pulse-ring,
+    .loading-screen__bar-fill,
+    .loading-screen__dots span {
+        animation: none;
+    }
+
+    .loading-screen__bar-fill {
+        width: 100%;
+        opacity: 0.5;
+    }
 }
