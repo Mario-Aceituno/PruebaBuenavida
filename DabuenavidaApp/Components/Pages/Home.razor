@@ -1,20 +1,19 @@
-public void ParseToken()
-{
-    if (string.IsNullOrEmpty(Token)) return;
+@using ManageAdminDMS_UI.Services
+@inject AuthService AuthService
 
-    var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
-    var jwt = handler.ReadJwtToken(Token);
-
-    DisplayName = jwt.Claims
-        .FirstOrDefault(c => c.Type == "displayName")?.Value ?? "";
-    
-    Rol = jwt.Claims
-        .FirstOrDefault(c => c.Type == "rol")?.Value ?? "";
-
-    // Nomenclatura: primera letra nombre + primera letra apellido + primera letra rol
-    var partes = DisplayName.Split(' ');
-    string inicialNombre = partes.Length > 0 ? partes[0][..1] : "";
-    string inicialApellido = partes.Length > 1 ? partes[1][..1] : "";
-    string inicialRol = Rol.Length > 0 ? Rol[..1] : "";
-    Nomenclatura = (inicialNombre + inicialApellido + inicialRol).ToUpper();
-}
+<nav class="dab-navbar">
+    <div class="dab-navbar__brand">
+        <span class="dab-navbar__icon">◈</span>
+        <div class="dab-navbar__titles">
+            <span class="dab-navbar__name">Davivienda Honduras S.A</span>
+            <span class="dab-navbar__subtitle">PLATAFORMA DE GESTIÓN DOCUMENTAL DaBuenaVida</span>
+        </div>
+    </div>
+    <div class="dab-navbar__user">
+        <div class="dab-navbar__avatar">@AuthService.Nomenclatura</div>
+        <div class="dab-navbar__userinfo">
+            <span class="dab-navbar__username">@AuthService.DisplayName</span>
+            <span class="dab-navbar__userrole">@AuthService.Rol</span>
+        </div>
+    </div>
+</nav>
