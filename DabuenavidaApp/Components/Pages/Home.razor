@@ -1,33 +1,20 @@
-connection.Bind();
-
-// Buscar atributos del usuario en el AD
-string displayName = username;
-string rol = "Usuario";
-
-var searchRequest = new System.DirectoryServices.Protocols.SearchRequest(
-    _domain,
-    $"(sAMAccountName={username})",
-    System.DirectoryServices.Protocols.SearchScope.Subtree,
-    "displayName", "memberOf"
-);
-
-var searchResponse = (System.DirectoryServices.Protocols.SearchResponse)
-    connection.SendRequest(searchRequest);
-
-if (searchResponse.Entries.Count > 0)
+public void ParseToken()
 {
-    var entry = searchResponse.Entries[0];
-    
-    if (entry.Attributes["displayName"] != null)
-        displayName = entry.Attributes["displayName"][0].ToString()!;
-        
-    if (entry.Attributes["memberOf"] != null)
-    {
-        var grupos = entry.Attributes["memberOf"];
-        // Toma el primer grupo como rol, extrae el CN
-        var primerGrupo = grupos[0].ToString()!;
-        rol = primerGrupo.Split(',')[0].Replace("CN=", "").Trim();
-    }
-}
+    if (string.IsNullOrEmpty(Token)) return;
 
-return CreateToken(username, displayName, rol);
+    var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+    var jwt = handler.ReadJwtToken(Token);
+
+    DisplayName = jwt.Claims
+        .FirstOrDefault(c => c.Type == "displayName")?.Value ?? "";
+    
+    Rol = jwt.Claims
+        .FirstOrDefault(c => c.Type == "rol")?.Value ?? "";
+
+    // Nomenclatura: primera letra nombre + primera letra apellido + primera letra rol
+    var partes = DisplayName.Split(' ');
+    string inicialNombre = partes.Length > 0 ? partes[0][..1] : "";
+    string inicialApellido = partes.Length > 1 ? partes[1][..1] : "";
+    string inicialRol = Rol.Length > 0 ? Rol[..1] : "";
+    Nomenclatura = (inicialNombre + inicialApellido + inicialRol).ToUpper();
+}
