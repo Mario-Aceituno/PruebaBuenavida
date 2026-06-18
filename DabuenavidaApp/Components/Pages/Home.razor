@@ -1,19 +1,31 @@
-@using ManageAdminDMS_UI.Services
-@inject AuthService AuthService
+connection.Bind();
 
-<nav class="dab-navbar">
-    <div class="dab-navbar__brand">
-        <span class="dab-navbar__icon">◈</span>
-        <div class="dab-navbar__titles">
-            <span class="dab-navbar__name">Davivienda Honduras S.A</span>
-            <span class="dab-navbar__subtitle">PLATAFORMA DE GESTIÓN DOCUMENTAL DaBuenaVida</span>
-        </div>
-    </div>
-    <div class="dab-navbar__user">
-        <div class="dab-navbar__avatar">@AuthService.Nomenclatura</div>
-        <div class="dab-navbar__userinfo">
-            <span class="dab-navbar__username">@AuthService.DisplayName</span>
-            <span class="dab-navbar__userrole">@AuthService.Rol</span>
-        </div>
-    </div>
-</nav>
+var filtro = $"(sAMAccountName={username})";
+var baseDn = "DC=daviviendahn, DC=dvhn";
+var searchRequest = new System.DirectoryServices.Protocols.SearchRequest(
+    baseDn, 
+    filtro, 
+    System.DirectoryServices.Protocols.SearchScope.Subtree, 
+    "displayName", "mail", "department", "title"
+);
+
+var searchResponse = (System.DirectoryServices.Protocols.SearchResponse)
+    connection.SendRequest(searchRequest);
+
+string displayName = username;
+string rol = "Usuario";
+
+if (searchResponse.Entries.Count > 0)
+{
+    var entry = searchResponse.Entries[0];
+
+    if (entry.Attributes["displayName"] != null)
+        displayName = entry.Attributes["displayName"][0].ToString()!;
+
+    if (entry.Attributes["title"] != null)
+        rol = entry.Attributes["title"][0].ToString()!;
+    else if (entry.Attributes["department"] != null)
+        rol = entry.Attributes["department"][0].ToString()!;
+}
+
+return CreateToken(username, displayName, rol);
