@@ -26,15 +26,15 @@
             <table class="dab-table">
                 <thead>
                     <tr>
-                        <th>N° DABUENAVIDA</th>
-                        <th>NOMBRE DEL CLIENTE</th>
-                        <th>DNI / IDENTIDAD</th>
-                        <th>CENTRO DE COSTO</th>
-                        <th>FECHA CREACIÓN</th>
-                        <th>FECHA VENCIMIENTO</th>
-                        <th>VALOR DAB</th>
-                        <th>N° TÍTULOS</th>
-                        <th>ESTADO IMPRESIÓN</th>
+                        <th class="col-numero">N° DAB</th>
+                        <th class="col-nombre">CLIENTE</th>
+                        <th class="col-dni">DNI</th>
+                        <th class="col-centro">C. COSTO</th>
+                        <th class="col-fecha">F. CREACIÓN</th>
+                        <th class="col-fecha">F. VENCIMIENTO</th>
+                        <th class="col-valor">VALOR DAB</th>
+                        <th class="col-titulos">TÍTULOS</th>
+                        <th class="col-estado">ESTADO / IMPRIMIR</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -44,17 +44,21 @@
                             <td class="dab-table__numero">@item.NumeroDabuenavida</td>
                             <td class="dab-table__nombre">@item.NombreCliente</td>
                             <td>@item.DNI</td>
-                            <td>@item.CentroDeCosto</td>
-                            <td>@item.FechaCreacion.ToString("dd/MM/yyyy")</td>
-                            <td>@item.FechaVencimiento.ToString("dd/MM/yyyy")</td>
-                            <td>L @item.ValorDAB.ToString("N2")</td>
+                            <td class="dab-table__centro">@item.CentroDeCosto</td>
+                            <td class="dab-table__fecha">@item.FechaCreacion.ToString("dd/MM/yy")</td>
+                            <td class="dab-table__fecha">@item.FechaVencimiento.ToString("dd/MM/yy")</td>
+                            <td class="dab-table__valor">L @item.ValorDAB.ToString("N2")</td>
                             <td class="dab-table__titulos">@item.NumeroTitulos</td>
-                            <td>
+                            <td class="dab-table__estado-cell">
                                 <span class="@(item.EstadoImpresion == "IMPRESO"
                                     ? "dab-table__estado dab-table__estado--impreso"
                                     : "dab-table__estado dab-table__estado--pendiente")">
                                     ● @item.EstadoImpresion
                                 </span>
+                                <button class="dab-table__btn-imprimir"
+                                        title="Imprimir registro">
+                                    🖨
+                                </button>
                             </td>
                         </tr>
                     }
@@ -81,7 +85,9 @@
                            inputmode="numeric"
                            placeholder="@PaginaActual" />
                 </div>
-                <span class="dab-table__pag-label">de <strong>@Resultado?.TotalPaginas</strong></span>
+                <span class="dab-table__pag-label">
+                    de <strong>@Resultado?.TotalPaginas</strong>
+                </span>
                 @if (_errorPagina)
                 {
                     <span class="dab-table__pag-error">Página inválida</span>
@@ -113,7 +119,6 @@
 
     protected override void OnParametersSet()
     {
-        // Sincroniza el input cuando cambia la página externamente
         _inputPagina = PaginaActual.ToString();
         _errorPagina = false;
     }
@@ -121,16 +126,10 @@
     private async Task OnInputPagina(ChangeEventArgs e)
     {
         var raw = e.Value?.ToString() ?? "";
-
-        // Solo dígitos, sin letras ni especiales
         var limpio = System.Text.RegularExpressions.Regex.Replace(raw, @"[^0-9]", "");
         _inputPagina = limpio;
 
-        if (string.IsNullOrEmpty(limpio))
-        {
-            _errorPagina = false;
-            return;
-        }
+        if (string.IsNullOrEmpty(limpio)) { _errorPagina = false; return; }
 
         if (!int.TryParse(limpio, out int pagina)
             || pagina < 1
@@ -141,8 +140,6 @@
         }
 
         _errorPagina = false;
-
-        // Debounce: espera 500ms desde el último teclazo antes de hacer el request
         _cts?.Cancel();
         _cts = new System.Threading.CancellationTokenSource();
         var token = _cts.Token;
@@ -156,6 +153,7 @@
         catch (TaskCanceledException) { }
     }
 }
+/* ── Contenedor ── */
 .dab-table__container {
     margin: 16px 24px 24px 24px;
     background-color: white;
@@ -165,17 +163,18 @@
     overflow: hidden;
 }
 
+/* ── Topbar ── */
 .dab-table__topbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 14px 18px;
+    padding: 12px 18px;
     border-bottom: 1px solid #f0f0f0;
     background-color: #fafafa;
 }
 
 .dab-table__resultados {
-    font-size: 13px;
+    font-size: 12px;
     color: #555555;
 }
 
@@ -190,28 +189,37 @@
 }
 
 .dab-table__leyenda-item {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 500;
 }
 
-.dab-table__leyenda-item--impreso {
-    color: #1a6bbf;
-}
+.dab-table__leyenda-item--impreso  { color: #1a6bbf; }
+.dab-table__leyenda-item--pendiente { color: #c0392b; }
 
-.dab-table__leyenda-item--pendiente {
-    color: #c0392b;
-}
-
+/* ── Wrapper scroll horizontal ── */
 .dab-table__wrapper {
     overflow-x: auto;
 }
 
+/* ── Tabla ── */
 .dab-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 12px;
+    table-layout: fixed;   /* anchos controlados */
 }
 
+/* ── Anchos de columna ── */
+.col-numero  { width: 110px; }
+.col-nombre  { width: 180px; }
+.col-dni     { width: 120px; }
+.col-centro  { width: 80px;  }
+.col-fecha   { width: 90px;  }
+.col-valor   { width: 100px; }
+.col-titulos { width: 62px;  }
+.col-estado  { width: 160px; }
+
+/* ── Encabezados ── */
 .dab-table thead tr {
     background-color: #f7f7f7;
     border-bottom: 2px solid #e8e8e8;
@@ -219,43 +227,59 @@
 
 .dab-table th {
     text-align: left;
-    padding: 11px 14px;
-    font-size: 10px;
+    padding: 10px 10px;
+    font-size: 9px;
     font-weight: 700;
     color: #999999;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.6px;
     text-transform: uppercase;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
+/* ── Filas ── */
 .dab-table tbody tr {
     border-bottom: 1px solid #f5f5f5;
     transition: background-color 0.15s;
 }
 
-.dab-table tbody tr:last-child {
-    border-bottom: none;
-}
-
-.dab-table tbody tr:hover {
-    background-color: #fff8f8;
-}
+.dab-table tbody tr:last-child { border-bottom: none; }
+.dab-table tbody tr:hover      { background-color: #fff8f8; }
 
 .dab-table td {
-    padding: 11px 14px;
+    padding: 9px 10px;
     color: #444444;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
+/* ── Celdas específicas ── */
 .dab-table__numero {
     color: #c0392b;
     font-weight: 700;
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .dab-table__nombre {
     font-weight: 600;
     color: #222222;
+}
+
+.dab-table__centro {
+    text-align: center;
+}
+
+.dab-table__fecha {
+    color: #666666;
+    font-size: 11px;
+}
+
+.dab-table__valor {
+    font-weight: 600;
+    color: #2c2c2c;
+    text-align: right;
 }
 
 .dab-table__titulos {
@@ -264,20 +288,54 @@
     text-align: center;
 }
 
+/* ── Celda estado + botón imprimir ── */
+.dab-table__estado-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 9px 10px;
+    overflow: visible !important;
+}
+
 .dab-table__estado {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 
-.dab-table__estado--impreso {
-    color: #1a6bbf;
+.dab-table__estado--impreso  { color: #1a6bbf; }
+.dab-table__estado--pendiente { color: #c0392b; }
+
+/* ── Botón imprimir ── */
+.dab-table__btn-imprimir {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background-color: #ffffff;
+    cursor: pointer;
+    font-size: 14px;
+    flex-shrink: 0;
+    transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
+    line-height: 1;
 }
 
-.dab-table__estado--pendiente {
-    color: #c0392b;
+.dab-table__btn-imprimir:hover {
+    background-color: #fff5f5;
+    border-color: #c0392b;
+    transform: scale(1.08);
 }
 
+.dab-table__btn-imprimir:active {
+    transform: scale(0.95);
+}
+
+/* ── Loading ── */
 .dab-table__loading {
     text-align: center;
     padding: 60px;
@@ -285,13 +343,13 @@
     font-size: 14px;
 }
 
-/* ── PAGINACIÓN ── */
+/* ── Paginación ── */
 .dab-table__paginacion {
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 16px;
-    padding: 16px;
+    padding: 14px 16px;
     border-top: 1px solid #f0f0f0;
     background-color: #fafafa;
     flex-wrap: wrap;
@@ -301,12 +359,13 @@
     background-color: #ffffff;
     border: 1px solid #d9d9d9;
     border-radius: 4px;
-    padding: 7px 18px;
-    font-size: 13px;
+    padding: 6px 16px;
+    font-size: 12px;
     cursor: pointer;
     color: #444444;
     font-weight: 500;
     transition: all 0.2s;
+    white-space: nowrap;
 }
 
 .dab-table__pag-btn:hover:not(:disabled) {
@@ -320,7 +379,6 @@
     cursor: not-allowed;
 }
 
-/* ── Centro de paginación con input ── */
 .dab-table__pag-center {
     display: flex;
     align-items: center;
@@ -330,7 +388,7 @@
 }
 
 .dab-table__pag-label {
-    font-size: 13px;
+    font-size: 12px;
     color: #666666;
     font-weight: 500;
 }
@@ -359,12 +417,12 @@
 }
 
 .dab-table__pag-input {
-    width: 52px;
-    height: 32px;
+    width: 48px;
+    height: 30px;
     border: none;
     outline: none;
     text-align: center;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     color: #c0392b;
     background: transparent;
@@ -384,6 +442,12 @@
 }
 
 /* ── Responsive ── */
+@media (max-width: 1024px) {
+    .dab-table {
+        table-layout: auto;
+    }
+}
+
 @media (max-width: 768px) {
     .dab-table__container {
         margin: 16px;
@@ -397,7 +461,7 @@
 
     .dab-table th,
     .dab-table td {
-        padding: 10px 10px;
+        padding: 8px 8px;
     }
 
     .dab-table__paginacion {
@@ -405,7 +469,7 @@
     }
 
     .dab-table__pag-btn {
-        padding: 7px 12px;
-        font-size: 12px;
+        padding: 6px 10px;
+        font-size: 11px;
     }
 }
