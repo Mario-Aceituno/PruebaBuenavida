@@ -1,31 +1,297 @@
-connection.Bind();
+@page "/login"
+@layout EmptyLayout
+@rendermode InteractiveServer
 
-var filtro = $"(sAMAccountName={username})";
-var baseDn = "DC=daviviendahn, DC=dvhn";
-var searchRequest = new System.DirectoryServices.Protocols.SearchRequest(
-    baseDn, 
-    filtro, 
-    System.DirectoryServices.Protocols.SearchScope.Subtree, 
-    "displayName", "mail", "department", "title"
-);
+@using Microsoft.JSInterop
+@using ManageAdminDMS_UI.Components.Shared
+@inject IJSRuntime JS
+@inject AuthService AuthService
+@inject NavigationManager Nav
+@inject IHttpClientFactory HttpClientFactory
 
-var searchResponse = (System.DirectoryServices.Protocols.SearchResponse)
-    connection.SendRequest(searchRequest);
-
-string displayName = username;
-string rol = "Usuario";
-
-if (searchResponse.Entries.Count > 0)
+@if (cargando)
 {
-    var entry = searchResponse.Entries[0];
+    <Loading />
+}
+else
+{
+    <div class="login-page">
+        <div class="login-card">
+            <div class="login-card__icon">◈</div>
+            <h1 class="login-card__title">DaBuenaVida</h1>
+            <p class="login-card__subtitle">Ingrese su PeopleSoft y contraseña</p>
 
-    if (entry.Attributes["displayName"] != null)
-        displayName = entry.Attributes["displayName"][0].ToString()!;
+            <div class="login-card__field">
+                <input type="text"
+                       inputmode="numeric"
+                       maxlength="10"
+                       placeholder="PeopleSoft"
+                       value="@Username"
+                       @oninput="OnUsernameInput"
+                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })"
+                       disabled="@enviando" />
+            </div>
 
-    if (entry.Attributes["title"] != null)
-        rol = entry.Attributes["title"][0].ToString()!;
-    else if (entry.Attributes["department"] != null)
-        rol = entry.Attributes["department"][0].ToString()!;
+            <div class="login-card__field">
+                <input type="password"
+                       placeholder="Contraseña"
+                       @bind="Password"
+                       @bind:event="oninput"
+                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })"
+                       disabled="@enviando" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(mensaje))
+            {
+                <div class="login-card__alert @(esError ? "login-card__alert--error" : "login-card__alert--success")">
+                    @mensaje
+                </div>
+            }
+
+            <button class="login-card__button"
+                    @onclick="IniciarSesion"
+                    disabled="@(enviando || string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))">
+                @(enviando ? "Validando..." : "Iniciar Sesión")
+            </button>
+
+            <span class="login-card__footer">Davivienda Honduras S.A</span>
+        </div>
+    </div>
+}
+using System.Net.Http.Json;
+
+namespace ManageAdminDMS_UI.Components.Pages.Login
+{
+    public partial class Login
+    {
+        private string Username = "";
+        private string Password = "";
+        private string mensaje = "";
+        private bool esError = false;
+        private bool cargando = true;
+        private bool enviando = false;
+
+        protected override async Task OnAfterRenderAsync(bool firstRender)
+        {
+            if (!firstRender) return;
+            await AuthService.LoadTokenAsync();
+
+            if (AuthService.IsAuthenticated)
+            {
+                Nav.NavigateTo("/dashboard");
+                return;
+            }
+
+            cargando = false;
+            StateHasChanged();
+        }
+
+        // Filtra cualquier caracter que no sea dígito, sin importar lo que el usuario pegue o escriba
+        private void OnUsernameInput(ChangeEventArgs e)
+        {
+            var valor = e.Value?.ToString() ?? "";
+            Username = new string(valor.Where(char.IsDigit).ToArray());
+        }
+
+        public class LoginResponse
+        {
+            public string Token { get; set; } = "";
+        }
+
+        private async Task IniciarSesion()
+        {
+            if (string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))
+            {
+                mensaje = "Ingrese PeopleSoft y contraseña.";
+                esError = true;
+                return;
+            }
+
+            enviando = true;
+            mensaje = "";
+            StateHasChanged();
+
+            try
+            {
+                var client = HttpClientFactory.CreateClient("API");
+                var response = await client.PostAsJsonAsync("api/auth/login", new
+                {
+                    Username,
+                    Password
+                });
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    mensaje = "PeopleSoft o contraseña incorrectos.";
+                    esError = true;
+                    return;
+                }
+
+                var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
+
+                if (result is null || string.IsNullOrEmpty(result.Token))
+                {
+                    mensaje = "No se pudo validar la sesión. Intente de nuevo.";
+                    esError = true;
+                    return;
+                }
+
+                await AuthService.SetTokenAsync(result.Token);
+
+                mensaje = "Acceso correcto, redirigiendo...";
+                esError = false;
+                StateHasChanged();
+
+                await Task.Delay(400);
+                Nav.NavigateTo("/dashboard");
+            }
+            catch
+            {
+                mensaje = "No se pudo conectar con el servidor.";
+                esError = true;
+            }
+            finally
+            {
+                enviando = false;
+                StateHasChanged();
+            }
+        }
+    }
+}
+.login-page {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #c0392b 0%, #922b21 100%);
+    padding: 20px;
+    box-sizing: border-box;
 }
 
-return CreateToken(username, displayName, rol);
+.login-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+    width: 100%;
+    max-width: 360px;
+    padding: 40px 32px 28px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    animation: fadeUp 0.4s ease-out;
+}
+
+.login-card__icon {
+    font-size: 30px;
+    color: #c0392b;
+    margin-bottom: 8px;
+}
+
+.login-card__title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #222;
+    margin: 0;
+    letter-spacing: 0.3px;
+}
+
+.login-card__subtitle {
+    font-size: 13px;
+    color: #888;
+    margin: 6px 0 26px 0;
+}
+
+.login-card__field {
+    width: 100%;
+    margin-bottom: 14px;
+}
+
+    .login-card__field input {
+        width: 100%;
+        box-sizing: border-box;
+        background-color: #f5f5f5;
+        border: 1.5px solid transparent;
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.2s, background-color 0.2s;
+    }
+
+        .login-card__field input:focus {
+            border-color: #c0392b;
+            background-color: #ffffff;
+        }
+
+        .login-card__field input:disabled {
+            opacity: 0.6;
+        }
+
+.login-card__alert {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    text-align: left;
+}
+
+.login-card__alert--error {
+    background-color: #fdecea;
+    color: #c0392b;
+    border: 1px solid #f5c6cb;
+}
+
+.login-card__alert--success {
+    background-color: #eafaf1;
+    color: #1e8449;
+    border: 1px solid #b7e4c7;
+}
+
+.login-card__button {
+    width: 100%;
+    background-color: #c0392b;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-top: 4px;
+}
+
+    .login-card__button:hover:not(:disabled) {
+        background-color: #922b21;
+    }
+
+    .login-card__button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+.login-card__footer {
+    margin-top: 22px;
+    font-size: 11px;
+    color: #aaa;
+    letter-spacing: 0.3px;
+}
+
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
