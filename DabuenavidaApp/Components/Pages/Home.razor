@@ -15,47 +15,48 @@
 }
 else
 {
-    <div class="login-page">
-        <div class="login-card">
-            <div class="login-card__icon">◈</div>
-            <h1 class="login-card__title">DaBuenaVida</h1>
-            <p class="login-card__subtitle">Ingrese su PeopleSoft y contraseña</p>
+    <div class="container" id="container">
 
-            <div class="login-card__field">
+        <div class="form-container sign-in">
+            <form>
+                <h1>Inicio de Sesión</h1>
+                <span>Ingrese su peoplesoft y contraseña</span>
                 <input type="text"
                        inputmode="numeric"
                        maxlength="10"
-                       placeholder="PeopleSoft"
+                       placeholder="peoplesoft"
                        value="@Username"
                        @oninput="OnUsernameInput"
-                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })"
-                       disabled="@enviando" />
-            </div>
-
-            <div class="login-card__field">
+                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })" />
                 <input type="password"
-                       placeholder="Contraseña"
+                       placeholder="password"
                        @bind="Password"
                        @bind:event="oninput"
-                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })"
-                       disabled="@enviando" />
-            </div>
+                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })" />
+                <button type="button"
+                        @onclick="IniciarSesion"
+                        disabled="@enviando">
+                    @(enviando ? "Validando..." : "Iniciar Sesion")
+                </button>
 
-            @if (!string.IsNullOrEmpty(mensaje))
-            {
-                <div class="login-card__alert @(esError ? "login-card__alert--error" : "login-card__alert--success")">
-                    @mensaje
-                </div>
-            }
-
-            <button class="login-card__button"
-                    @onclick="IniciarSesion"
-                    disabled="@(enviando || string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))">
-                @(enviando ? "Validando..." : "Iniciar Sesión")
-            </button>
-
-            <span class="login-card__footer">Davivienda Honduras S.A</span>
+                @if (!string.IsNullOrEmpty(mensaje))
+                {
+                    <p class="login-msg @(esError ? "login-msg--error" : "login-msg--ok")">@mensaje</p>
+                }
+            </form>
         </div>
+
+        <div class="toggle-container">
+            <div class="toggle">
+                <div class="toggle-panel toggle-left">
+                    <h1>Bienvenido </h1>
+                </div>
+                <div class="toggle-panel toggle-right">
+                    <h1>Bienvenido </h1>
+                </div>
+            </div>
+        </div>
+
     </div>
 }
 using System.Net.Http.Json;
@@ -64,8 +65,8 @@ namespace ManageAdminDMS_UI.Components.Pages.Login
 {
     public partial class Login
     {
-        private string Username = "";
-        private string Password = "";
+        private String Username = "";
+        private String Password = "";
         private string mensaje = "";
         private bool esError = false;
         private bool cargando = true;
@@ -86,7 +87,7 @@ namespace ManageAdminDMS_UI.Components.Pages.Login
             StateHasChanged();
         }
 
-        // Filtra cualquier caracter que no sea dígito, sin importar lo que el usuario pegue o escriba
+        // Filtra cualquier caracter que no sea dígito al escribir o pegar
         private void OnUsernameInput(ChangeEventArgs e)
         {
             var valor = e.Value?.ToString() ?? "";
@@ -102,7 +103,7 @@ namespace ManageAdminDMS_UI.Components.Pages.Login
         {
             if (string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))
             {
-                mensaje = "Ingrese PeopleSoft y contraseña.";
+                mensaje = "Ingrese peoplesoft y contraseña.";
                 esError = true;
                 return;
             }
@@ -122,7 +123,7 @@ namespace ManageAdminDMS_UI.Components.Pages.Login
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    mensaje = "PeopleSoft o contraseña incorrectos.";
+                    mensaje = "Error de login";
                     esError = true;
                     return;
                 }
@@ -131,18 +132,18 @@ namespace ManageAdminDMS_UI.Components.Pages.Login
 
                 if (result is null || string.IsNullOrEmpty(result.Token))
                 {
-                    mensaje = "No se pudo validar la sesión. Intente de nuevo.";
+                    mensaje = "token invalido";
                     esError = true;
                     return;
                 }
 
                 await AuthService.SetTokenAsync(result.Token);
 
-                mensaje = "Acceso correcto, redirigiendo...";
+                mensaje = "Login Correcto";
                 esError = false;
                 StateHasChanged();
 
-                await Task.Delay(400);
+                await Task.Delay(300);
                 Nav.NavigateTo("/dashboard");
             }
             catch
@@ -158,140 +159,174 @@ namespace ManageAdminDMS_UI.Components.Pages.Login
         }
     }
 }
-.login-page {
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+div:not([blazor:bind]) {
+}
+
+body {
+    background-color: rgb(255, 255, 255);
+    background: linear-gradient(to right, #ffffff, #ffffff);
+    display: flex;
+    align-items: center;
+    margin: 35;
     min-height: 100vh;
-    width: 100%;
+    justify-content: center;
+}
+
+.container {
+    background-color: #fff;
+    border-radius: 30px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.35);
+    overflow: hidden;
+    width: 768px;
+    max-width: 100%;
+    min-height: 480px;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.container p {
+    font-size: 14px;
+    line-height: 20px;
+    letter-spacing: 0.3px;
+    margin: 20px 0;
+}
+
+.container span {
+    font-size: 12px;
+}
+
+.container a {
+    color: #333;
+    font-size: 13px;
+    text-decoration: none;
+    margin: 15px 0 10px;
+}
+
+.container button {
+    color: white;
+    background: #af1b1b;
+    font-size: 12px;
+    padding: 10px 45px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-top: 10px;
+    cursor: pointer;
+}
+
+.container button.hidden {
+    background-color: transparent;
+    border-color: #fff;
+}
+
+.container button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.container form {
+    background-color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #c0392b 0%, #922b21 100%);
-    padding: 20px;
-    box-sizing: border-box;
-}
-
-.login-card {
-    background: #ffffff;
-    border-radius: 16px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
-    width: 100%;
-    max-width: 360px;
-    padding: 40px 32px 28px 32px;
-    display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
-    animation: fadeUp 0.4s ease-out;
+    padding: 0 40px;
+    height: 100%;
 }
 
-.login-card__icon {
-    font-size: 30px;
-    color: #c0392b;
-    margin-bottom: 8px;
-}
-
-.login-card__title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #222;
-    margin: 0;
-    letter-spacing: 0.3px;
-}
-
-.login-card__subtitle {
+.container input {
+    background-color: #eee;
+    border: none;
+    margin: 8px 0;
+    padding: 10px 15px;
     font-size: 13px;
-    color: #888;
-    margin: 6px 0 26px 0;
+    border-radius: 8px;
+    width: 100%;
+    outline: none;
 }
 
-.login-card__field {
-    width: 100%;
-    margin-bottom: 14px;
+.form-container {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    transition: all 0.6s ease-in-out;
 }
 
-    .login-card__field input {
-        width: 100%;
-        box-sizing: border-box;
-        background-color: #f5f5f5;
-        border: 1.5px solid transparent;
-        border-radius: 8px;
-        padding: 12px 14px;
-        font-size: 14px;
-        outline: none;
-        transition: border-color 0.2s, background-color 0.2s;
-    }
-
-        .login-card__field input:focus {
-            border-color: #c0392b;
-            background-color: #ffffff;
-        }
-
-        .login-card__field input:disabled {
-            opacity: 0.6;
-        }
-
-.login-card__alert {
+.sign-in {
+    left: 0;
     width: 100%;
-    box-sizing: border-box;
+    z-index: 2;
+}
+
+.toggle-container {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 50%;
+    height: 100%;
+    overflow: hidden;
+    transition: all 0.6s ease-in-out;
+    border-radius: 150px 0 0 100px;
+    z-index: 1000;
+}
+
+.toggle {
+    background-color: #512da8;
+    height: 100%;
+    background: linear-gradient(to bottom, #ff0000 0%, #4d0000 100%);
+    color: #fff;
+    position: relative;
+    left: 0;
+    height: 100%;
+    width: 200%;
+    transform: translateX(0);
+    transition: all 0.6s ease-in-out;
+}
+
+.toggle-panel {
+    position: absolute;
+    width: 50%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 0 30px;
+    text-align: center;
+    top: 0;
+    transform: translateX(0);
+    transition: all 0.6s ease-in-out;
+}
+
+.toggle-left {
+    transform: translateX(-200%);
+}
+
+.toggle-right {
+    right: 0;
+    transform: translateX(0);
+}
+
+.login-msg {
     font-size: 12.5px;
     font-weight: 600;
-    padding: 10px 12px;
-    border-radius: 8px;
-    margin-bottom: 14px;
-    text-align: left;
-}
-
-.login-card__alert--error {
-    background-color: #fdecea;
-    color: #c0392b;
-    border: 1px solid #f5c6cb;
-}
-
-.login-card__alert--success {
-    background-color: #eafaf1;
-    color: #1e8449;
-    border: 1px solid #b7e4c7;
-}
-
-.login-card__button {
-    width: 100%;
-    background-color: #c0392b;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 12px;
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: background-color 0.2s;
     margin-top: 4px;
 }
 
-    .login-card__button:hover:not(:disabled) {
-        background-color: #922b21;
-    }
-
-    .login-card__button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-.login-card__footer {
-    margin-top: 22px;
-    font-size: 11px;
-    color: #aaa;
-    letter-spacing: 0.3px;
+.login-msg--error {
+    color: #c0392b;
 }
 
-@keyframes fadeUp {
-    from {
-        opacity: 0;
-        transform: translateY(12px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.login-msg--ok {
+    color: #1e8449;
 }
