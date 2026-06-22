@@ -1,115 +1,29 @@
-using System.DirectoryServices.Protocols;
-using System.IdentityModel.Tokens.Jwt;
-using System.Net;
-using System.Security.Claims;
-using System.Text;
-using Microsoft.IdentityModel.Tokens;
-using CronogramaPagosPrestamos.API.Configuration;
+// ── Active Directory Service ──────────────────────────────────────
+builder.Services.AddScoped<IActiveDirectoryServices, ActiveDirectoryServices>();
 
-namespace CronogramaPagosPrestamos.API.Services
+// ── JWT Authentication ────────────────────────────────────────────
+var ambienteTemp = builder.Services.BuildServiceProvider()
+    .GetRequiredService<AmbienteSettings>();
+var jwtSettings = ambienteTemp.GetJwtSettings();
+
+builder.Services.AddAuthentication(options =>
 {
-    public interface IActiveDirectoryServices
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme    = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
     {
-        string? ValidateUser(string username, string password);
-    }
+        ValidateIssuer           = true,
+        ValidateAudience         = true,
+        ValidateLifetime         = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer              = jwtSettings.Issuer,
+        ValidAudience            = jwtSettings.Audience,
+        IssuerSigningKey         = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(jwtSettings.SecretKey))
+    };
+});
 
-    public class ActiveDirectoryServices : IActiveDirectoryServices
-    {
-        private readonly string _adServer;
-        private readonly string _domain;
-        private readonly string _jwtSecretKey;
-        private readonly string _issuer;
-        private readonly string _audience;
-
-        public ActiveDirectoryServices(AmbienteSettings ambienteSettings)
-        {
-            var jwt       = ambienteSettings.GetJwtSettings();
-            _adServer     = jwt.AD_Server;
-            _domain       = jwt.AD_Domain;
-            _jwtSecretKey = jwt.SecretKey;
-            _issuer       = jwt.Issuer;
-            _audience     = jwt.Audience;
-        }
-
-        private string CreateToken(string username, string displayName, string rol)
-        {
-            var secretKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(_jwtSecretKey));
-
-            var creds = new SigningCredentials(
-                secretKey, SecurityAlgorithms.HmacSha256);
-
-            var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.NameIdentifier, $"{_domain}\\{username}"),
-                new Claim(ClaimTypes.Name, username),
-                new Claim("displayName", displayName),
-                new Claim("rol", rol)
-            };
-
-            var token = new JwtSecurityToken(
-                issuer:             _issuer,
-                audience:           _audience,
-                claims:             claims,
-                expires:            DateTime.Now.AddHours(9),
-                signingCredentials: creds
-            );
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
-        }
-
-        public string? ValidateUser(string username, string password)
-        {
-            var identifier = new LdapDirectoryIdentifier(_domain, 636, true, false);
-            string userPrincipalName = $"DAVIVIENDAHN\\{username}";
-
-            using var connection = new LdapConnection(
-                identifier,
-                new NetworkCredential(userPrincipalName, password),
-                AuthType.Basic);
-
-            connection.SessionOptions.SecureSocketLayer = true;
-            connection.SessionOptions.VerifyServerCertificate += (conn, cert) => true;
-
-            try
-            {
-                connection.Bind();
-
-                var filtro        = $"(sAMAccountName={username})";
-                var baseDn        = "DC=daviviendahn,DC=dvhn";
-                var searchRequest = new SearchRequest(
-                    baseDn,
-                    filtro,
-                    SearchScope.Subtree,
-                    "displayName", "mail", "department", "title");
-
-                var searchResponse = (SearchResponse)
-                    connection.SendRequest(searchRequest);
-
-                string displayName = username;
-                string rol         = "Usuario";
-
-                if (searchResponse.Entries.Count > 0)
-                {
-                    var entry = searchResponse.Entries[0];
-
-                    if (entry.Attributes["displayName"] != null)
-                        displayName = entry.Attributes["displayName"][0].ToString()!;
-
-                    if (entry.Attributes["title"] != null)
-                        rol = entry.Attributes["title"][0].ToString()!;
-                    else if (entry.Attributes["department"] != null)
-                        rol = entry.Attributes["department"][0].ToString()!;
-                }
-
-                return CreateToken(username, displayName, rol);
-            }
-            catch (LdapException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"Error LDAP: {ex.Message} (Código: {ex.ErrorCode})");
-                return null;
-            }
-        }
-    }
-}
+builder.Services.AddAuthorization();
