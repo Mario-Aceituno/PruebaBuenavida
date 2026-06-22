@@ -1,88 +1,115 @@
-namespace CronogramaPagosPrestamos.API.Configuration
+using System.DirectoryServices.Protocols;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.IdentityModel.Tokens;
+using CronogramaPagosPrestamos.API.Configuration;
+
+namespace CronogramaPagosPrestamos.API.Services
 {
-    public class AmbienteSettings
+    public interface IActiveDirectoryServices
     {
-        private readonly IConfiguration _configuration;
-        private readonly string _ambiente;
-
-        public AmbienteSettings(IConfiguration configuration)
-        {
-            _configuration = configuration;
-
-            _ambiente = _configuration["serviceGlobals:defaultAmbiente"]
-                ?? throw new InvalidOperationException(
-                    "No se encontró 'serviceGlobals:defaultAmbiente' en appsettings.json. " +
-                    "Configura el ambiente activo (DEV, UAT, PROD).");
-        }
-
-        public string AmbienteActivo => _ambiente;
-
-        public string GetString(string clave)
-            => _configuration[$"{_ambiente}:{clave}"]
-               ?? throw new InvalidOperationException(
-                   $"No se encontró '{_ambiente}:{clave}' en appsettings.json.");
-
-        public int GetInt(string clave, int valorPorDefecto = 0)
-        {
-            var valor = _configuration[$"{_ambiente}:{clave}"];
-            return int.TryParse(valor, out var resultado) ? resultado : valorPorDefecto;
-        }
-
-        public AS400Settings GetAS400Settings()
-        {
-            return new AS400Settings
-            {
-                Driver         = GetString("AS400ODBC:driver"),
-                Server         = GetString("AS400ODBC:server"),
-                UserBase64     = GetString("AS400ODBC:user"),
-                PasswordBase64 = GetString("AS400ODBC:password")
-            };
-        }
-
-        public AppSettings GetAppSettings()
-        {
-            return new AppSettings
-            {
-                OutputPath             = GetString("OutputPath"),
-                RutaDestino            = GetString("RutaDestino"),
-                BatchSize              = GetInt("BatchSize", 5000),
-                ProgressUpdateInterval = GetInt("ProgressUpdateInterval", 100)
-            };
-        }
-
-        public SqlServerSettings GetSqlServerSettings()
-        {
-            return new SqlServerSettings
-            {
-                Catalog        = GetString("SQLServer:catalog"),
-                Server         = GetString("SQLServer:server"),
-                UserBase64     = _configuration[$"{_ambiente}:SQLServer:user"]
-                                 ?? string.Empty,
-                PasswordBase64 = _configuration[$"{_ambiente}:SQLServer:password"]
-                                 ?? string.Empty
-            };
-        }
-
-        public JwtSettings GetJwtSettings()
-        {
-            return new JwtSettings
-            {
-                SecretKey = GetString("Jwt_SecretKey"),
-                Issuer    = GetString("Jwt_Issuer"),
-                Audience  = GetString("Jwt_Audience"),
-                AD_Server = GetString("AD_Server"),
-                AD_Domain = GetString("AD_Domain")
-            };
-        }
+        string? ValidateUser(string username, string password);
     }
 
-    // Solo JwtSettings es nuevo — los demás ya existen en otro archivo
-    public class JwtSettings
+    public class ActiveDirectoryServices : IActiveDirectoryServices
     {
-        public string SecretKey { get; set; } = "";
-        public string Issuer    { get; set; } = "";
-        public string Audience  { get; set; } = "";
-        public string AD_Server { get; set; } = "";
-        public string AD_Domain { get; set; } = "";
+        private readonly string _adServer;
+        private readonly string _domain;
+        private readonly string _jwtSecretKey;
+        private readonly string _issuer;
+        private readonly string _audience;
+
+        public ActiveDirectoryServices(AmbienteSettings ambienteSettings)
+        {
+            var jwt       = ambienteSettings.GetJwtSettings();
+            _adServer     = jwt.AD_Server;
+            _domain       = jwt.AD_Domain;
+            _jwtSecretKey = jwt.SecretKey;
+            _issuer       = jwt.Issuer;
+            _audience     = jwt.Audience;
+        }
+
+        private string CreateToken(string username, string displayName, string rol)
+        {
+            var secretKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(_jwtSecretKey));
+
+            var creds = new SigningCredentials(
+                secretKey, SecurityAlgorithms.HmacSha256);
+
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, $"{_domain}\\{username}"),
+                new Claim(ClaimTypes.Name, username),
+                new Claim("displayName", displayName),
+                new Claim("rol", rol)
+            };
+
+            var token = new JwtSecurityToken(
+                issuer:             _issuer,
+                audience:           _audience,
+                claims:             claims,
+                expires:            DateTime.Now.AddHours(9),
+                signingCredentials: creds
+            );
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        public string? ValidateUser(string username, string password)
+        {
+            var identifier = new LdapDirectoryIdentifier(_domain, 636, true, false);
+            string userPrincipalName = $"DAVIVIENDAHN\\{username}";
+
+            using var connection = new LdapConnection(
+                identifier,
+                new NetworkCredential(userPrincipalName, password),
+                AuthType.Basic);
+
+            connection.SessionOptions.SecureSocketLayer = true;
+            connection.SessionOptions.VerifyServerCertificate += (conn, cert) => true;
+
+            try
+            {
+                connection.Bind();
+
+                var filtro        = $"(sAMAccountName={username})";
+                var baseDn        = "DC=daviviendahn,DC=dvhn";
+                var searchRequest = new SearchRequest(
+                    baseDn,
+                    filtro,
+                    SearchScope.Subtree,
+                    "displayName", "mail", "department", "title");
+
+                var searchResponse = (SearchResponse)
+                    connection.SendRequest(searchRequest);
+
+                string displayName = username;
+                string rol         = "Usuario";
+
+                if (searchResponse.Entries.Count > 0)
+                {
+                    var entry = searchResponse.Entries[0];
+
+                    if (entry.Attributes["displayName"] != null)
+                        displayName = entry.Attributes["displayName"][0].ToString()!;
+
+                    if (entry.Attributes["title"] != null)
+                        rol = entry.Attributes["title"][0].ToString()!;
+                    else if (entry.Attributes["department"] != null)
+                        rol = entry.Attributes["department"][0].ToString()!;
+                }
+
+                return CreateToken(username, displayName, rol);
+            }
+            catch (LdapException ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Error LDAP: {ex.Message} (Código: {ex.ErrorCode})");
+                return null;
+            }
+        }
     }
 }
