@@ -1,117 +1,132 @@
+using CronogramaPagosPrestamos.API.Configuration;
+
+namespace CronogramaPagosPrestamos.API.Configuration
 {
-  "$schema": "http://166.178.5.253/app-config-schema.json",
-  "serviceGlobals": {
-    "serviceName": "CronogramaPagosPrestamos",
-    "serviceType": "REST",
-    "defaultAmbiente": "DEV"
-  },
-  "DEV": {
-    "AS400ODBC": {
-      "driver": "iSeries Access ODBC Driver",
-      "server": "166.178.81.19",
-      "user": "WUNZQkVSQkFOSw==",
-      "password": "VUhZT0tSODUyJA=="
-    },
-    "SQLServer": {
-      "catalog": "initial catalog=cronograma_pagos_prestamos;trustServerCertificate=True;",
-      "server": "Data Source=HNCSTG010240WAP\\HNCSTG010240WAP",
-      "user": "",
-      "password": ""
-    },
-    "AD_Server": "166.178.24.78",
-    "AD_Domain": "daviviendahn.dvhn",
-    "Jwt_SecretKey": "TuClaveSUPERSECRETADAVIVI12333333_Minimo32Caracteres!",
-    "Jwt_Issuer": "ActiveDirectoryAPI",
-    "Jwt_Audience": "ManageAdmin.FrontEnd",
-    "OutputPath": "C:\\cronogramapagosprestamos\\",
-    "RutaDestino": "C:\\cronogramapagosprestamos\\destino\\",
-    "BatchSize": 5000,
-    "token": 50000,
-    "ProgressUpdateInterval": 100
-  },
-  "UAT": {
-    "AS400ODBC": {
-      "driver": "iSeries Access ODBC Driver",
-      "server": "166.178.82.19",
-      "user": "WUNZQkVSQkFOSw==",
-      "password": "VUg1T0tSNDVMWQ=="
-    },
-    "SQLServer": {
-      "catalog": "initial catalog=cronograma_pagos_prestamos;trustServerCertificate=True;",
-      "server": "Data Source=HNCSTG010240WAP\\HNCSTG010240WAP",
-      "user": "",
-      "password": ""
-    },
-    "AD_Server": "166.178.24.78",
-    "AD_Domain": "daviviendahn.dvhn",
-    "Jwt_SecretKey": "TuClaveSUPERSECRETADAVIVI12333333_Minimo32Caracteres!",
-    "Jwt_Issuer": "ActiveDirectoryAPI",
-    "Jwt_Audience": "ManageAdmin.FrontEnd",
-    "OutputPath": "C:\\cronogramapagosprestamos\\",
-    "RutaDestino": "\\\\servidor\\compartida\\cronogramas\\",
-    "BatchSize": 5000,
-    "token": 50000,
-    "ProgressUpdateInterval": 100
-  },
-  "PROD": {
-    "AS400ODBC": {
-      "driver": "iSeries Access ODBC Driver",
-      "server": "",
-      "user": "",
-      "password": ""
-    },
-    "SQLServer": {
-      "catalog": "initial catalog=cronograma_pagos_prestamos;trustServerCertificate=True;",
-      "server": "Data Source=HNCSTG010240WAP\\HNCSTG010240WAP",
-      "user": "",
-      "password": ""
-    },
-    "AD_Server": "166.178.24.78",
-    "AD_Domain": "daviviendahn.dvhn",
-    "Jwt_SecretKey": "TuClaveSUPERSECRETADAVIVI12333333_Minimo32Caracteres!",
-    "Jwt_Issuer": "ActiveDirectoryAPI",
-    "Jwt_Audience": "ManageAdmin.FrontEnd",
-    "OutputPath": "\\\\servidor\\compartida\\cronogramas\\",
-    "RutaDestino": "\\\\servidor\\compartida\\cronogramas\\",
-    "BatchSize": 5000,
-    "token": 50000,
-    "ProgressUpdateInterval": 100
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
+    /// <summary>
+    /// Lector dinámico de configuración multi-ambiente.
+    /// Lee "defaultAmbiente" de serviceGlobals y expone los settings
+    /// del bloque correspondiente (DEV, UAT, PROD) sin necesidad
+    /// de la extensión privada Ragnarok del banco.
+    /// Para cambiar de ambiente: modificar "defaultAmbiente" en appsettings.json
+    /// </summary>
+    public class AmbienteSettings
+    {
+        private readonly IConfiguration _configuration;
+        private readonly string _ambiente;
+
+        public AmbienteSettings(IConfiguration configuration)
+        {
+            _configuration = configuration;
+
+            _ambiente = _configuration["serviceGlobals:defaultAmbiente"]
+                ?? throw new InvalidOperationException(
+                    "No se encontró 'serviceGlobals:defaultAmbiente' en appsettings.json. " +
+                    "Configura el ambiente activo (DEV, UAT, PROD).");
+        }
+
+        /// <summary>Ambiente activo actualmente (DEV, UAT, PROD).</summary>
+        public string AmbienteActivo => _ambiente;
+
+        /// <summary>
+        /// Lee un valor string del bloque del ambiente activo.
+        /// Ejemplo: GetString("OutputPath") leerá UAT:OutputPath si defaultAmbiente=UAT
+        /// </summary>
+        public string GetString(string clave)
+            => _configuration[$"{_ambiente}:{clave}"]
+               ?? throw new InvalidOperationException(
+                   $"No se encontró '{_ambiente}:{clave}' en appsettings.json.");
+
+        /// <summary>Lee un valor entero del bloque del ambiente activo.</summary>
+        public int GetInt(string clave, int valorPorDefecto = 0)
+        {
+            var valor = _configuration[$"{_ambiente}:{clave}"];
+            return int.TryParse(valor, out var resultado) ? resultado : valorPorDefecto;
+        }
+
+        /// <summary>Retorna los settings del AS400 ODBC para el ambiente activo.</summary>
+        public AS400Settings GetAS400Settings()
+        {
+            return new AS400Settings
+            {
+                Driver         = GetString("AS400ODBC:driver"),
+                Server         = GetString("AS400ODBC:server"),
+                UserBase64     = GetString("AS400ODBC:user"),
+                PasswordBase64 = GetString("AS400ODBC:password")
+            };
+        }
+
+        /// <summary>Retorna los settings de la aplicación para el ambiente activo.</summary>
+        public AppSettings GetAppSettings()
+        {
+            return new AppSettings
+            {
+                OutputPath             = GetString("OutputPath"),
+                RutaDestino            = GetString("RutaDestino"),
+                BatchSize              = GetInt("BatchSize", 5000),
+                ProgressUpdateInterval = GetInt("ProgressUpdateInterval", 100)
+            };
+        }
+
+        /// <summary>Retorna los settings de SQL Server para el ambiente activo.</summary>
+        public SqlServerSettings GetSqlServerSettings()
+        {
+            return new SqlServerSettings
+            {
+                Catalog        = GetString("SQLServer:catalog"),
+                Server         = GetString("SQLServer:server"),
+                UserBase64     = _configuration[$"{_ambiente}:SQLServer:user"]
+                                 ?? string.Empty,
+                PasswordBase64 = _configuration[$"{_ambiente}:SQLServer:password"]
+                                 ?? string.Empty
+            };
+        }
+
+        /// <summary>Retorna los settings de JWT y Active Directory para el ambiente activo.</summary>
+        public JwtSettings GetJwtSettings()
+        {
+            return new JwtSettings
+            {
+                SecretKey = GetString("Jwt_SecretKey"),
+                Issuer    = GetString("Jwt_Issuer"),
+                Audience  = GetString("Jwt_Audience"),
+                AD_Server = GetString("AD_Server"),
+                AD_Domain = GetString("AD_Domain")
+            };
+        }
     }
-  },
-  "AllowedHosts": "*",
-  "Serilog": {
-    "Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],
-    "MinimumLevel": {
-      "Default": "Information",
-      "Override": {
-        "Microsoft": "Warning",
-        "Microsoft.Hosting.Lifetime": "Information"
-      }
-    },
-    "WriteTo": [
-      { "Name": "Console" },
-      {
-        "Name": "File",
-        "Args": {
-          "path": "logs/CronogramaPagosAPI.log",
-          "rollingInterval": "Day",
-          "restrictedToMinimumLevel": "Information"
-        }
-      },
-      {
-        "Name": "File",
-        "Args": {
-          "path": "logs/CronogramaPagosAPI.error.log",
-          "rollingInterval": "Day",
-          "restrictedToMinimumLevel": "Warning"
-        }
-      }
-    ],
-    "Enrich": [ "FromLogContext", "WithMachineName" ]
-  }
+
+    // ── Modelos de settings ────────────────────────────────────────
+
+    public class AS400Settings
+    {
+        public string Driver         { get; set; } = "";
+        public string Server         { get; set; } = "";
+        public string UserBase64     { get; set; } = "";
+        public string PasswordBase64 { get; set; } = "";
+    }
+
+    public class AppSettings
+    {
+        public string OutputPath             { get; set; } = "";
+        public string RutaDestino            { get; set; } = "";
+        public int    BatchSize              { get; set; } = 5000;
+        public int    ProgressUpdateInterval { get; set; } = 100;
+    }
+
+    public class SqlServerSettings
+    {
+        public string Catalog        { get; set; } = "";
+        public string Server         { get; set; } = "";
+        public string UserBase64     { get; set; } = "";
+        public string PasswordBase64 { get; set; } = "";
+    }
+
+    public class JwtSettings
+    {
+        public string SecretKey { get; set; } = "";
+        public string Issuer    { get; set; } = "";
+        public string Audience  { get; set; } = "";
+        public string AD_Server { get; set; } = "";
+        public string AD_Domain { get; set; } = "";
+    }
 }
