@@ -1,112 +1,117 @@
-using System.DirectoryServices.Protocols;
-using System.IdentityModel.Tokens.Jwt;
-using System.Net;
-using System.Security.Claims;
-using System.Text;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.Extensions.Configuration; // en vez de using ConfigLoader;
-
-namespace CronogramaPagosPrestamos.API.Services
 {
-    public class ActiveDirectoryServices
-    {
-        private readonly IConfiguration _configuration;
-        private readonly string _adServer;
-        private readonly string _domain;
-        private readonly string _jwtPassword;
-
-        public ActiveDirectoryServices(IConfiguration configuration)
-        {
-            _configuration = configuration;
-
-            // 1. Leer el ambiente activo (DEV, UAT, PROD) desde serviceGlobals
-            string ambiente = _configuration["serviceGlobals:defaultAmbiente"] ?? "UAT";
-
-            // 2. Leer las claves desde la sección correspondiente a ese ambiente
-            _adServer = _configuration[$"{ambiente}:AD_Server"] ?? "";
-            _domain = _configuration[$"{ambiente}:AD_Domain"] ?? "";
-            _jwtPassword = _configuration[$"{ambiente}:Jwt_SecretKey"] ?? "";
-
-            // (Opcional) Log de verificación en consola mientras depuras
-            Console.WriteLine($"[DEBUG] Ambiente activo: {ambiente}");
-            Console.WriteLine($"[DEBUG] AD_Server: '{_adServer}'");
-            Console.WriteLine($"[DEBUG] AD_Domain: '{_domain}'");
-            Console.WriteLine($"[DEBUG] Jwt_SecretKey longitud: {_jwtPassword.Length}");
-        }
-
-        private string CreateToken(string username, string displayName, string rol)
-        {
-            var secretKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtPassword));
-            var creds = new SigningCredentials(secretKey, SecurityAlgorithms.HmacSha256);
-
-            var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.NameIdentifier, $"{_domain}\\{username}"),
-                new Claim(ClaimTypes.Name, username),
-                new Claim("displayName", displayName),
-                new Claim("rol", rol)
-            };
-
-            var token = new JwtSecurityToken(
-                issuer: "ActiveDirectoryAPI",
-                audience: "ManageAdmin.FrontEnd",
-                claims: claims,
-                expires: DateTime.Now.AddHours(9),
-                signingCredentials: creds
-            );
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
-        }
-
-        public string? ValidateUser(string username, string password)
-        {
-            var identifier = new LdapDirectoryIdentifier(_adServer, 636, true, false);
-            string userPrincipalName = $"DAVIVIENDAHN\\{username}";
-
-            using (var connection = new LdapConnection(identifier, new NetworkCredential(userPrincipalName, password), AuthType.Basic))
-            {
-                connection.SessionOptions.SecureSocketLayer = true;
-                connection.SessionOptions.VerifyServerCertificate += (conn, cert) => true;
-
-                try
-                {
-                    connection.Bind();
-
-                    var filtro = $"(sAMAccountName={username})";
-                    var baseDn = "DC=daviviendahn, DC=dvhn";
-                    var searchRequest = new SearchRequest(
-                        baseDn,
-                        filtro,
-                        SearchScope.Subtree,
-                        "displayName", "mail", "department", "title"
-                    );
-
-                    var searchResponse = (SearchResponse)connection.SendRequest(searchRequest);
-
-                    string displayName = username;
-                    string rol = "Usuario";
-
-                    if (searchResponse.Entries.Count > 0)
-                    {
-                        var entry = searchResponse.Entries[0];
-
-                        if (entry.Attributes["displayName"] != null)
-                            displayName = entry.Attributes["displayName"][0].ToString()!;
-
-                        if (entry.Attributes["title"] != null)
-                            rol = entry.Attributes["title"][0].ToString()!;
-                        else if (entry.Attributes["department"] != null)
-                            rol = entry.Attributes["department"][0].ToString()!;
-                    }
-
-                    return CreateToken(username, displayName, rol);
-                }
-                catch (LdapException ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Error de LDAP: {ex.Message} (Código: {ex.ErrorCode})");
-                    return null;
-                }
-            }
-        }
+  "$schema": "http://166.178.5.253/app-config-schema.json",
+  "serviceGlobals": {
+    "serviceName": "CronogramaPagosPrestamos",
+    "serviceType": "REST",
+    "defaultAmbiente": "DEV"
+  },
+  "DEV": {
+    "AS400ODBC": {
+      "driver": "iSeries Access ODBC Driver",
+      "server": "166.178.81.19",
+      "user": "WUNZQkVSQkFOSw==",
+      "password": "VUhZT0tSODUyJA=="
+    },
+    "SQLServer": {
+      "catalog": "initial catalog=cronograma_pagos_prestamos;trustServerCertificate=True;",
+      "server": "Data Source=HNCSTG010240WAP\\HNCSTG010240WAP",
+      "user": "",
+      "password": ""
+    },
+    "AD_Server": "166.178.24.78",
+    "AD_Domain": "daviviendahn.dvhn",
+    "Jwt_SecretKey": "TuClaveSUPERSECRETADAVIVI12333333_Minimo32Caracteres!",
+    "Jwt_Issuer": "ActiveDirectoryAPI",
+    "Jwt_Audience": "ManageAdmin.FrontEnd",
+    "OutputPath": "C:\\cronogramapagosprestamos\\",
+    "RutaDestino": "C:\\cronogramapagosprestamos\\destino\\",
+    "BatchSize": 5000,
+    "token": 50000,
+    "ProgressUpdateInterval": 100
+  },
+  "UAT": {
+    "AS400ODBC": {
+      "driver": "iSeries Access ODBC Driver",
+      "server": "166.178.82.19",
+      "user": "WUNZQkVSQkFOSw==",
+      "password": "VUg1T0tSNDVMWQ=="
+    },
+    "SQLServer": {
+      "catalog": "initial catalog=cronograma_pagos_prestamos;trustServerCertificate=True;",
+      "server": "Data Source=HNCSTG010240WAP\\HNCSTG010240WAP",
+      "user": "",
+      "password": ""
+    },
+    "AD_Server": "166.178.24.78",
+    "AD_Domain": "daviviendahn.dvhn",
+    "Jwt_SecretKey": "TuClaveSUPERSECRETADAVIVI12333333_Minimo32Caracteres!",
+    "Jwt_Issuer": "ActiveDirectoryAPI",
+    "Jwt_Audience": "ManageAdmin.FrontEnd",
+    "OutputPath": "C:\\cronogramapagosprestamos\\",
+    "RutaDestino": "\\\\servidor\\compartida\\cronogramas\\",
+    "BatchSize": 5000,
+    "token": 50000,
+    "ProgressUpdateInterval": 100
+  },
+  "PROD": {
+    "AS400ODBC": {
+      "driver": "iSeries Access ODBC Driver",
+      "server": "",
+      "user": "",
+      "password": ""
+    },
+    "SQLServer": {
+      "catalog": "initial catalog=cronograma_pagos_prestamos;trustServerCertificate=True;",
+      "server": "Data Source=HNCSTG010240WAP\\HNCSTG010240WAP",
+      "user": "",
+      "password": ""
+    },
+    "AD_Server": "166.178.24.78",
+    "AD_Domain": "daviviendahn.dvhn",
+    "Jwt_SecretKey": "TuClaveSUPERSECRETADAVIVI12333333_Minimo32Caracteres!",
+    "Jwt_Issuer": "ActiveDirectoryAPI",
+    "Jwt_Audience": "ManageAdmin.FrontEnd",
+    "OutputPath": "\\\\servidor\\compartida\\cronogramas\\",
+    "RutaDestino": "\\\\servidor\\compartida\\cronogramas\\",
+    "BatchSize": 5000,
+    "token": 50000,
+    "ProgressUpdateInterval": 100
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
     }
+  },
+  "AllowedHosts": "*",
+  "Serilog": {
+    "Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "Microsoft.Hosting.Lifetime": "Information"
+      }
+    },
+    "WriteTo": [
+      { "Name": "Console" },
+      {
+        "Name": "File",
+        "Args": {
+          "path": "logs/CronogramaPagosAPI.log",
+          "rollingInterval": "Day",
+          "restrictedToMinimumLevel": "Information"
+        }
+      },
+      {
+        "Name": "File",
+        "Args": {
+          "path": "logs/CronogramaPagosAPI.error.log",
+          "rollingInterval": "Day",
+          "restrictedToMinimumLevel": "Warning"
+        }
+      }
+    ],
+    "Enrich": [ "FromLogContext", "WithMachineName" ]
+  }
 }
