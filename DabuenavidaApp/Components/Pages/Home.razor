@@ -1,14 +1,5 @@
-using CronogramaPagosPrestamos.API.Configuration;
-
 namespace CronogramaPagosPrestamos.API.Configuration
 {
-    /// <summary>
-    /// Lector dinámico de configuración multi-ambiente.
-    /// Lee "defaultAmbiente" de serviceGlobals y expone los settings
-    /// del bloque correspondiente (DEV, UAT, PROD) sin necesidad
-    /// de la extensión privada Ragnarok del banco.
-    /// Para cambiar de ambiente: modificar "defaultAmbiente" en appsettings.json
-    /// </summary>
     public class AmbienteSettings
     {
         private readonly IConfiguration _configuration;
@@ -24,26 +15,19 @@ namespace CronogramaPagosPrestamos.API.Configuration
                     "Configura el ambiente activo (DEV, UAT, PROD).");
         }
 
-        /// <summary>Ambiente activo actualmente (DEV, UAT, PROD).</summary>
         public string AmbienteActivo => _ambiente;
 
-        /// <summary>
-        /// Lee un valor string del bloque del ambiente activo.
-        /// Ejemplo: GetString("OutputPath") leerá UAT:OutputPath si defaultAmbiente=UAT
-        /// </summary>
         public string GetString(string clave)
             => _configuration[$"{_ambiente}:{clave}"]
                ?? throw new InvalidOperationException(
                    $"No se encontró '{_ambiente}:{clave}' en appsettings.json.");
 
-        /// <summary>Lee un valor entero del bloque del ambiente activo.</summary>
         public int GetInt(string clave, int valorPorDefecto = 0)
         {
             var valor = _configuration[$"{_ambiente}:{clave}"];
             return int.TryParse(valor, out var resultado) ? resultado : valorPorDefecto;
         }
 
-        /// <summary>Retorna los settings del AS400 ODBC para el ambiente activo.</summary>
         public AS400Settings GetAS400Settings()
         {
             return new AS400Settings
@@ -55,7 +39,6 @@ namespace CronogramaPagosPrestamos.API.Configuration
             };
         }
 
-        /// <summary>Retorna los settings de la aplicación para el ambiente activo.</summary>
         public AppSettings GetAppSettings()
         {
             return new AppSettings
@@ -67,7 +50,6 @@ namespace CronogramaPagosPrestamos.API.Configuration
             };
         }
 
-        /// <summary>Retorna los settings de SQL Server para el ambiente activo.</summary>
         public SqlServerSettings GetSqlServerSettings()
         {
             return new SqlServerSettings
@@ -81,7 +63,6 @@ namespace CronogramaPagosPrestamos.API.Configuration
             };
         }
 
-        /// <summary>Retorna los settings de JWT y Active Directory para el ambiente activo.</summary>
         public JwtSettings GetJwtSettings()
         {
             return new JwtSettings
@@ -95,32 +76,7 @@ namespace CronogramaPagosPrestamos.API.Configuration
         }
     }
 
-    // ── Modelos de settings ────────────────────────────────────────
-
-    public class AS400Settings
-    {
-        public string Driver         { get; set; } = "";
-        public string Server         { get; set; } = "";
-        public string UserBase64     { get; set; } = "";
-        public string PasswordBase64 { get; set; } = "";
-    }
-
-    public class AppSettings
-    {
-        public string OutputPath             { get; set; } = "";
-        public string RutaDestino            { get; set; } = "";
-        public int    BatchSize              { get; set; } = 5000;
-        public int    ProgressUpdateInterval { get; set; } = 100;
-    }
-
-    public class SqlServerSettings
-    {
-        public string Catalog        { get; set; } = "";
-        public string Server         { get; set; } = "";
-        public string UserBase64     { get; set; } = "";
-        public string PasswordBase64 { get; set; } = "";
-    }
-
+    // Solo JwtSettings es nuevo — los demás ya existen en otro archivo
     public class JwtSettings
     {
         public string SecretKey { get; set; } = "";
