@@ -1,332 +1,112 @@
-@page "/login"
-@layout EmptyLayout
-@rendermode InteractiveServer
+using System.DirectoryServices.Protocols;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Configuration; // en vez de using ConfigLoader;
 
-@using Microsoft.JSInterop
-@using ManageAdminDMS_UI.Components.Shared
-@inject IJSRuntime JS
-@inject AuthService AuthService
-@inject NavigationManager Nav
-@inject IHttpClientFactory HttpClientFactory
-
-@if (cargando)
+namespace CronogramaPagosPrestamos.API.Services
 {
-    <Loading />
-}
-else
-{
-    <div class="container" id="container">
-
-        <div class="form-container sign-in">
-            <form>
-                <h1>Inicio de Sesión</h1>
-                <span>Ingrese su peoplesoft y contraseña</span>
-                <input type="text"
-                       inputmode="numeric"
-                       maxlength="10"
-                       placeholder="peoplesoft"
-                       value="@Username"
-                       @oninput="OnUsernameInput"
-                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })" />
-                <input type="password"
-                       placeholder="password"
-                       @bind="Password"
-                       @bind:event="oninput"
-                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })" />
-                <button type="button"
-                        @onclick="IniciarSesion"
-                        disabled="@enviando">
-                    @(enviando ? "Validando..." : "Iniciar Sesion")
-                </button>
-
-                @if (!string.IsNullOrEmpty(mensaje))
-                {
-                    <p class="login-msg @(esError ? "login-msg--error" : "login-msg--ok")">@mensaje</p>
-                }
-            </form>
-        </div>
-
-        <div class="toggle-container">
-            <div class="toggle">
-                <div class="toggle-panel toggle-left">
-                    <h1>Bienvenido </h1>
-                </div>
-                <div class="toggle-panel toggle-right">
-                    <h1>Bienvenido </h1>
-                </div>
-            </div>
-        </div>
-
-    </div>
-}
-using System.Net.Http.Json;
-
-namespace ManageAdminDMS_UI.Components.Pages.Login
-{
-    public partial class Login
+    public class ActiveDirectoryServices
     {
-        private String Username = "";
-        private String Password = "";
-        private string mensaje = "";
-        private bool esError = false;
-        private bool cargando = true;
-        private bool enviando = false;
+        private readonly IConfiguration _configuration;
+        private readonly string _adServer;
+        private readonly string _domain;
+        private readonly string _jwtPassword;
 
-        protected override async Task OnAfterRenderAsync(bool firstRender)
+        public ActiveDirectoryServices(IConfiguration configuration)
         {
-            if (!firstRender) return;
-            await AuthService.LoadTokenAsync();
+            _configuration = configuration;
 
-            if (AuthService.IsAuthenticated)
-            {
-                Nav.NavigateTo("/dashboard");
-                return;
-            }
+            // 1. Leer el ambiente activo (DEV, UAT, PROD) desde serviceGlobals
+            string ambiente = _configuration["serviceGlobals:defaultAmbiente"] ?? "UAT";
 
-            cargando = false;
-            StateHasChanged();
+            // 2. Leer las claves desde la sección correspondiente a ese ambiente
+            _adServer = _configuration[$"{ambiente}:AD_Server"] ?? "";
+            _domain = _configuration[$"{ambiente}:AD_Domain"] ?? "";
+            _jwtPassword = _configuration[$"{ambiente}:Jwt_SecretKey"] ?? "";
+
+            // (Opcional) Log de verificación en consola mientras depuras
+            Console.WriteLine($"[DEBUG] Ambiente activo: {ambiente}");
+            Console.WriteLine($"[DEBUG] AD_Server: '{_adServer}'");
+            Console.WriteLine($"[DEBUG] AD_Domain: '{_domain}'");
+            Console.WriteLine($"[DEBUG] Jwt_SecretKey longitud: {_jwtPassword.Length}");
         }
 
-        // Filtra cualquier caracter que no sea dígito al escribir o pegar
-        private void OnUsernameInput(ChangeEventArgs e)
+        private string CreateToken(string username, string displayName, string rol)
         {
-            var valor = e.Value?.ToString() ?? "";
-            Username = new string(valor.Where(char.IsDigit).ToArray());
+            var secretKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtPassword));
+            var creds = new SigningCredentials(secretKey, SecurityAlgorithms.HmacSha256);
+
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, $"{_domain}\\{username}"),
+                new Claim(ClaimTypes.Name, username),
+                new Claim("displayName", displayName),
+                new Claim("rol", rol)
+            };
+
+            var token = new JwtSecurityToken(
+                issuer: "ActiveDirectoryAPI",
+                audience: "ManageAdmin.FrontEnd",
+                claims: claims,
+                expires: DateTime.Now.AddHours(9),
+                signingCredentials: creds
+            );
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        public class LoginResponse
+        public string? ValidateUser(string username, string password)
         {
-            public string Token { get; set; } = "";
-        }
+            var identifier = new LdapDirectoryIdentifier(_adServer, 636, true, false);
+            string userPrincipalName = $"DAVIVIENDAHN\\{username}";
 
-        private async Task IniciarSesion()
-        {
-            if (string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))
+            using (var connection = new LdapConnection(identifier, new NetworkCredential(userPrincipalName, password), AuthType.Basic))
             {
-                mensaje = "Ingrese peoplesoft y contraseña.";
-                esError = true;
-                return;
-            }
+                connection.SessionOptions.SecureSocketLayer = true;
+                connection.SessionOptions.VerifyServerCertificate += (conn, cert) => true;
 
-            enviando = true;
-            mensaje = "";
-            StateHasChanged();
-
-            try
-            {
-                var client = HttpClientFactory.CreateClient("API");
-                var response = await client.PostAsJsonAsync("api/auth/login", new
+                try
                 {
-                    Username,
-                    Password
-                });
+                    connection.Bind();
 
-                if (!response.IsSuccessStatusCode)
-                {
-                    mensaje = "Error de login";
-                    esError = true;
-                    return;
+                    var filtro = $"(sAMAccountName={username})";
+                    var baseDn = "DC=daviviendahn, DC=dvhn";
+                    var searchRequest = new SearchRequest(
+                        baseDn,
+                        filtro,
+                        SearchScope.Subtree,
+                        "displayName", "mail", "department", "title"
+                    );
+
+                    var searchResponse = (SearchResponse)connection.SendRequest(searchRequest);
+
+                    string displayName = username;
+                    string rol = "Usuario";
+
+                    if (searchResponse.Entries.Count > 0)
+                    {
+                        var entry = searchResponse.Entries[0];
+
+                        if (entry.Attributes["displayName"] != null)
+                            displayName = entry.Attributes["displayName"][0].ToString()!;
+
+                        if (entry.Attributes["title"] != null)
+                            rol = entry.Attributes["title"][0].ToString()!;
+                        else if (entry.Attributes["department"] != null)
+                            rol = entry.Attributes["department"][0].ToString()!;
+                    }
+
+                    return CreateToken(username, displayName, rol);
                 }
-
-                var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
-
-                if (result is null || string.IsNullOrEmpty(result.Token))
+                catch (LdapException ex)
                 {
-                    mensaje = "token invalido";
-                    esError = true;
-                    return;
+                    System.Diagnostics.Debug.WriteLine($"Error de LDAP: {ex.Message} (Código: {ex.ErrorCode})");
+                    return null;
                 }
-
-                await AuthService.SetTokenAsync(result.Token);
-
-                mensaje = "Login Correcto";
-                esError = false;
-                StateHasChanged();
-
-                await Task.Delay(300);
-                Nav.NavigateTo("/dashboard");
-            }
-            catch
-            {
-                mensaje = "No se pudo conectar con el servidor.";
-                esError = true;
-            }
-            finally
-            {
-                enviando = false;
-                StateHasChanged();
             }
         }
     }
-}
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-div:not([blazor:bind]) {
-}
-
-body {
-    background-color: rgb(255, 255, 255);
-    background: linear-gradient(to right, #ffffff, #ffffff);
-    display: flex;
-    align-items: center;
-    margin: 35;
-    min-height: 100vh;
-    justify-content: center;
-}
-
-.container {
-    background-color: #fff;
-    border-radius: 30px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.35);
-    overflow: hidden;
-    width: 768px;
-    max-width: 100%;
-    min-height: 480px;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-}
-
-.container p {
-    font-size: 14px;
-    line-height: 20px;
-    letter-spacing: 0.3px;
-    margin: 20px 0;
-}
-
-.container span {
-    font-size: 12px;
-}
-
-.container a {
-    color: #333;
-    font-size: 13px;
-    text-decoration: none;
-    margin: 15px 0 10px;
-}
-
-.container button {
-    color: white;
-    background: #af1b1b;
-    font-size: 12px;
-    padding: 10px 45px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    margin-top: 10px;
-    cursor: pointer;
-}
-
-.container button.hidden {
-    background-color: transparent;
-    border-color: #fff;
-}
-
-.container button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.container form {
-    background-color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    padding: 0 40px;
-    height: 100%;
-}
-
-.container input {
-    background-color: #eee;
-    border: none;
-    margin: 8px 0;
-    padding: 10px 15px;
-    font-size: 13px;
-    border-radius: 8px;
-    width: 100%;
-    outline: none;
-}
-
-.form-container {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    transition: all 0.6s ease-in-out;
-}
-
-.sign-in {
-    left: 0;
-    width: 100%;
-    z-index: 2;
-}
-
-.toggle-container {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    width: 50%;
-    height: 100%;
-    overflow: hidden;
-    transition: all 0.6s ease-in-out;
-    border-radius: 150px 0 0 100px;
-    z-index: 1000;
-}
-
-.toggle {
-    background-color: #512da8;
-    height: 100%;
-    background: linear-gradient(to bottom, #ff0000 0%, #4d0000 100%);
-    color: #fff;
-    position: relative;
-    left: 0;
-    height: 100%;
-    width: 200%;
-    transform: translateX(0);
-    transition: all 0.6s ease-in-out;
-}
-
-.toggle-panel {
-    position: absolute;
-    width: 50%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    padding: 0 30px;
-    text-align: center;
-    top: 0;
-    transform: translateX(0);
-    transition: all 0.6s ease-in-out;
-}
-
-.toggle-left {
-    transform: translateX(-200%);
-}
-
-.toggle-right {
-    right: 0;
-    transform: translateX(0);
-}
-
-.login-msg {
-    font-size: 12.5px;
-    font-weight: 600;
-    margin-top: 4px;
-}
-
-.login-msg--error {
-    color: #c0392b;
-}
-
-.login-msg--ok {
-    color: #1e8449;
 }
