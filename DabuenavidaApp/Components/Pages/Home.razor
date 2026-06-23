@@ -1,29 +1,10 @@
-// ── Active Directory Service ──────────────────────────────────────
-builder.Services.AddScoped<IActiveDirectoryServices, ActiveDirectoryServices>();
-
-// ── JWT Authentication ────────────────────────────────────────────
-var ambienteTemp = builder.Services.BuildServiceProvider()
-    .GetRequiredService<AmbienteSettings>();
-var jwtSettings = ambienteTemp.GetJwtSettings();
-
-builder.Services.AddAuthentication(options =>
+builder.Services.AddScoped(sp =>
 {
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme    = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
+    var config = sp.GetRequiredService<IConfiguration>();
+    var apiBaseUrl = config["LotesConfig:apiBaseUrl"] ?? "http://localhost:5271";
+
+    return new HttpClient
     {
-        ValidateIssuer           = true,
-        ValidateAudience         = true,
-        ValidateLifetime         = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer              = jwtSettings.Issuer,
-        ValidAudience            = jwtSettings.Audience,
-        IssuerSigningKey         = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(jwtSettings.SecretKey))
+        BaseAddress = new Uri(apiBaseUrl)
     };
 });
-
-builder.Services.AddAuthorization();
