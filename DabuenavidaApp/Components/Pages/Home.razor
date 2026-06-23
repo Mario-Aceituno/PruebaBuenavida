@@ -1,24 +1,16 @@
-protected override async Task OnAfterRenderAsync(bool firstRender)
+// ❌ Quita esto (sea Transient o Scoped, no resuelve bien en HttpClient factory)
+builder.Services.AddScoped<AuthorizationMessageHandler>();
+
+// ✅ Pon esto
+builder.Services.AddTransient<AuthorizationMessageHandler>(sp =>
+    new AuthorizationMessageHandler(
+        sp.GetRequiredService<AuthService>()
+    ));
+
+// LoteService.cs
+public void SetAuthToken(string? token)
 {
-    if (!firstRender) return;
-    
-    await AuthService.LoadTokenAsync();
-    
-    // DEBUG TEMPORAL
-    Console.WriteLine($"=== DEBUG LOTES ===");
-    Console.WriteLine($"Token null: {AuthService.Token == null}");
-    Console.WriteLine($"Token vacío: {string.IsNullOrEmpty(AuthService.Token)}");
-    Console.WriteLine($"IsAuthenticated: {AuthService.IsAuthenticated}");
-    if (AuthService.Token != null && AuthService.Token.Length > 10)
-        Console.WriteLine($"Token inicio: {AuthService.Token[..10]}");
-    Console.WriteLine($"==================");
-    
-    if (!AuthService.IsAuthenticated)
-    {
-        Nav.NavigateTo("/login");
-        return;
-    }
-    
-    await CargarDatosIniciales();
-    StateHasChanged();
+    if (!string.IsNullOrEmpty(token))
+        _http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 }
