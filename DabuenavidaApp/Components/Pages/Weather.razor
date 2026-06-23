@@ -261,3 +261,82 @@ public async Task<IActionResult> ObtenerCentrosCosto()
         return StatusCode(500, new { error = ex.Message });
     }
 }
+
+
+___________________________________________________________
+BATCH CORE - PAGINACIÓN
+___________________________________________________________
+BLOQUE DE PAGINACIÓN
+-----------------------------------------------------------
+
+<div class="cron-pag-btns">
+    <button class="btn-pag" disabled="@(paginaActual == 1)" @onclick="PaginaAnterior">← Anterior</button>
+
+    @foreach (var item in GetPaginasVisibles())
+    {
+        if (item == -1)
+        {
+            <span class="btn-pag-dots">...</span>
+        }
+        else
+        {
+            var p = item;
+            <button class="btn-pag @(p == paginaActual ? "btn-pag-activo" : "")"
+                    @onclick="() => IrAPagina(p)">
+                @p
+            </button>
+        }
+    }
+
+    <button class="btn-pag" disabled="@(paginaActual == totalPaginas)" @onclick="PaginaSiguiente">Siguiente →</button>
+</div>
+
+-------------------------------------------------------------
+@code AMBOS ARCHIVOS 
+-------------------------------------------------------------
+
+private List<int> GetPaginasVisibles()
+{
+    var paginas = new List<int>();
+    if (totalPaginas <= 7)
+    {
+        // Si hay 7 páginas o menos, muestra todas
+        for (int i = 1; i <= totalPaginas; i++)
+            paginas.Add(i);
+        return paginas;
+    }
+
+    // Siempre incluir primera página
+    paginas.Add(1);
+
+    // Puntos suspensivos al inicio si la página actual está lejos del inicio
+    if (paginaActual > 3)
+        paginas.Add(-1); // -1 representa "..."
+
+    // Páginas alrededor de la actual
+    int inicio = Math.Max(2, paginaActual - 1);
+    int fin    = Math.Min(totalPaginas - 1, paginaActual + 1);
+
+    for (int i = inicio; i <= fin; i++)
+        paginas.Add(i);
+
+    // Puntos suspensivos al final si la página actual está lejos del final
+    if (paginaActual < totalPaginas - 2)
+        paginas.Add(-1);
+
+    // Siempre incluir última página
+    paginas.Add(totalPaginas);
+
+    return paginas;
+}
+
+--------------------------------------------------
+CSS
+--------------------------------------------------
+
+.btn-pag-dots {
+    padding: 6px 8px;
+    font-size: 12px;
+    color: #aaa;
+    user-select: none;
+}
