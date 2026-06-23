@@ -1,64 +1,263 @@
-﻿@page "/weather"
-@attribute [StreamRendering]
-
-<PageTitle>Weather</PageTitle>
-
-<h1>Weather</h1>
-
-<p>This component demonstrates showing data.</p>
-
-@if (forecasts == null)
+﻿/// <summary>
+/// Trae la lista de centros de costo disponibles desde CFP102 (DABUENAVIDA CONTROLLER BACKEND).
+/// </summary>
+[HttpGet("centros-costo")]
+public async Task<IActionResult> ObtenerCentrosCosto()
 {
-    <p><em>Loading...</em></p>
+    try
+    {
+        string driver = _configManager.GetString("AS400ODBC.driver");
+        string server = _configManager.GetString("AS400ODBC.server");
+        string uid = DecryptBase64(_configManager.GetString("AS400ODBC.user"));
+        string pwd = DecryptBase64(_configManager.GetString("AS400ODBC.password"));
+        string port = _configManager.GetString("AS400ODBC.port");
+        string connectionString = $"Driver={{{driver}}};System={server};Uid={uid};Pwd={pwd};Port={port};";
+
+        string sql = @"
+            SELECT TRIM(CFPNCC) AS Codigo, TRIM(CFPNOMBRE) AS Nombre
+            FROM BNKPRD01.CFP102
+            ORDER BY CFPNCC";
+
+        using var db = new OdbcConnection(connectionString);
+        var result = await db.QueryAsync<CentroCostoDto>(sql);
+
+        return Ok(result.ToList());
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error al obtener centros de costo");
+        return StatusCode(500, new { error = ex.Message });
+    }
 }
-else
-{
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Temp. (C)</th>
-                <th>Temp. (F)</th>
-                <th>Summary</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var forecast in forecasts)
+
+------------------------------------------------------------------------------------------------------------------
+DABUENAVIDA FILTERS
+------------------------------------------------------------------------------------------------------------------
+@using ManageAdminDMS_UI.Models
+@using ManageAdminDMS_UI.Services
+@inject DabuenavidaService ServicioDabuenavida
+
+<div class="dab-filters">
+    <div class="dab-filters__header">
+        <span class="dab-filters__title">CRITERIOS DE BÚSQUEDA</span>
+    </div>
+    <div class="dab-filters__body">
+
+        <div class="dab-filters__group">
+            <label class="dab-filters__label">CENTRO DE COSTO</label>
+            <input class="dab-filters__input-search"
+                   @bind="textoCentro"
+                   @bind:event="oninput"
+                   @onfocus="MostrarLista"
+                   @onblur="OcultarLista"
+                   placeholder="Buscar o seleccionar centro de costo..." />
+
+            @if (mostrarLista && centrosFiltrados.Any())
             {
-                <tr>
-                    <td>@forecast.Date.ToShortDateString()</td>
-                    <td>@forecast.TemperatureC</td>
-                    <td>@forecast.TemperatureF</td>
-                    <td>@forecast.Summary</td>
-                </tr>
+                <div class="dab-filters__dropdown">
+                    @foreach (var centro in centrosFiltrados)
+                    {
+                        <div class="dab-filters__dropdown-item"
+                             @onmousedown="() => SeleccionarCentro(centro)">
+                            @centro.Display
+                        </div>
+                    }
+                </div>
             }
-        </tbody>
-    </table>
-}
+        </div>
+
+        <div class="dab-filters__group dab-filters__group--wide">
+            <label class="dab-filters__label">BUSCAR POR DNI O N° DABUENAVIDA</label>
+            <div class="dab-filters__input-wrapper">
+                <span class="dab-filters__input-icon">🔍</span>
+                <input class="dab-filters__input"
+                       @bind="Filtros.TextoBusqueda"
+                       @onkeydown="@(e => { if (e.Key == "Enter") OnBuscar.InvokeAsync(); })"
+                       placeholder="Ingrese DNI del cliente o número de Dabuenavida..." />
+            </div>
+        </div>
+
+        <div class="dab-filters__actions">
+            <button class="dab-filters__btn dab-filters__btn--buscar" @onclick="OnBuscar">
+                Buscar
+            </button>
+            <button class="dab-filters__btn dab-filters__btn--limpiar" @onclick="HandleLimpiar">
+                Limpiar
+            </button>
+        </div>
+    </div>
+</div>
 
 @code {
-    private WeatherForecast[]? forecasts;
+    [Parameter] public FiltrosBusqueda Filtros { get; set; } = new();
+    [Parameter] public EventCallback OnBuscar { get; set; }
+    [Parameter] public EventCallback OnLimpiar { get; set; }
+    [Parameter] public string Token { get; set; } = "";
+
+    private List<CentroCostoDto> centros = new();
+    private List<CentroCostoDto> centrosFiltrados = new();
+    private string textoCentro = "";
+    private bool mostrarLista = false;
 
     protected override async Task OnInitializedAsync()
     {
-        // Simulate asynchronous loading to demonstrate streaming rendering
-        await Task.Delay(500);
-
-        var startDate = DateOnly.FromDateTime(DateTime.Now);
-        var summaries = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching" };
-        forecasts = Enumerable.Range(1, 5).Select(index => new WeatherForecast
-        {
-            Date = startDate.AddDays(index),
-            TemperatureC = Random.Shared.Next(-20, 55),
-            Summary = summaries[Random.Shared.Next(summaries.Length)]
-        }).ToArray();
+        centros = await ServicioDabuenavida.ObtenerCentrosCostoAsync(Token);
+        centrosFiltrados = centros;
     }
 
-    private class WeatherForecast
+    private void MostrarLista()
     {
-        public DateOnly Date { get; set; }
-        public int TemperatureC { get; set; }
-        public string? Summary { get; set; }
-        public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+        FiltrarCentros();
+        mostrarLista = true;
+    }
+
+    private void OcultarLista()
+    {
+        // Delay para permitir el click en el item antes de ocultar
+        Task.Delay(200).ContinueWith(_ =>
+        {
+            mostrarLista = false;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void FiltrarCentros()
+    {
+        if (string.IsNullOrWhiteSpace(textoCentro))
+        {
+            centrosFiltrados = centros;
+        }
+        else
+        {
+            centrosFiltrados = centros
+                .Where(c => c.Display.Contains(textoCentro, 
+                    StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+    }
+
+    private void SeleccionarCentro(CentroCostoDto centro)
+    {
+        textoCentro = centro.Display;
+        Filtros.CentroDeCosto = centro.Codigo;
+        mostrarLista = false;
+    }
+
+    private async Task HandleLimpiar()
+    {
+        textoCentro = "";
+        Filtros.TextoBusqueda = "";
+        Filtros.CentroDeCosto = "";
+        await OnLimpiar.InvokeAsync();
+    }
+}
+
+-------------------------------------------------------------------------
+CSS
+-------------------------------------------------------------------------
+
+.dab-filters__input-search {
+    padding: 0 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #444444;
+    background-color: white;
+    height: 40px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.dab-filters__input-search:focus {
+    border-color: #c0392b;
+    box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.10);
+}
+
+.dab-filters__group {
+    position: relative;  /* ← Necesario para el dropdown absoluto */
+}
+
+.dab-filters__dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #d9d9d9;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.10);
+}
+
+.dab-filters__dropdown-item {
+    padding: 9px 12px;
+    font-size: 13px;
+    color: #444444;
+    cursor: pointer;
+    border-bottom: 1px solid #f5f5f5;
+}
+
+.dab-filters__dropdown-item:hover {
+    background-color: #fff0f0;
+    color: #c0392b;
+}
+
+------------------------------------------------------
+SERVICE BACKEND
+------------------------------------------------------
+
+public async Task<List<CentroCostoDto>> ObtenerCentrosCostoAsync(string token)
+{
+    var client = _httpClientFactory.CreateClient("API");
+    client.DefaultRequestHeaders.Authorization = 
+        new AuthenticationHeaderValue("Bearer", token);
+
+    var response = await client.GetAsync("api/dabuenavida/centros-costo");
+
+    if (!response.IsSuccessStatusCode)
+        return new List<CentroCostoDto>();
+
+    var json = await response.Content.ReadAsStringAsync();
+    return JsonSerializer.Deserialize<List<CentroCostoDto>>(json, 
+        new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        ?? new List<CentroCostoDto>();
+}
+
+--------------------------------------------------------
+ENDPOINT
+-------------------------------------------------------
+
+[HttpGet("centros-costo")]
+public async Task<IActionResult> ObtenerCentrosCosto()
+{
+    try
+    {
+        string driver = _configManager.GetString("AS400ODBC.driver");
+        string server = _configManager.GetString("AS400ODBC.server");
+        string uid = DecryptBase64(_configManager.GetString("AS400ODBC.user"));
+        string pwd = DecryptBase64(_configManager.GetString("AS400ODBC.password"));
+        string port = _configManager.GetString("AS400ODBC.port");
+        string connectionString = $"Driver={{{driver}}};System={server};Uid={uid};Pwd={pwd};Port={port};";
+
+        string sql = @"
+            SELECT 
+                TRIM(CHAR(CFBRCH)) AS Codigo,
+                TRIM(CFBRNM) AS Nombre
+            FROM BNKPRD01.CFP102
+            ORDER BY CFBRCH";
+
+        using var db = new OdbcConnection(connectionString);
+        var result = await db.QueryAsync<CentroCostoDto>(sql);
+
+        return Ok(result.ToList());
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error al obtener centros de costo");
+        return StatusCode(500, new { error = ex.Message });
     }
 }
