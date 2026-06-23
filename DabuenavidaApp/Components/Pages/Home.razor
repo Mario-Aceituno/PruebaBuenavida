@@ -1,13 +1,52 @@
-// ❌ Quita esto (sea Transient o Scoped, no resuelve bien en HttpClient factory)
-builder.Services.AddScoped<AuthorizationMessageHandler>();
+// ❌ Quita esto
+protected override async Task OnInitializedAsync() => await CargarDatos();
 
 // ✅ Pon esto
-builder.Services.AddTransient<AuthorizationMessageHandler>(sp =>
-    new AuthorizationMessageHandler(
-        sp.GetRequiredService<AuthService>()
-    ));
+protected override async Task OnAfterRenderAsync(bool firstRender)
+{
+    if (!firstRender) return;
 
-// LoteService.cs
+    await AuthService.LoadTokenAsync();
+
+    if (!AuthService.IsAuthenticated)
+    {
+        Nav.NavigateTo("/login");
+        return;
+    }
+
+    CronogramaService.SetAuthToken(AuthService.Token);
+    await CargarDatos();
+    StateHasChanged();
+}
+
+// ❌ Quita esto
+protected override async Task OnInitializedAsync()
+{
+    cronograma = await CronogramaService.GetCronogramaByPrestamoAsync(NumeroPrestamo);
+    loteIdOrigen = cronograma?.LoteId;
+    await CargarDatos();
+}
+
+// ✅ Pon esto
+protected override async Task OnAfterRenderAsync(bool firstRender)
+{
+    if (!firstRender) return;
+
+    await AuthService.LoadTokenAsync();
+
+    if (!AuthService.IsAuthenticated)
+    {
+        Nav.NavigateTo("/login");
+        return;
+    }
+
+    CronogramaService.SetAuthToken(AuthService.Token);
+    cronograma = await CronogramaService.GetCronogramaByPrestamoAsync(NumeroPrestamo);
+    loteIdOrigen = cronograma?.LoteId;
+    await CargarDatos();
+    StateHasChanged();
+}
+
 public void SetAuthToken(string? token)
 {
     if (!string.IsNullOrEmpty(token))
