@@ -1,24 +1,23 @@
-using LotesApp.Frontend;
-using LotesApp.Models;
-using LotesApp.Services;
+using LotsApp.Frontend;
+using LotsApp.Models;
+using LotsApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// — Blazor Server
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
-
+// --- Blazor Server
+builder.Services.AddBlazorXComponents();
+// --- AddInteractiveServerComponents();
 builder.Services.AddScoped<AuthService>();
 
-// — Configuración existente (Lotes)
-builder.Services.Configure<LotesConfig>(
-    builder.Configuration.GetSection("LotesConfig"));
+// --- Configuration
+builder.Services.Configure<LotesConfig>();
+builder.Configuration.GetSection("LotesConfig");
 
-// — HttpClient apuntando a la API de cronogramas (Lotes)
-var apiBaseUrl = builder.Configuration["LotesConfig:ApiBaseUrl"]
-    ?? "http://localhost:5271";
+// --- HttpClient apuntando a la API de cronogramas
+// La URL base se lee del appsettings.json → LotsConfig.ApiBaseUrl
+var apiBaseUrl = builder.Configuration["LotesConfig:ApiBaseUrl"] ?? "http://localhost:5271";
 
-builder.Services.AddHttpClient<LoteService>(client =>
+builder.Services.AddHttpClient<LotesService>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromMinutes(5); // Timeout generoso para operaciones largas
@@ -27,16 +26,6 @@ builder.Services.AddHttpClient<LoteService>(client =>
 builder.Services.AddHttpClient<CronogramaService>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
-    client.Timeout = TimeSpan.FromMinutes(2);
-});
-
-// — NUEVO: HttpClient con nombre "API" para el login contra CronogramaPagosPrestamos.API
-var cronogramasPagosApiUrl = builder.Configuration["CronogramasConfig:ApiBaseUrl"]
-    ?? "http://localhost:5271";
-
-builder.Services.AddHttpClient("API", client =>
-{
-    client.BaseAddress = new Uri(cronogramasPagosApiUrl.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromMinutes(2);
 });
 
@@ -53,6 +42,6 @@ app.UseStaticFiles();
 app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+   .AddInteractiveServerEndpoint();
 
 app.Run();
