@@ -1,34 +1,24 @@
-// Pages/PageBase.cs
-using Microsoft.AspNetCore.Components;
-using LotesApp.Services;
-
-namespace LotesApp.Frontend.Pages
+protected override async Task OnAfterRenderAsync(bool firstRender)
 {
-    public abstract class PageBase : ComponentBase
+    if (!firstRender) return;
+    
+    await AuthService.LoadTokenAsync();
+    
+    // DEBUG TEMPORAL
+    Console.WriteLine($"=== DEBUG LOTES ===");
+    Console.WriteLine($"Token null: {AuthService.Token == null}");
+    Console.WriteLine($"Token vacío: {string.IsNullOrEmpty(AuthService.Token)}");
+    Console.WriteLine($"IsAuthenticated: {AuthService.IsAuthenticated}");
+    if (AuthService.Token != null && AuthService.Token.Length > 10)
+        Console.WriteLine($"Token inicio: {AuthService.Token[..10]}");
+    Console.WriteLine($"==================");
+    
+    if (!AuthService.IsAuthenticated)
     {
-        [Inject] protected AuthService AuthService { get; set; } = default!;
-        [Inject] protected NavigationManager Nav { get; set; } = default!;
-
-        private bool _initialized = false;
-
-        protected override async Task OnAfterRenderAsync(bool firstRender)
-        {
-            if (!firstRender || _initialized) return;
-            _initialized = true;
-
-            await AuthService.LoadTokenAsync();
-
-            if (!AuthService.IsAuthenticated)
-            {
-                Nav.NavigateTo("/login");
-                return;
-            }
-
-            await OnPageReadyAsync(); // cada página implementa su carga aquí
-            StateHasChanged();
-        }
-
-        // Override este método en cada página en lugar de OnAfterRenderAsync
-        protected virtual Task OnPageReadyAsync() => Task.CompletedTask;
+        Nav.NavigateTo("/login");
+        return;
     }
+    
+    await CargarDatosIniciales();
+    StateHasChanged();
 }
