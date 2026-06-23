@@ -1,47 +1,32 @@
-using LotsApp.Frontend;
-using LotsApp.Models;
-using LotsApp.Services;
+// Services/AuthorizationMessageHandler.cs
+using System.Net.Http.Headers;
 
-var builder = WebApplication.CreateBuilder(args);
-
-// --- Blazor Server
-builder.Services.AddBlazorXComponents();
-// --- AddInteractiveServerComponents();
-builder.Services.AddScoped<AuthService>();
-
-// --- Configuration
-builder.Services.Configure<LotesConfig>();
-builder.Configuration.GetSection("LotesConfig");
-
-// --- HttpClient apuntando a la API de cronogramas
-// La URL base se lee del appsettings.json → LotsConfig.ApiBaseUrl
-var apiBaseUrl = builder.Configuration["LotesConfig:ApiBaseUrl"] ?? "http://localhost:5271";
-
-builder.Services.AddHttpClient<LotesService>(client =>
+namespace LotesApp.Services
 {
-    client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
-    client.Timeout = TimeSpan.FromMinutes(5); // Timeout generoso para operaciones largas
-});
+    public class AuthorizationMessageHandler : DelegatingHandler
+    {
+        private readonly AuthService _authService;
 
-builder.Services.AddHttpClient<CronogramaService>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
-    client.Timeout = TimeSpan.FromMinutes(2);
-});
+        public AuthorizationMessageHandler(AuthService authService)
+        {
+            _authService = authService;
+        }
 
-var app = builder.Build();
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            // Carga el token desde session storage si aún no está en memoria
+            if (!_authService.IsAuthenticated)
+                await _authService.LoadTokenAsync();
 
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
+            if (!string.IsNullOrEmpty(_authService.Token))
+            {
+                request.Headers.Authorization =
+                    new AuthenticationHeaderValue("Bearer", _authService.Token);
+            }
+
+            return await base.SendAsync(request, cancellationToken);
+        }
+    }
 }
-
-app.UseHttpsRedirection();
-app.UseStaticFiles();
-app.UseAntiforgery();
-
-app.MapRazorComponents<App>()
-   .AddInteractiveServerEndpoint();
-
-app.Run();
