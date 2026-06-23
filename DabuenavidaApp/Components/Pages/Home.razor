@@ -1,3 +1,5 @@
+using LotesApp.Frontend;
+using LotesApp.Models;
 using LotesApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,13 +10,33 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddScoped<AuthService>();
 
-// — HttpClient con nombre "API" apuntando al backend de Cronogramas de Pago
-var apiBaseUrl = builder.Configuration["CronogramasConfig:ApiBaseUrl"]
+// — Configuración existente (Lotes)
+builder.Services.Configure<LotesConfig>(
+    builder.Configuration.GetSection("LotesConfig"));
+
+// — HttpClient apuntando a la API de cronogramas (Lotes)
+var apiBaseUrl = builder.Configuration["LotesConfig:ApiBaseUrl"]
+    ?? "http://localhost:5271";
+
+builder.Services.AddHttpClient<LoteService>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromMinutes(5); // Timeout generoso para operaciones largas
+});
+
+builder.Services.AddHttpClient<CronogramaService>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromMinutes(2);
+});
+
+// — NUEVO: HttpClient con nombre "API" para el login contra CronogramaPagosPrestamos.API
+var cronogramasPagosApiUrl = builder.Configuration["CronogramasConfig:ApiBaseUrl"]
     ?? "http://localhost:5271";
 
 builder.Services.AddHttpClient("API", client =>
 {
-    client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
+    client.BaseAddress = new Uri(cronogramasPagosApiUrl.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromMinutes(2);
 });
 
@@ -34,231 +56,3 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
-
-using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
-
-namespace LotesApp.Services
-{
-    public class AuthService
-    {
-        private readonly ProtectedSessionStorage _storage;
-
-        public string? DisplayName { get; set; }
-        public string? Rol { get; set; }
-        public string? Nomenclatura { get; set; }
-
-        public AuthService(ProtectedSessionStorage storage)
-        {
-            _storage = storage;
-        }
-
-        public string? Token { get; set; }
-        public bool IsAuthenticated => !string.IsNullOrEmpty(Token);
-
-        public async Task SetTokenAsync(string token)
-        {
-            Token = token;
-            await _storage.SetAsync("token", token);
-            ParseToken();
-        }
-
-        public void ParseToken()
-        {
-            if (string.IsNullOrEmpty(Token)) return;
-
-            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
-            var jwt = handler.ReadJwtToken(Token);
-
-            DisplayName = jwt.Claims
-                .FirstOrDefault(c => c.Type == "displayName")?.Value ?? "";
-
-            Rol = jwt.Claims
-                .FirstOrDefault(c => c.Type == "rol")?.Value ?? "";
-
-            // Nomenclatura: primera letra nombre + primera letra apellido + primera letra rol
-            var partes = DisplayName.Split(' ');
-            string inicialNombre = partes.Length > 0 ? partes[0][..1] : "";
-            string inicialApellido = partes.Length > 1 ? partes[1][..1] : "";
-            string inicialRol = Rol.Length > 0 ? Rol[..1] : "";
-            Nomenclatura = (inicialNombre + inicialApellido + inicialRol).ToUpper();
-        }
-
-        public async Task LoadTokenAsync()
-        {
-            var result = await _storage.GetAsync<string>("token");
-            Token = result.Value;
-            ParseToken();
-        }
-
-        public async Task LogoutAsync()
-        {
-            Token = null;
-            await _storage.DeleteAsync("token");
-        }
-    }
-}
-
-using Microsoft.AspNetCore.Components;
-using System.Net.Http.Json;
-
-namespace LotesApp.Frontend.Pages.Login
-{
-    public partial class Login
-    {
-        private string Username = "";
-        private string Password = "";
-        private string mensaje = "";
-        private bool esError = false;
-        private bool cargando = true;
-        private bool enviando = false;
-
-        protected override async Task OnAfterRenderAsync(bool firstRender)
-        {
-            if (!firstRender) return;
-            await AuthService.LoadTokenAsync();
-
-            if (AuthService.IsAuthenticated)
-            {
-                Nav.NavigateTo("/dashboard");
-                return;
-            }
-
-            cargando = false;
-            StateHasChanged();
-        }
-
-        // Filtra cualquier caracter que no sea dígito, sin importar lo que el usuario pegue o escriba
-        private void OnUsernameInput(ChangeEventArgs e)
-        {
-            var valor = e.Value?.ToString() ?? "";
-            Username = new string(valor.Where(char.IsDigit).ToArray());
-        }
-
-        public class LoginResponse
-        {
-            public string Token { get; set; } = "";
-        }
-
-        private async Task IniciarSesion()
-        {
-            if (string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))
-            {
-                mensaje = "Ingrese PeopleSoft y contraseña.";
-                esError = true;
-                return;
-            }
-
-            enviando = true;
-            mensaje = "";
-            StateHasChanged();
-
-            try
-            {
-                var client = HttpClientFactory.CreateClient("API");
-                var response = await client.PostAsJsonAsync("api/auth/login", new
-                {
-                    Username,
-                    Password
-                });
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    mensaje = "PeopleSoft o contraseña incorrectos.";
-                    esError = true;
-                    return;
-                }
-
-                var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
-
-                if (result is null || string.IsNullOrEmpty(result.Token))
-                {
-                    mensaje = "No se pudo validar la sesión. Intente de nuevo.";
-                    esError = true;
-                    return;
-                }
-
-                await AuthService.SetTokenAsync(result.Token);
-
-                mensaje = "Acceso correcto, redirigiendo...";
-                esError = false;
-                StateHasChanged();
-
-                await Task.Delay(400);
-                Nav.NavigateTo("/dashboard");
-            }
-            catch
-            {
-                mensaje = "No se pudo conectar con el servidor.";
-                esError = true;
-            }
-            finally
-            {
-                enviando = false;
-                StateHasChanged();
-            }
-        }
-    }
-}
-
-@page "/login"
-@layout LotesLayout
-@rendermode InteractiveServer
-
-@using Microsoft.JSInterop
-@using LotesApp.Frontend.Shared
-@using LotesApp.Services
-
-@inject IJSRuntime JS
-@inject AuthService AuthService
-@inject NavigationManager Nav
-@inject IHttpClientFactory HttpClientFactory
-
-@if (cargando)
-{
-    <Loading />
-}
-else
-{
-    <div class="login-page">
-        <div class="login-card">
-            <div class="login-card__icon">◆</div>
-            <h1 class="login-card__title">Cronogramas de Pago</h1>
-            <p class="login-card__subtitle">Ingrese su PeopleSoft y contraseña</p>
-
-            <div class="login-card__field">
-                <input type="text"
-                       inputmode="numeric"
-                       maxlength="10"
-                       placeholder="PeopleSoft"
-                       value="@Username"
-                       @oninput="OnUsernameInput"
-                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })"
-                       disabled="@enviando" />
-            </div>
-
-            <div class="login-card__field">
-                <input type="password"
-                       placeholder="Contraseña"
-                       @bind="Password"
-                       @bind:event="oninput"
-                       @onkeydown="@(e => { if (e.Key == "Enter") _ = IniciarSesion(); })"
-                       disabled="@enviando" />
-            </div>
-
-            @if (!string.IsNullOrEmpty(mensaje))
-            {
-                <div class="login-card__alert @(esError ? "login-card__alert--error" : "login-card__alert--success")">
-                    @mensaje
-                </div>
-            }
-
-            <button class="login-card__button"
-                    @onclick="IniciarSesion"
-                    disabled="@(enviando || string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))">
-                @(enviando ? "Validando..." : "Iniciar Sesión")
-            </button>
-
-            <span class="login-card__footer">Davivienda Honduras S.A</span>
-        </div>
-    </div>
-}
