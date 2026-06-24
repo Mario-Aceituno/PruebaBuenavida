@@ -1,55 +1,98 @@
-// ❌ Quita esto
-protected override async Task OnInitializedAsync() => await CargarDatos();
-
-// ✅ Pon esto
-protected override async Task OnAfterRenderAsync(bool firstRender)
+// Controllers/FiltrosPermisosController.cs
+[ApiController]
+[Route("api/[controller]")]
+[Authorize]
+public class FiltrosPermisosController : ControllerBase
 {
-    if (!firstRender) return;
-
-    await AuthService.LoadTokenAsync();
-
-    if (!AuthService.IsAuthenticated)
+    [HttpGet("mis-filtros")]
+    public IActionResult GetFiltrosPermitidos()
     {
-        Nav.NavigateTo("/login");
-        return;
+        var rol = User.FindFirstValue("rol"); // el claim que ya guardas en el JWT
+        
+        var permisos = new FiltrosPermisosDto
+        {
+            MostrarCentroDeCosto = rol != "Asesor",
+            MostrarDabuenavida = true, // todos lo ven
+        };
+        
+        return Ok(permisos);
+    }
+}
+
+// Models/FiltrosPermisosDto.cs
+public class FiltrosPermisosDto
+{
+    public bool MostrarCentroDeCosto { get; set; }
+    public bool MostrarDabuenavida { get; set; }
+}
+
+// Services/IFiltrosPermisosService.cs
+public interface IFiltrosPermisosService
+{
+    Task<FiltrosPermisosDto?> GetPermisosAsync();
+}
+
+// Services/FiltrosPermisosService.cs
+public class FiltrosPermisosService : IFiltrosPermisosService
+{
+    private readonly HttpClient _http;
+
+    public FiltrosPermisosService(HttpClient http)
+    {
+        _http = http;
     }
 
-    CronogramaService.SetAuthToken(AuthService.Token);
-    await CargarDatos();
-    StateHasChanged();
-}
-
-// ❌ Quita esto
-protected override async Task OnInitializedAsync()
-{
-    cronograma = await CronogramaService.GetCronogramaByPrestamoAsync(NumeroPrestamo);
-    loteIdOrigen = cronograma?.LoteId;
-    await CargarDatos();
-}
-
-// ✅ Pon esto
-protected override async Task OnAfterRenderAsync(bool firstRender)
-{
-    if (!firstRender) return;
-
-    await AuthService.LoadTokenAsync();
-
-    if (!AuthService.IsAuthenticated)
+    public async Task<FiltrosPermisosDto?> GetPermisosAsync()
     {
-        Nav.NavigateTo("/login");
-        return;
+        return await _http.GetFromJsonAsync<FiltrosPermisosDto>("api/filtrospermiso/mis-filtros");
     }
-
-    CronogramaService.SetAuthToken(AuthService.Token);
-    cronograma = await CronogramaService.GetCronogramaByPrestamoAsync(NumeroPrestamo);
-    loteIdOrigen = cronograma?.LoteId;
-    await CargarDatos();
-    StateHasChanged();
 }
 
-public void SetAuthToken(string? token)
+@* Pages/TuPagina.razor *@
+@inject IFiltrosPermisosService PermisosService
+
+@if (_permisos != null)
 {
-    if (!string.IsNullOrEmpty(token))
-        _http.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+    <DabuenavidaFilters 
+        Filtros="filtros"
+        OnBuscar="HandleBuscar"
+        OnLimpiar="HandleLimpiar"
+        Permisos="_permisos" />
+}
+
+@code {
+    private FiltrosPermisosDto? _permisos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _permisos = await PermisosService.GetPermisosAsync();
+    }
+}
+
+@* Components/FrontendComponents/Filters/DabuenavidaFilters.razor *@
+
+@* Filtro Centro de Costo — solo si tiene permiso *@
+@if (Permisos.MostrarCentroDeCosto)
+{
+    <div class="dab-filters__group">
+        <label class="dab-filters__label">CENTRO DE COSTO</label>
+        <div class="dab-filters__input-wrapper @(_errorCentro != "" ? "dab-filters__input-wrapper--error" : "")">
+            <input class="dab-filters__input"
+                   value="@Filtros.CentroDeCosto"
+                   @oninput="OnCentroDeCostoInput"
+                   maxlength="3"
+                   placeholder="Ej: 001" />
+        </div>
+        @* ... resto del grupo *@
+    </div>
+}
+
+@* Filtro Dabuenavida — siempre visible *@
+<div class="dab-filters__group dab-filters__group--wide">
+    @* ... tu código actual *@
+</div>
+
+@code {
+    [Parameter] public FiltrosPermisosDto Permisos { get; set; } = new();
+    // ... resto del code-behind sin cambios
 }
