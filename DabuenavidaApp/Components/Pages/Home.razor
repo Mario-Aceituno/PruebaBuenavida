@@ -1,33 +1,46 @@
-// Controllers/FiltrosPermisosController.cs
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microservices.Models;
+// Services/FiltrosPermisosService.cs
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using ManageAdminDMS_UI.Models;
+using Microsoft.JSInterop;
 
-namespace Microservices.Controllers
+namespace ManageAdminDMS_UI.Services
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    [Authorize] // 🔒 Requiere JWT válido
-    public class FiltrosPermisosController : ControllerBase
+    public class FiltrosPermisosService : IFiltrosPermisosService
     {
-        [HttpGet("mis-filtros")]
-        public IActionResult GetFiltrosPermitidos()
+        private readonly HttpClient _http;
+        private readonly IJSRuntime _js;
+
+        public FiltrosPermisosService(HttpClient http, IJSRuntime js)
         {
-            // Extraemos el claim "rol" del JWT — el mismo que ya
-            // guardas en ActiveDirectoryServices con new Claim("rol", rol)
-            var rol = User.FindFirstValue("rol");
+            _http = http;
+            _js   = js;
+        }
 
-            if (string.IsNullOrEmpty(rol))
-                return Unauthorized("No se encontró el rol en el token.");
-
-            var permisos = new FiltrosPermisosDto
+        public async Task<FiltrosPermisosDto?> GetPermisosAsync()
+        {
+            try
             {
-                MostrarDabuenavida  = true,              // todos lo ven siempre
-                MostrarCentroDeCosto = rol != "Asesor",  // solo no-Asesores
-            };
+                // Recuperamos el token JWT del localStorage
+                // (igual que lo haces en tus otros servicios)
+                var token = await _js.InvokeAsync<string>("localStorage.getItem", "authToken");
 
-            return Ok(permisos);
+                if (string.IsNullOrEmpty(token))
+                    return null;
+
+                // Adjuntamos el token al header
+                _http.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", token);
+
+                return await _http.GetFromJsonAsync<FiltrosPermisosDto>(
+                    "api/filtrospermiso/mis-filtros"
+                );
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error obteniendo permisos: {ex.Message}");
+                return null;
+            }
         }
     }
 }
