@@ -1,98 +1,33 @@
 // Controllers/FiltrosPermisosController.cs
-[ApiController]
-[Route("api/[controller]")]
-[Authorize]
-public class FiltrosPermisosController : ControllerBase
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microservices.Models;
+
+namespace Microservices.Controllers
 {
-    [HttpGet("mis-filtros")]
-    public IActionResult GetFiltrosPermitidos()
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize] // 🔒 Requiere JWT válido
+    public class FiltrosPermisosController : ControllerBase
     {
-        var rol = User.FindFirstValue("rol"); // el claim que ya guardas en el JWT
-        
-        var permisos = new FiltrosPermisosDto
+        [HttpGet("mis-filtros")]
+        public IActionResult GetFiltrosPermitidos()
         {
-            MostrarCentroDeCosto = rol != "Asesor",
-            MostrarDabuenavida = true, // todos lo ven
-        };
-        
-        return Ok(permisos);
+            // Extraemos el claim "rol" del JWT — el mismo que ya
+            // guardas en ActiveDirectoryServices con new Claim("rol", rol)
+            var rol = User.FindFirstValue("rol");
+
+            if (string.IsNullOrEmpty(rol))
+                return Unauthorized("No se encontró el rol en el token.");
+
+            var permisos = new FiltrosPermisosDto
+            {
+                MostrarDabuenavida  = true,              // todos lo ven siempre
+                MostrarCentroDeCosto = rol != "Asesor",  // solo no-Asesores
+            };
+
+            return Ok(permisos);
+        }
     }
-}
-
-// Models/FiltrosPermisosDto.cs
-public class FiltrosPermisosDto
-{
-    public bool MostrarCentroDeCosto { get; set; }
-    public bool MostrarDabuenavida { get; set; }
-}
-
-// Services/IFiltrosPermisosService.cs
-public interface IFiltrosPermisosService
-{
-    Task<FiltrosPermisosDto?> GetPermisosAsync();
-}
-
-// Services/FiltrosPermisosService.cs
-public class FiltrosPermisosService : IFiltrosPermisosService
-{
-    private readonly HttpClient _http;
-
-    public FiltrosPermisosService(HttpClient http)
-    {
-        _http = http;
-    }
-
-    public async Task<FiltrosPermisosDto?> GetPermisosAsync()
-    {
-        return await _http.GetFromJsonAsync<FiltrosPermisosDto>("api/filtrospermiso/mis-filtros");
-    }
-}
-
-@* Pages/TuPagina.razor *@
-@inject IFiltrosPermisosService PermisosService
-
-@if (_permisos != null)
-{
-    <DabuenavidaFilters 
-        Filtros="filtros"
-        OnBuscar="HandleBuscar"
-        OnLimpiar="HandleLimpiar"
-        Permisos="_permisos" />
-}
-
-@code {
-    private FiltrosPermisosDto? _permisos;
-
-    protected override async Task OnInitializedAsync()
-    {
-        _permisos = await PermisosService.GetPermisosAsync();
-    }
-}
-
-@* Components/FrontendComponents/Filters/DabuenavidaFilters.razor *@
-
-@* Filtro Centro de Costo — solo si tiene permiso *@
-@if (Permisos.MostrarCentroDeCosto)
-{
-    <div class="dab-filters__group">
-        <label class="dab-filters__label">CENTRO DE COSTO</label>
-        <div class="dab-filters__input-wrapper @(_errorCentro != "" ? "dab-filters__input-wrapper--error" : "")">
-            <input class="dab-filters__input"
-                   value="@Filtros.CentroDeCosto"
-                   @oninput="OnCentroDeCostoInput"
-                   maxlength="3"
-                   placeholder="Ej: 001" />
-        </div>
-        @* ... resto del grupo *@
-    </div>
-}
-
-@* Filtro Dabuenavida — siempre visible *@
-<div class="dab-filters__group dab-filters__group--wide">
-    @* ... tu código actual *@
-</div>
-
-@code {
-    [Parameter] public FiltrosPermisosDto Permisos { get; set; } = new();
-    // ... resto del code-behind sin cambios
 }
