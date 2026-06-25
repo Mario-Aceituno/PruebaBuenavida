@@ -1,26 +1,56 @@
-[HttpGet("mis-filtros")]
-public IActionResult GetFiltrosPermitidos()
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using ManageAdminDMS_UI.Models;
+using Microsoft.JSInterop;
+
+namespace ManageAdminDMS_UI.Services
 {
-    // Intenta estas tres formas y queda con la que devuelva valor
-    var rol1 = User.FindFirstValue("rol");
-    var rol2 = User.Claims.FirstOrDefault(c => c.Type == "rol")?.Value;
-    var rol3 = User.Claims.FirstOrDefault(c => c.Type.EndsWith("rol"))?.Value;
-
-    // Debug temporal — ve la consola del backend
-    Console.WriteLine($"rol1: '{rol1}'");
-    Console.WriteLine($"rol2: '{rol2}'");
-    Console.WriteLine($"rol3: '{rol3}'");
-    Console.WriteLine("TODOS LOS CLAIMS:");
-    foreach (var claim in User.Claims)
-        Console.WriteLine($"  {claim.Type} = {claim.Value}");
-
-    var rol = rol1 ?? rol2 ?? rol3 ?? "";
-
-    var permisos = new FiltrosPermisosDto
+    public class FiltrosPermisosService : IFiltrosPermisosService
     {
-        MostrarDabuenavida   = true,
-        MostrarCentroDeCosto = rol != "Practicante Universitario"
-    };
+        private readonly HttpClient _http;
+        private readonly IJSRuntime _js;
 
-    return Ok(permisos);
+        public FiltrosPermisosService(IHttpClientFactory httpClientFactory, IJSRuntime js)
+        {
+            _http = httpClientFactory.CreateClient("API");
+            _js   = js;
+        }
+
+        public async Task<FiltrosPermisosDto?> GetPermisosAsync()
+        {
+            try
+            {
+                // Leer el token del sessionStorage
+                var token = await _js.InvokeAsync<string?>(
+                    "sessionStorage.getItem", "token");
+
+                Console.WriteLine($"[FiltrosPermisos] Token obtenido: {(string.IsNullOrEmpty(token) ? "NULL O VACÍO" : token[..30] + "...")}");
+
+                if (string.IsNullOrEmpty(token))
+                {
+                    Console.WriteLine("[FiltrosPermisos] Sin token, retornando null");
+                    return null;
+                }
+
+                // Limpiar header previo y agregar el token
+                _http.DefaultRequestHeaders.Authorization = null;
+                _http.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", token);
+
+                var url = "api/filtrospermissos/mis-filtros";
+                Console.WriteLine($"[FiltrosPermisos] Llamando a: {_http.BaseAddress}{url}");
+
+                var result = await _http.GetFromJsonAsync<FiltrosPermisosDto>(url);
+
+                Console.WriteLine($"[FiltrosPermisos] Respuesta: CentroCosto={result?.MostrarCentroDeCosto}, Dabuenavida={result?.MostrarDabuenavida}");
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FiltrosPermisos] ERROR: {ex.Message}");
+                return null;
+            }
+        }
+    }
 }
