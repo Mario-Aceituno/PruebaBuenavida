@@ -1,12 +1,13 @@
-window.descargarArchivoStream = async (nombreArchivo, streamRef) => {
-    const arrayBuffer = await streamRef.arrayBuffer();
-    const blob = new Blob([arrayBuffer]);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = nombreArchivo;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-};
+/// <summary>Descarga un archivo XML vía stream, enviando el token de autenticación</summary>
+private async Task DescargarArchivo(string nombreArchivo)
+{
+    var stream = await LoteService.DescargarArchivoStreamAsync(nombreArchivo);
+    if (stream is null)
+    {
+        MostrarToast($"Error al descargar el archivo: {nombreArchivo}", "danger");
+        return;
+    }
+
+    using var streamRef = new DotNetStreamReference(stream: stream, leaveOpen: false);
+    await JS.InvokeVoidAsync("descargarArchivoStream", nombreArchivo, streamRef);
+}
