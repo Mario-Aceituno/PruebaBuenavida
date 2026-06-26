@@ -1,56 +1,196 @@
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using ManageAdminDMS_UI.Models;
-using Microsoft.JSInterop;
+@page "/login"
+@layout EmptyLayout
 
-namespace ManageAdminDMS_UI.Services
+@rendermode InteractiveServer
+
+@inject AuthService AuthService
+@inject NavigationManager Nav
+@inject IHttpClientFactory HttpClientFactory
+
+@if (cargando)
 {
-    public class FiltrosPermisosService : IFiltrosPermisosService
-    {
-        private readonly HttpClient _http;
-        private readonly IJSRuntime _js;
+    <div class="loading-screen">
+        <div class="loading-spinner"></div>
+    </div>
+}
+else
+{
+    <div class="container" id="container">
 
-        public FiltrosPermisosService(IHttpClientFactory httpClientFactory, IJSRuntime js)
+        <div class="form-container sign-in">
+            <form @onsubmit="IniciarSesion" @onsubmit:preventDefault="true">
+                <h1>Cronogramas de Pago</h1>
+                <span>Ingrese su PeopleSoft y contraseña</span>
+
+                <input type="text"
+                       placeholder="PeopleSoft"
+                       inputmode="numeric"
+                       autocomplete="username"
+                       value="@Username"
+                       @oninput="OnUsernameInput"
+                       disabled="@enviando" />
+
+                <input type="password"
+                       placeholder="Contraseña"
+                       autocomplete="current-password"
+                       value="@Password"
+                       @oninput="(ChangeEventArgs e) => Password = e.Value?.ToString() ?? string.Empty"
+                       disabled="@enviando" />
+
+                <button type="submit" disabled="@enviando">
+                    @if (enviando)
+                    {
+                        <span class="btn-spinner" aria-hidden="true"></span>
+                        <span>Validando...</span>
+                    }
+                    else
+                    {
+                        <span>Iniciar Sesión</span>
+                    }
+                </button>
+
+                @if (!string.IsNullOrWhiteSpace(mensaje))
+                {
+                    <p @key="mensaje" class="@(esError ? "mensaje mensaje-error" : "mensaje mensaje-exito")">
+                        <span class="mensaje-icono" aria-hidden="true">@(esError ? "⚠" : "✓")</span>
+                        @mensaje
+                    </p>
+                }
+            </form>
+        </div>
+
+        <div class="toggle-container">
+            <div class="toggle">
+                <div class="toggle-panel toggle-right">
+                    <h1>Bienvenido</h1>
+                    <p>Sistema de gestión de Cronogramas de Pago.<br />Ingrese sus credenciales PeopleSoft para continuar.</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+}
+using Microsoft.AspNetCore.Components;
+using System.Net.Http.Json;
+
+namespace LotesApp.Frontend.Pages.Login
+{
+    public partial class Login
+    {
+        private string Username = "";
+        private string Password = "";
+        private string mensaje = "";
+        private bool esError = false;
+        private bool cargando = true;
+        private bool enviando = false;
+
+        protected override async Task OnAfterRenderAsync(bool firstRender)
         {
-            _http = httpClientFactory.CreateClient("API");
-            _js   = js;
+            if (!firstRender) return;
+            await AuthService.LoadTokenAsync();
+
+            if (AuthService.IsAuthenticated)
+            {
+                Nav.NavigateTo("/lotes");
+                return;
+            }
+
+            cargando = false;
+            StateHasChanged();
         }
 
-        public async Task<FiltrosPermisosDto?> GetPermisosAsync()
+        // Filtra cualquier caracter que no sea dígito, sin importar lo que el usuario pegue o escriba
+        private void OnUsernameInput(ChangeEventArgs e)
         {
+            var valor = e.Value?.ToString() ?? "";
+            Username = new string(valor.Where(char.IsDigit).ToArray());
+        }
+
+        public class LoginResponse
+        {
+            public string Token { get; set; } = "";
+        }
+
+        private async Task IniciarSesion()
+        {
+            if (string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))
+            {
+                mensaje = "Por favor, ingrese su PeopleSoft y contraseña.";
+                esError = true;
+                return;
+            }
+
+            enviando = true;
+            mensaje = "";
+            StateHasChanged();
+
             try
             {
-                // Leer el token del sessionStorage
-                var token = await _js.InvokeAsync<string?>(
-                    "sessionStorage.getItem", "token");
-
-                Console.WriteLine($"[FiltrosPermisos] Token obtenido: {(string.IsNullOrEmpty(token) ? "NULL O VACÍO" : token[..30] + "...")}");
-
-                if (string.IsNullOrEmpty(token))
+                var client = HttpClientFactory.CreateClient("API");
+                var response = await client.PostAsJsonAsync("api/auth/login", new
                 {
-                    Console.WriteLine("[FiltrosPermisos] Sin token, retornando null");
-                    return null;
+                    Username,
+                    Password
+                });
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    mensaje = response.StatusCode switch
+                    {
+                        System.Net.HttpStatusCode.Unauthorized =>
+                            "PeopleSoft o contraseña incorrectos. Verifique e intente nuevamente.",
+                        System.Net.HttpStatusCode.Forbidden =>
+                            "Su usuario no tiene permisos para acceder a este sistema.",
+                        System.Net.HttpStatusCode.NotFound =>
+                            "El servicio de autenticación no está disponible en este momento.",
+                        System.Net.HttpStatusCode.InternalServerError =>
+                            "Ocurrió un error en el servidor. Intente nuevamente más tarde.",
+                        _ => "No se pudo iniciar sesión. Intente nuevamente."
+                    };
+                    esError = true;
+                    return;
                 }
 
-                // Limpiar header previo y agregar el token
-                _http.DefaultRequestHeaders.Authorization = null;
-                _http.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", token);
+                var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
 
-                var url = "api/filtrospermissos/mis-filtros";
-                Console.WriteLine($"[FiltrosPermisos] Llamando a: {_http.BaseAddress}{url}");
+                if (result is null || string.IsNullOrEmpty(result.Token))
+                {
+                    mensaje = "No se pudo validar la sesión. Intente de nuevo.";
+                    esError = true;
+                    return;
+                }
 
-                var result = await _http.GetFromJsonAsync<FiltrosPermisosDto>(url);
+                await AuthService.SetTokenAsync(result.Token);
 
-                Console.WriteLine($"[FiltrosPermisos] Respuesta: CentroCosto={result?.MostrarCentroDeCosto}, Dabuenavida={result?.MostrarDabuenavida}");
+                mensaje = "Acceso correcto, redirigiendo...";
+                esError = false;
+                StateHasChanged();
 
-                return result;
+                await Task.Delay(400);
+                Nav.NavigateTo("/lotes");
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"[FiltrosPermisos] ERROR: {ex.Message}");
-                return null;
+                mensaje = "No se pudo conectar con el servidor. Verifique su conexión e intente nuevamente.";
+                esError = true;
+            }
+            finally
+            {
+                enviando = false;
+                StateHasChanged();
             }
         }
     }
 }
+.mensaje { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-top: 10px; animation: fadeIn 0.3s ease-in-out; }
+.mensaje-error { color: #c0392b; }
+.mensaje-exito { color: #27ae60; }
+.mensaje-icono { font-size: 14px; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+.btn-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; display: inline-block; margin-right: 6px; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+.loading-spinner { width: 36px; height: 36px; border: 3px solid #ddd; border-top-color: #512da8; border-radius: 50%; animation: spin 0.8s linear infinite; }
