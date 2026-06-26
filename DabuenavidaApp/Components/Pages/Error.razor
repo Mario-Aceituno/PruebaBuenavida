@@ -8,17 +8,34 @@
     </div>
     <div>
         <div class="dab-filters__body">
+
+            @* CENTRO DE COSTO *@
             @if (Permisos.MostrarCentroDeCosto)
             {
                 <div class="dab-filters__group">
                     <label class="dab-filters__label">CENTRO DE COSTO</label>
                     <div class="dab-filters__input-wrapper @(_errorCentro != "" ? "dab-filters__input-wrapper--error" : "")">
                         <input class="dab-filters__input"
-                               value="@Filtros.CentroDeCosto"
+                               value="@textoCentro"
                                @oninput="OnCentroDeCostoInput"
-                               maxlength="3"
-                               placeholder="Ej: 001" />
+                               @onfocus="MostrarLista"
+                               @onblur="OcultarLista"
+                               placeholder="Buscar o seleccionar centro de costo..." />
                     </div>
+
+                    @if (mostrarLista && centrosFiltrados.Any())
+                    {
+                        <div class="dab-filters__dropdown">
+                            @foreach (var centro in centrosFiltrados)
+                            {
+                                <div class="dab-filters__dropdown-item"
+                                     @onmousedown="() => SeleccionarCentro(centro)">
+                                    @centro.Display
+                                </div>
+                            }
+                        </div>
+                    }
+
                     <div class="dab-filters__feedback-wrapper">
                         @if (_errorCentro != "")
                         {
@@ -27,13 +44,14 @@
                                 @_errorCentro
                             </span>
                         }
-                        <span class="dab-filters__counter @(Filtros.CentroDeCosto?.Length == 3 ? "dab-filters__counter--ok" : "")">
-                            @(Filtros.CentroDeCosto?.Length ?? 0)/3
+                        <span class="dab-filters__counter @(Filtros.CentroDeCosto?.Length == MaxLengthCentroCosto ? "dab-filters__counter--ok" : "")">
+                            @(Filtros.CentroDeCosto?.Length ?? 0)/@MaxLengthCentroCosto
                         </span>
                     </div>
                 </div>
             }
 
+            @* BUSCAR POR DNI O N° DABUENAVIDA *@
             <div class="dab-filters__group dab-filters__group--wide">
                 <label class="dab-filters__label">BUSCAR POR DNI O N° DABUENAVIDA</label>
                 <div class="dab-filters__input-wrapper @(_errorTexto != "" ? "dab-filters__input-wrapper--error" : _textoValido ? "dab-filters__input-wrapper--ok" : "")">
@@ -59,17 +77,15 @@
                     }
                     else if (_textoValido)
                     {
-                        <span class="dab-filters__success">
-                            @_tipoTexto
-                        </span>
+                        <span class="dab-filters__success">@(_tipoTexto)</span>
                     }
-                    @* AQUÍ SE MODIFICÓ: Cambiado /13 estático por /@MaxLegthTexto *@
                     <span class="dab-filters__counter @(_textoValido ? "dab-filters__counter--ok" : "")">
                         @(Filtros.TextoBusqueda?.Length ?? 0)/@MaxLegthTexto
                     </span>
                 </div>
             </div>
 
+            @* BOTONES *@
             <div class="dab-filters__actions">
                 <button class="dab-filters__btn dab-filters__btn--limpiar"
                         @onclick="HandleLimpiar">
@@ -87,68 +103,113 @@
 </div>
 
 
-_-------------
+
+----------------------
 
 using ManageAdminDMS_UI.Models;
 using Microsoft.AspNetCore.Components;
-using Microsoft.Extensions.Configuration; // Asegúrate de incluir este namespace
+using Microsoft.Extensions.Configuration;
 
 namespace ManageAdminDMS_UI.Components.FrontendComponents.Filters
 {
     public partial class DabuenavidaFilters
     {
-        // Inyectamos IConfiguration para acceder al appsettings.json
-        [Inject] private IConfiguration Configuration { get; set; }
+        [Inject] private IConfiguration Configuration { get; set; } = default!;
 
         [Parameter] public FiltrosBusqueda Filtros { get; set; } = new();
         [Parameter] public EventCallback OnBuscar { get; set; }
         [Parameter] public EventCallback OnLimpiar { get; set; }
         [Parameter] public string Token { get; set; } = "";
-        [Parameter]
-        public FiltrosPermisosDto Permisos { get; set; } = new()
+        [Parameter] public FiltrosPermisosDto Permisos { get; set; } = new()
         {
             MostrarCentroDeCosto = true,
             MostrarDabuenavida = true,
             PermitirBusquedaDni = true
         };
 
+        // — Centro de costo —
+        private List<CentroCostoDto> centros = new();
+        private List<CentroCostoDto> centrosFiltrados = new();
+        private string textoCentro = "";
+        private bool mostrarLista = false;
+
+        // — Validaciones —
         private string _errorCentro = "";
         private string _errorTexto = "";
         private bool _textoValido = false;
         private string _tipoTexto = "";
 
-        // Propiedades dinámicas que leen desde appsettings con valores por defecto (fallback) por seguridad
+        // — Longitudes parametrizadas desde appsettings —
         private int MaxLengthDni => 13;
         private int MaxLengthDabuenavida => 10;
+        private int MaxLengthCentroCosto => 3;
 
-        private int MaxLegthTexto => Permisos.PermitirBusquedaDni ? 13 : 10;
+        private int MaxLegthTexto =>
+            Permisos.PermitirBusquedaDni ? 13 : 10;
 
-        private string PlaceholderTexto => Permisos.PermitirBusquedaDni
-            ? $"Ingrese Dabuenavida ({MaxLengthDabuenavida} dígitos) o N# DNI ({MaxLengthDni} dígitos)..."
-            : $"Ingrese N# Dabuenavida ({MaxLengthDabuenavida} dígitos)";
+        private string PlaceholderTexto =>
+            Permisos.PermitirBusquedaDni
+                ? $"Ingrese Dabuenavida ({MaxLengthDabuenavida} dígitos) o N# DNI ({MaxLengthDni} dígitos)..."
+                : $"Ingrese N# Dabuenavida ({MaxLengthDabuenavida} dígitos)";
+
+        protected override async Task OnInitializedAsync()
+        {
+            centros = await ServicioDabuenavida.ObtenerCentrosCostoAsync(Token);
+            centrosFiltrados = centros;
+        }
+
+        // — Centro de costo —
 
         private void OnCentroDeCostoInput(ChangeEventArgs e)
         {
-            var raw = e.Value?.ToString() ?? "";
-            var limpio = System.Text.RegularExpressions.Regex.Replace(raw, @"[^0-9]", "");
-
-            if (limpio.Length > 3)
-                limpio = limpio[..3];
-
-            Filtros.CentroDeCosto = limpio;
-
-            _errorCentro = limpio.Length switch
-            {
-                0 => "",
-                3 => "",
-                _ => $"El centro de costo debe tener exactamente 3 dígitos ({limpio.Length}/3)."
-            };
+            textoCentro = e.Value?.ToString() ?? "";
+            Filtros.CentroDeCosto = "";
+            _errorCentro = "";
+            FiltrarCentros();
+            mostrarLista = true;
+            StateHasChanged();
         }
+
+        private void MostrarLista()
+        {
+            FiltrarCentros();
+            mostrarLista = true;
+            StateHasChanged();
+        }
+
+        private void OcultarLista()
+        {
+            Task.Delay(200).ContinueWith(_ =>
+            {
+                mostrarLista = false;
+                InvokeAsync(StateHasChanged);
+            });
+        }
+
+        private void FiltrarCentros()
+        {
+            centrosFiltrados = string.IsNullOrWhiteSpace(textoCentro)
+                ? centros
+                : centros.Where(c => c.Display.Contains(textoCentro,
+                    StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        private void SeleccionarCentro(CentroCostoDto centro)
+        {
+            textoCentro = centro.Display;
+            Filtros.CentroDeCosto = centro.Codigo;
+            _errorCentro = "";
+            mostrarLista = false;
+            StateHasChanged();
+        }
+
+        // — Texto búsqueda —
 
         private void OnTextoBusquedaInput(ChangeEventArgs e)
         {
             var raw = e.Value?.ToString() ?? "";
-            var limpio = System.Text.RegularExpressions.Regex.Replace(raw, @"[^0-9]", "");
+            var limpio = System.Text.RegularExpressions.Regex
+                .Replace(raw, @"[^0-9]", "");
 
             if (limpio.Length > MaxLegthTexto)
                 limpio = limpio[..MaxLegthTexto];
@@ -157,14 +218,15 @@ namespace ManageAdminDMS_UI.Components.FrontendComponents.Filters
             _textoValido = false;
             _tipoTexto = "";
 
-            // Validación adaptada a los parámetros configurados
             _errorTexto = limpio.Length switch
             {
                 0 => "",
                 var l when l == MaxLengthDabuenavida => "",
                 var l when l == MaxLengthDni && Permisos.PermitirBusquedaDni => "",
-                var l when l < MaxLengthDabuenavida => $"Mínimo {MaxLengthDabuenavida} dígitos para Dabuenavida ({l}/{MaxLengthDabuenavida}).",
-                _ when !Permisos.PermitirBusquedaDni => $"Solo puede buscar por N# Dabuenavida ({MaxLengthDabuenavida}) dígitos",
+                var l when l < MaxLengthDabuenavida =>
+                    $"Mínimo {MaxLengthDabuenavida} dígitos para Dabuenavida ({l}/{MaxLengthDabuenavida}).",
+                _ when !Permisos.PermitirBusquedaDni =>
+                    $"Solo puede buscar por N# Dabuenavida ({MaxLengthDabuenavida}) dígitos",
                 _ => $"Longitud inválida. Use {MaxLengthDabuenavida} dígitos (N Dabuenavida) o {MaxLengthDni} dígitos (Dni)."
             };
 
@@ -180,26 +242,313 @@ namespace ManageAdminDMS_UI.Components.FrontendComponents.Filters
             }
         }
 
+        // — Validación general —
+
         private bool EsFormularioValido()
         {
-            var centroOk = string.IsNullOrEmpty(Filtros.CentroDeCosto) || Filtros.CentroDeCosto.Length == 3;
+            var centroOk = string.IsNullOrEmpty(Filtros.CentroDeCosto) ||
+                           Filtros.CentroDeCosto.Length == MaxLengthCentroCosto;
             var textoOk = string.IsNullOrEmpty(Filtros.TextoBusqueda) || _textoValido;
-            var algoIngresado = !string.IsNullOrEmpty(Filtros.CentroDeCosto) || !string.IsNullOrEmpty(Filtros.TextoBusqueda);
+            var algoIngresado = !string.IsNullOrEmpty(Filtros.CentroDeCosto) ||
+                                !string.IsNullOrEmpty(Filtros.TextoBusqueda);
 
             return centroOk && textoOk && algoIngresado &&
                    string.IsNullOrEmpty(_errorCentro) &&
                    string.IsNullOrEmpty(_errorTexto);
         }
 
+        // — Limpiar —
+
         private async Task HandleLimpiar()
         {
             Filtros.TextoBusqueda = "";
             Filtros.CentroDeCosto = "";
+            textoCentro = "";
             _errorCentro = "";
             _errorTexto = "";
             _textoValido = false;
             _tipoTexto = "";
             await OnLimpiar.InvokeAsync();
         }
+    }
+}
+
+---------------------------
+
+/* ── Contenedor principal ── */
+.dab-filters {
+    background-color: #ffffff;
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    margin: 20px 24px 0 24px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+}
+
+/* ── Header ── */
+.dab-filters__header {
+    padding: 10px 18px;
+    border-bottom: 1px solid #f0f0f0;
+    background-color: #fafafa;
+    border-radius: 6px 6px 0 0;
+}
+
+.dab-filters__title {
+    font-size: 10px;
+    font-weight: 700;
+    color: #888888;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+/* ── Body con los filtros ── */
+.dab-filters__body {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 18px 12px 18px;
+    flex-wrap: wrap;
+}
+
+/* ── Grupos de filtro ── */
+.dab-filters__group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+    min-width: 220px;
+    position: relative;
+}
+
+.dab-filters__group--wide {
+    flex: 2;
+    min-width: 300px;
+}
+
+/* ── Labels ── */
+.dab-filters__label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #666666;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+/* ── Input wrapper ── */
+.dab-filters__input-wrapper {
+    display: flex;
+    align-items: center;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    background-color: white;
+    height: 40px;
+    padding: 0 12px;
+    gap: 8px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.dab-filters__input-wrapper:focus-within {
+    border-color: #c0392b;
+    box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.10);
+}
+
+.dab-filters__input-wrapper--error {
+    border-color: #c0392b !important;
+    box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.10);
+}
+
+.dab-filters__input-wrapper--ok {
+    border-color: #27ae60 !important;
+    box-shadow: 0 0 0 3px rgba(39, 174, 96, 0.10);
+}
+
+/* ── Inputs ── */
+.dab-filters__input {
+    border: none;
+    outline: none;
+    font-size: 13px;
+    color: #444444;
+    width: 100%;
+    background: transparent;
+}
+
+.dab-filters__input::placeholder {
+    color: #bbbbbb;
+}
+
+/* ── Input de búsqueda de centro de costo (standalone sin wrapper) ── */
+.dab-filters__input-search {
+    padding: 0 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #444444;
+    background-color: white;
+    height: 40px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+
+.dab-filters__input-search:focus {
+    border-color: #c0392b;
+    box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.10);
+}
+
+/* ── Íconos dentro del input ── */
+.dab-filters__input-icon {
+    font-size: 14px;
+    color: #aaaaaa;
+    flex-shrink: 0;
+}
+
+.dab-filters__valid-icon {
+    font-size: 15px;
+    color: #27ae60;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+/* ── Dropdown de centros de costo ── */
+.dab-filters__dropdown {
+    position: absolute;
+    top: calc(100% - 22px);
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #d9d9d9;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 200;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.10);
+}
+
+.dab-filters__dropdown-item {
+    padding: 9px 12px;
+    font-size: 13px;
+    color: #444444;
+    cursor: pointer;
+    border-bottom: 1px solid #f5f5f5;
+    transition: background-color 0.15s;
+}
+
+.dab-filters__dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.dab-filters__dropdown-item:hover {
+    background-color: #fff0f0;
+    color: #c0392b;
+}
+
+/* ── Feedback (errores, éxito, contador) ── */
+.dab-filters__feedback-wrapper {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 18px;
+    padding: 0 2px;
+}
+
+.dab-filters__error {
+    font-size: 11px;
+    color: #c0392b;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.dab-filters__error-icon {
+    font-size: 11px;
+}
+
+.dab-filters__success {
+    font-size: 11px;
+    color: #27ae60;
+    font-weight: 600;
+}
+
+.dab-filters__counter {
+    font-size: 11px;
+    color: #bbbbbb;
+    margin-left: auto;
+}
+
+.dab-filters__counter--ok {
+    color: #27ae60;
+    font-weight: 600;
+}
+
+/* ── Botones ── */
+.dab-filters__actions {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    padding-bottom: 24px;
+    flex-shrink: 0;
+}
+
+.dab-filters__btn {
+    height: 40px;
+    padding: 0 22px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    white-space: nowrap;
+}
+
+.dab-filters__btn--buscar {
+    background-color: #c0392b;
+    color: white;
+    box-shadow: 0 2px 4px rgba(192, 57, 43, 0.30);
+}
+
+.dab-filters__btn--buscar:hover:not(:disabled) {
+    background-color: #a93226;
+    box-shadow: 0 3px 8px rgba(192, 57, 43, 0.35);
+}
+
+.dab-filters__btn--buscar:disabled {
+    background-color: #e8a89e;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.dab-filters__btn--limpiar {
+    background-color: #ffffff;
+    color: #555555;
+    border: 1px solid #d9d9d9;
+}
+
+.dab-filters__btn--limpiar:hover {
+    background-color: #f5f5f5;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .dab-filters {
+        margin: 16px 16px 0 16px;
+    }
+
+    .dab-filters__body {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .dab-filters__group,
+    .dab-filters__group--wide {
+        min-width: unset;
+        width: 100%;
+    }
+
+    .dab-filters__actions {
+        width: 100%;
+        justify-content: flex-end;
+        padding-bottom: 0;
     }
 }
