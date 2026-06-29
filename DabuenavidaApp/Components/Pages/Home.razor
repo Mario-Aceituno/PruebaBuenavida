@@ -1,171 +1,320 @@
-@page "/unauthorized"
-@layout EmptyLayout
-@inject NavigationManager Nav
+@inject LotesApp.Services.LoteService LoteService
+@inject LotesApp.Services.AuthService AuthService
+@inject NavigationManager NavManager
 
-<div class="davi-container">
-    <div class="davi-card">
-        <div class="davi-logo">
-            <div class="davi-logo-bar"></div>
-            <span class="davi-logo-text">DMS</span>
+<!-- NAVBAR -->
+<nav class="lotes-navbar">
+    <div class="lotes-navbar-logo">
+        <div class="lotes-logo-mark">B</div>
+        <span class="lotes-navbar-title">Gestión de Lotes - Cronogramas de Pago</span>
+    </div>
+
+    <div class="lotes-navbar-right">
+        @if (!string.IsNullOrEmpty(ambienteActivo))
+        {
+            <span class="navbar-ambiente">@ambienteActivo</span>
+        }
+
+        <div class="lotes-navbar-divider"></div>
+
+        <div class="lotes-navbar-user">
+            <div class="lotes-navbar-avatar">@AuthService.Nomenclatura</div>
+            <div class="lotes-navbar-userinfo">
+                <span class="lotes-navbar-username">@AuthService.DisplayName</span>
+                <span class="lotes-navbar-userrole">@AuthService.Rol</span>
+            </div>
         </div>
 
-        <div class="davi-code">401</div>
-
-        <div class="davi-divider"></div>
-
-        <h2 class="davi-title">Sesión expirada</h2>
-        <p class="davi-message">
-            Tu sesión ha expirado o no tienes autorización para acceder a este recurso.
-            Por favor, inicia sesión nuevamente.
-        </p>
-
-        <button class="davi-btn" @onclick="IrAlLogin">
-            Volver al Login
+        <button class="lotes-navbar-logout" @onclick="AbrirModalLogout" title="Cerrar sesión">
+            <span class="lotes-navbar-logout-icon">⏻</span>
         </button>
     </div>
-</div>
+</nav>
 
-@code {
-    private void IrAlLogin() => Nav.NavigateTo("/login", forceLoad: true);
-}
-@layout EmptyLayout
-@inject NavigationManager Nav
-
-<div class="davi-container">
-    <div class="davi-card">
-        <div class="davi-logo">
-            <div class="davi-logo-bar"></div>
-            <span class="davi-logo-text">DMS</span>
+<!-- MODAL CONFIRMACIÓN LOGOUT -->
+@if (mostrarModalLogout)
+{
+    <div class="lotes-modal-overlay" @onclick="CerrarModalLogout">
+        <div class="lotes-modal" @onclick:stopPropagation="true">
+            <div class="lotes-modal-icon">⏻</div>
+            <h3 class="lotes-modal-title">¿Cerrar sesión?</h3>
+            <p class="lotes-modal-text">
+                Tu sesión actual se cerrará y deberás iniciar sesión nuevamente para continuar.
+            </p>
+            <div class="lotes-modal-actions">
+                <button class="lotes-modal-btn lotes-modal-btn--cancel" @onclick="CerrarModalLogout">
+                    Cancelar
+                </button>
+                <button class="lotes-modal-btn lotes-modal-btn--confirm" @onclick="ConfirmarLogout">
+                    Sí, cerrar sesión
+                </button>
+            </div>
         </div>
-
-        <div class="davi-code">404</div>
-
-        <div class="davi-divider"></div>
-
-        <h2 class="davi-title">Página no encontrada</h2>
-        <p class="davi-message">
-            La página que buscas no existe o fue movida.
-            Verifica la dirección o regresa al inicio.
-        </p>
-
-        <button class="davi-btn" @onclick="IrAlInicio">
-            Ir al Inicio
-        </button>
     </div>
-</div>
+}
 
 @code {
-    private void IrAlInicio() => Nav.NavigateTo("/", forceLoad: true);
-}
-/* =============================================
-   Error Pages - Estética Davivienda
-   Usar en: Unauthorized.razor.css y NotFound.razor.css
-   ============================================= */
+    private string? ambienteActivo;
+    private bool mostrarModalLogout = false;
 
-.davi-container {
-    min-height: 100vh;
+    private void AbrirModalLogout()
+    {
+        mostrarModalLogout = true;
+    }
+
+    private void CerrarModalLogout()
+    {
+        mostrarModalLogout = false;
+    }
+
+    private async Task ConfirmarLogout()
+    {
+        mostrarModalLogout = false;
+        await AuthService.LogoutAsync();
+        NavManager.NavigateTo("/login", forceLoad: true);
+    }
+}
+/* === Navbar === */
+.lotes-navbar {
+    background: #df0000e8;
+    padding: 0 2rem;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+}
+
+.lotes-navbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.lotes-logo-mark {
+    width: 32px;
+    height: 32px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #f5f5f5;
-    font-family: 'Segoe UI', Arial, sans-serif;
-}
-
-.davi-card {
-    background: #ffffff;
-    border-radius: 4px;
-    padding: 3rem 3.5rem;
-    text-align: center;
-    width: 100%;
-    max-width: 440px;
-    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.10);
-    border-top: 5px solid #C8102E; /* Rojo Davivienda */
-}
-
-/* Logo simulado - reemplaza con tu logo real */
-.davi-logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    margin-bottom: 2rem;
-}
-
-.davi-logo-bar {
-    width: 4px;
-    height: 28px;
-    background-color: #C8102E;
-    border-radius: 2px;
-}
-
-.davi-logo-text {
-    font-size: 1.25rem;
+    color: #fff;
+    font-size: 15px;
     font-weight: 700;
-    color: #1a1a1a;
-    letter-spacing: 2px;
-    text-transform: uppercase;
 }
 
-/* Código de error */
-.davi-code {
-    font-size: 5rem;
-    font-weight: 800;
-    color: #C8102E;
-    line-height: 1;
-    margin-bottom: 0.5rem;
-    letter-spacing: -2px;
-}
-
-/* Línea divisora */
-.davi-divider {
-    width: 48px;
-    height: 3px;
-    background-color: #C8102E;
-    margin: 1rem auto 1.5rem auto;
-    border-radius: 2px;
-}
-
-/* Título */
-.davi-title {
-    font-size: 1.3rem;
+.lotes-navbar-title {
+    font-size: 15px;
     font-weight: 600;
-    color: #1a1a1a;
-    margin: 0 0 0.75rem 0;
+    color: #fff;
 }
 
-/* Mensaje */
-.davi-message {
-    font-size: 0.95rem;
-    color: #6b6b6b;
-    line-height: 1.6;
-    margin: 0 0 2rem 0;
+.navbar-ambiente {
+    font-size: 11px;
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 99px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
 }
 
-/* Botón */
-.davi-btn {
-    display: inline-block;
-    background-color: #C8102E;
-    color: #ffffff;
-    border: none;
-    border-radius: 3px;
-    padding: 0.75rem 2rem;
-    font-size: 0.95rem;
+/* === Bloque derecho: ambiente + usuario + logout === */
+.lotes-navbar-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.lotes-navbar-divider {
+    width: 1px;
+    height: 28px;
+    background: rgba(255,255,255,0.25);
+}
+
+.lotes-navbar-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lotes-navbar-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    border: 2px solid rgba(255,255,255,0.35);
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.lotes-navbar-userinfo {
+    display: flex;
+    flex-direction: column;
+    text-align: right;
+    line-height: 1.2;
+}
+
+.lotes-navbar-username {
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.lotes-navbar-userrole {
+    color: rgba(255,255,255,0.70);
+    font-size: 10px;
+}
+
+.lotes-navbar-logout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,255,255,0.30);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
+}
+
+.lotes-navbar-logout:hover {
+    background: rgba(0,0,0,0.35);
+    border-color: rgba(255,255,255,0.55);
+}
+
+.lotes-navbar-logout:active {
+    transform: scale(0.94);
+}
+
+.lotes-navbar-logout-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+@media (max-width: 600px) {
+    .lotes-navbar {
+        padding: 0 1rem;
+    }
+
+    .lotes-navbar-userinfo {
+        display: none;
+    }
+
+    .navbar-ambiente {
+        display: none;
+    }
+
+    .lotes-navbar-divider {
+        display: none;
+    }
+}
+
+/* === Modal de confirmación === */
+.lotes-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: lotesFadeIn 0.18s ease;
+}
+
+.lotes-modal {
+    background: #fff;
+    border-radius: 14px;
+    padding: 28px 26px;
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    animation: lotesPopIn 0.18s ease;
+}
+
+.lotes-modal-icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    background: #fdeaea;
+    color: #df0000;
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lotes-modal-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: #222;
+    margin: 0 0 8px;
+}
+
+.lotes-modal-text {
+    font-size: 13px;
+    color: #666;
+    margin: 0 0 22px;
+    line-height: 1.4;
+}
+
+.lotes-modal-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.lotes-modal-btn {
+    flex: 1;
+    padding: 10px 0;
+    border-radius: 8px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    letter-spacing: 0.5px;
-    transition: background-color 0.2s ease;
-    width: 100%;
+    border: none;
+    transition: opacity 0.15s ease, transform 0.1s ease;
 }
 
-.davi-btn:hover {
-    background-color: #a50d25;
+.lotes-modal-btn:active {
+    transform: scale(0.97);
 }
 
-.davi-btn:active {
-    background-color: #8a0b1f;
+.lotes-modal-btn--cancel {
+    background: #f1f1f1;
+    color: #333;
 }
 
-.davi-btn:focus-visible {
-    outline: 3px solid #C8102E;
-    outline-offset: 3px;
+.lotes-modal-btn--cancel:hover {
+    background: #e4e4e4;
+}
+
+.lotes-modal-btn--confirm {
+    background: #df0000;
+    color: #fff;
+}
+
+.lotes-modal-btn--confirm:hover {
+    background: #c00000;
+}
+
+@keyframes lotesFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes lotesPopIn {
+    from { transform: scale(0.92); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
 }
