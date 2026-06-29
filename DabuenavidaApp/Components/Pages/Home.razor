@@ -1,114 +1,171 @@
-protected override async Task OnAfterRenderAsync(bool firstRender)
-{
-    if (firstRender)
-    {
-        AuthService.MarcarJsDisponible();  // ← primero esto
-        await AuthService.LoadTokenAsync();
+@page "/unauthorized"
+@layout EmptyLayout
+@inject NavigationManager Nav
 
-        _permisos = await FiltrosPermisosService
-            .GetPermisosAsync(AuthService.Token ?? "");
+<div class="davi-container">
+    <div class="davi-card">
+        <div class="davi-logo">
+            <div class="davi-logo-bar"></div>
+            <span class="davi-logo-text">DMS</span>
+        </div>
 
-        _permisos ??= new FiltrosPermisosDto
-        {
-            MostrarCentroDeCosto = true,
-            MostrarDabuenavida   = true
-        };
+        <div class="davi-code">401</div>
 
-        await CargarDatos();
-        estado = Estado.Permitido;
-        StateHasChanged();
-    }
+        <div class="davi-divider"></div>
+
+        <h2 class="davi-title">Sesión expirada</h2>
+        <p class="davi-message">
+            Tu sesión ha expirado o no tienes autorización para acceder a este recurso.
+            Por favor, inicia sesión nuevamente.
+        </p>
+
+        <button class="davi-btn" @onclick="IrAlLogin">
+            Volver al Login
+        </button>
+    </div>
+</div>
+
+@code {
+    private void IrAlLogin() => Nav.NavigateTo("/login", forceLoad: true);
+}
+@layout EmptyLayout
+@inject NavigationManager Nav
+
+<div class="davi-container">
+    <div class="davi-card">
+        <div class="davi-logo">
+            <div class="davi-logo-bar"></div>
+            <span class="davi-logo-text">DMS</span>
+        </div>
+
+        <div class="davi-code">404</div>
+
+        <div class="davi-divider"></div>
+
+        <h2 class="davi-title">Página no encontrada</h2>
+        <p class="davi-message">
+            La página que buscas no existe o fue movida.
+            Verifica la dirección o regresa al inicio.
+        </p>
+
+        <button class="davi-btn" @onclick="IrAlInicio">
+            Ir al Inicio
+        </button>
+    </div>
+</div>
+
+@code {
+    private void IrAlInicio() => Nav.NavigateTo("/", forceLoad: true);
+}
+/* =============================================
+   Error Pages - Estética Davivienda
+   Usar en: Unauthorized.razor.css y NotFound.razor.css
+   ============================================= */
+
+.davi-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f5f5f5;
+    font-family: 'Segoe UI', Arial, sans-serif;
 }
 
-using Microsoft.JSInterop;
-using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
-using System.Threading.Tasks;
-using System.Security.Cryptography;
-using System.IdentityModel.Tokens.Jwt;
-using Microsoft.AspNetCore.Components;
+.davi-card {
+    background: #ffffff;
+    border-radius: 4px;
+    padding: 3rem 3.5rem;
+    text-align: center;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.10);
+    border-top: 5px solid #C8102E; /* Rojo Davivienda */
+}
 
-namespace ManageAdminDMS_UI.Services
-{
-    public class AuthService
-    {
-        private readonly ProtectedSessionStorage _storage;
-        private bool _jsDisponible = false;
+/* Logo simulado - reemplaza con tu logo real */
+.davi-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 2rem;
+}
 
-        public string? DisplayName { get; set; }
-        public string? Rol         { get; set; }
-        public string? Nomenclatura { get; set; }
-        public String? Token       { get; set; }
-        public bool IsAuthenticated => !string.IsNullOrEmpty(Token);
+.davi-logo-bar {
+    width: 4px;
+    height: 28px;
+    background-color: #C8102E;
+    border-radius: 2px;
+}
 
-        public AuthService(ProtectedSessionStorage storage)
-        {
-            _storage = storage;
-        }
+.davi-logo-text {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
 
-        // ── Llamar PRIMERO en OnAfterRenderAsync ──────────────
-        public void MarcarJsDisponible() => _jsDisponible = true;
+/* Código de error */
+.davi-code {
+    font-size: 5rem;
+    font-weight: 800;
+    color: #C8102E;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+    letter-spacing: -2px;
+}
 
-        // ── Guardar token ─────────────────────────────────────
-        public async Task SetTokenAsync(string token)
-        {
-            Token = token;
-            await _storage.SetAsync("token", token);
-            ParseToken();
-        }
+/* Línea divisora */
+.davi-divider {
+    width: 48px;
+    height: 3px;
+    background-color: #C8102E;
+    margin: 1rem auto 1.5rem auto;
+    border-radius: 2px;
+}
 
-        // ── Parsear claims del JWT ────────────────────────────
-        public void ParseToken()
-        {
-            if (string.IsNullOrEmpty(Token)) return;
+/* Título */
+.davi-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin: 0 0 0.75rem 0;
+}
 
-            var handler = new JwtSecurityTokenHandler();
-            var jwt     = handler.ReadJwtToken(Token);
+/* Mensaje */
+.davi-message {
+    font-size: 0.95rem;
+    color: #6b6b6b;
+    line-height: 1.6;
+    margin: 0 0 2rem 0;
+}
 
-            DisplayName = jwt.Claims
-                .FirstOrDefault(c => c.Type == "displayName")?.Value ?? "";
+/* Botón */
+.davi-btn {
+    display: inline-block;
+    background-color: #C8102E;
+    color: #ffffff;
+    border: none;
+    border-radius: 3px;
+    padding: 0.75rem 2rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: background-color 0.2s ease;
+    width: 100%;
+}
 
-            Rol = jwt.Claims
-                .FirstOrDefault(c => c.Type == "rol")?.Value ?? "";
+.davi-btn:hover {
+    background-color: #a50d25;
+}
 
-            // Nomenclatura: primera letra nombre + apellido + rol
-            var partes         = DisplayName.Split(' ');
-            string inicialNombre   = partes.Length > 0 ? partes[0][..1] : "";
-            string inicialApellido = partes.Length > 1 ? partes[1][..1] : "";
-            string inicialRol      = Rol.Length > 0   ? Rol[..1]        : "";
-            Nomenclatura = (inicialNombre + inicialApellido + inicialRol).ToUpper();
-        }
+.davi-btn:active {
+    background-color: #8a0b1f;
+}
 
-        // ── Cargar token desde storage ────────────────────────
-        public async Task LoadTokenAsync()
-        {
-            if (!_jsDisponible) return;  // guard prerender
-
-            try
-            {
-                var result = await _storage.GetAsync<string>("token");
-                Token = result.Value;
-                ParseToken();
-            }
-            catch (CryptographicException)
-            {
-                await LogoutAsync();
-            }
-            catch (Exception ex) when (ex.InnerException is CryptographicException)
-            {
-                await LogoutAsync();
-            }
-        }
-
-        // ── Cerrar sesión ─────────────────────────────────────
-        public async Task LogoutAsync()
-        {
-            Token = null;
-            DisplayName  = null;
-            Rol          = null;
-            Nomenclatura = null;
-
-            if (_jsDisponible)  // guard prerender
-                await _storage.DeleteAsync("token");
-        }
-    }
+.davi-btn:focus-visible {
+    outline: 3px solid #C8102E;
+    outline-offset: 3px;
 }
