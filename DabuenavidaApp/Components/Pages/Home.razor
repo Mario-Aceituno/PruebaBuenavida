@@ -2,52 +2,33 @@
 @inject LotesApp.Services.AuthService AuthService
 @inject NavigationManager NavManager
 
-<!-- NAVBAR -->
-<nav class="lotes-navbar">
-    <div class="lotes-navbar-logo">
-        <div class="lotes-logo-mark">B</div>
-        <span class="lotes-navbar-title">Gestión de Lotes - Cronogramas de Pago</span>
+<nav class="bmnav">
+    <div class="bmnav-brand">
+        <div class="bmnav-mark">B</div>
+        <span class="bmnav-title">Gestión de Lotes - Cronogramas de Pago</span>
     </div>
 
-    <div class="lotes-navbar-right">
+    <div class="bmnav-right">
         @if (!string.IsNullOrEmpty(ambienteActivo))
         {
-            <span class="navbar-ambiente">@ambienteActivo</span>
+            <span class="bmnav-ambiente">@ambienteActivo</span>
         }
 
-        <div class="lotes-navbar-divider"></div>
+        <span class="bmnav-avatar">@AuthService.Nomenclatura</span>
+        <span class="bmnav-user">@AuthService.DisplayName · @AuthService.Rol</span>
 
-        <div class="lotes-navbar-user">
-            <div class="lotes-navbar-avatar">@AuthService.Nomenclatura</div>
-            <div class="lotes-navbar-userinfo">
-                <span class="lotes-navbar-username">@AuthService.DisplayName</span>
-                <span class="lotes-navbar-userrole">@AuthService.Rol</span>
-            </div>
-        </div>
-
-        <button class="lotes-navbar-logout" @onclick="AbrirModalLogout" title="Cerrar sesión">
-            <span class="lotes-navbar-logout-icon">⏻</span>
-        </button>
+        <button class="bmnav-logout" @onclick="AbrirModalLogout" title="Cerrar sesión">⏻</button>
     </div>
 </nav>
 
-<!-- MODAL CONFIRMACIÓN LOGOUT -->
 @if (mostrarModalLogout)
 {
-    <div class="lotes-modal-overlay" @onclick="CerrarModalLogout">
-        <div class="lotes-modal" @onclick:stopPropagation="true">
-            <div class="lotes-modal-icon">⏻</div>
-            <h3 class="lotes-modal-title">¿Cerrar sesión?</h3>
-            <p class="lotes-modal-text">
-                Tu sesión actual se cerrará y deberás iniciar sesión nuevamente para continuar.
-            </p>
-            <div class="lotes-modal-actions">
-                <button class="lotes-modal-btn lotes-modal-btn--cancel" @onclick="CerrarModalLogout">
-                    Cancelar
-                </button>
-                <button class="lotes-modal-btn lotes-modal-btn--confirm" @onclick="ConfirmarLogout">
-                    Sí, cerrar sesión
-                </button>
+    <div class="bmnav-modal-overlay" @onclick="CerrarModalLogout">
+        <div class="bmnav-modal" @onclick:stopPropagation="true">
+            <p class="bmnav-modal-text">¿Cerrar sesión?</p>
+            <div class="bmnav-modal-actions">
+                <button class="bmnav-modal-btn bmnav-modal-btn--cancel" @onclick="CerrarModalLogout">Cancelar</button>
+                <button class="bmnav-modal-btn bmnav-modal-btn--confirm" @onclick="ConfirmarLogout">Cerrar sesión</button>
             </div>
         </div>
     </div>
@@ -57,15 +38,8 @@
     private string? ambienteActivo;
     private bool mostrarModalLogout = false;
 
-    private void AbrirModalLogout()
-    {
-        mostrarModalLogout = true;
-    }
-
-    private void CerrarModalLogout()
-    {
-        mostrarModalLogout = false;
-    }
+    private void AbrirModalLogout() => mostrarModalLogout = true;
+    private void CerrarModalLogout() => mostrarModalLogout = false;
 
     private async Task ConfirmarLogout()
     {
@@ -74,247 +48,158 @@
         NavManager.NavigateTo("/login", forceLoad: true);
     }
 }
-/* === Navbar === */
-.lotes-navbar {
+
+.bmnav {
     background: #df0000e8;
-    padding: 0 2rem;
-    height: 56px;
+    padding: 0 24px;
+    height: 52px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
 }
 
-.lotes-navbar-logo {
+.bmnav-brand {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    min-width: 0;
 }
 
-.lotes-logo-mark {
-    width: 32px;
-    height: 32px;
+.bmnav-mark {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
     background: rgba(255,255,255,0.2);
     border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 15px;
     font-weight: 700;
+    font-size: 13px;
 }
 
-.lotes-navbar-title {
-    font-size: 15px;
-    font-weight: 600;
+.bmnav-title {
     color: #fff;
-}
-
-.navbar-ambiente {
-    font-size: 11px;
-    background: rgba(255,255,255,0.18);
-    color: #fff;
-    padding: 3px 10px;
-    border-radius: 99px;
+    font-size: 14px;
     font-weight: 600;
-    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* === Bloque derecho: ambiente + usuario + logout === */
-.lotes-navbar-right {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-
-.lotes-navbar-divider {
-    width: 1px;
-    height: 28px;
-    background: rgba(255,255,255,0.25);
-}
-
-.lotes-navbar-user {
+.bmnav-right {
     display: flex;
     align-items: center;
     gap: 10px;
-}
-
-.lotes-navbar-avatar {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.2);
-    border: 2px solid rgba(255,255,255,0.35);
-    color: #fff;
-    font-weight: 700;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     flex-shrink: 0;
 }
 
-.lotes-navbar-userinfo {
-    display: flex;
-    flex-direction: column;
-    text-align: right;
-    line-height: 1.2;
-}
-
-.lotes-navbar-username {
+.bmnav-ambiente {
+    font-size: 10px;
+    background: rgba(255,255,255,0.18);
     color: #fff;
-    font-size: 13px;
+    padding: 2px 8px;
+    border-radius: 99px;
     font-weight: 600;
 }
 
-.lotes-navbar-userrole {
-    color: rgba(255,255,255,0.70);
-    font-size: 10px;
-}
-
-.lotes-navbar-logout {
+.bmnav-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    border: 1.5px solid rgba(255,255,255,0.35);
+    color: #fff;
+    font-weight: 700;
+    font-size: 11px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+}
+
+.bmnav-user {
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0.9;
+    white-space: nowrap;
+}
+
+.bmnav-logout {
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     background: rgba(0,0,0,0.18);
     border: 1px solid rgba(255,255,255,0.30);
     color: #fff;
     cursor: pointer;
-    transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
-}
-
-.lotes-navbar-logout:hover {
-    background: rgba(0,0,0,0.35);
-    border-color: rgba(255,255,255,0.55);
-}
-
-.lotes-navbar-logout:active {
-    transform: scale(0.94);
-}
-
-.lotes-navbar-logout-icon {
-    font-size: 16px;
+    font-size: 14px;
     line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bmnav-logout:hover {
+    background: rgba(0,0,0,0.35);
 }
 
 @media (max-width: 600px) {
-    .lotes-navbar {
-        padding: 0 1rem;
-    }
-
-    .lotes-navbar-userinfo {
-        display: none;
-    }
-
-    .navbar-ambiente {
-        display: none;
-    }
-
-    .lotes-navbar-divider {
+    .bmnav-title,
+    .bmnav-user,
+    .bmnav-ambiente {
         display: none;
     }
 }
 
-/* === Modal de confirmación === */
-.lotes-modal-overlay {
+/* Modal */
+.bmnav-modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.55);
+    inset: 0;
+    background: rgba(0,0,0,0.5);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    animation: lotesFadeIn 0.18s ease;
 }
 
-.lotes-modal {
+.bmnav-modal {
     background: #fff;
-    border-radius: 14px;
-    padding: 28px 26px;
+    border-radius: 12px;
+    padding: 24px;
     width: 100%;
-    max-width: 360px;
+    max-width: 320px;
     text-align: center;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
-    animation: lotesPopIn 0.18s ease;
 }
 
-.lotes-modal-icon {
-    width: 52px;
-    height: 52px;
-    margin: 0 auto 14px;
-    border-radius: 50%;
-    background: #fdeaea;
-    color: #df0000;
-    font-size: 22px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.bmnav-modal-text {
+    font-size: 14px;
+    color: #333;
+    margin: 0 0 18px;
 }
 
-.lotes-modal-title {
-    font-size: 17px;
-    font-weight: 700;
-    color: #222;
-    margin: 0 0 8px;
-}
-
-.lotes-modal-text {
-    font-size: 13px;
-    color: #666;
-    margin: 0 0 22px;
-    line-height: 1.4;
-}
-
-.lotes-modal-actions {
+.bmnav-modal-actions {
     display: flex;
     gap: 10px;
 }
 
-.lotes-modal-btn {
+.bmnav-modal-btn {
     flex: 1;
-    padding: 10px 0;
+    padding: 9px 0;
     border-radius: 8px;
     font-size: 13px;
     font-weight: 600;
-    cursor: pointer;
     border: none;
-    transition: opacity 0.15s ease, transform 0.1s ease;
+    cursor: pointer;
 }
 
-.lotes-modal-btn:active {
-    transform: scale(0.97);
-}
-
-.lotes-modal-btn--cancel {
+.bmnav-modal-btn--cancel {
     background: #f1f1f1;
     color: #333;
 }
 
-.lotes-modal-btn--cancel:hover {
-    background: #e4e4e4;
-}
-
-.lotes-modal-btn--confirm {
+.bmnav-modal-btn--confirm {
     background: #df0000;
     color: #fff;
-}
-
-.lotes-modal-btn--confirm:hover {
-    background: #c00000;
-}
-
-@keyframes lotesFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-@keyframes lotesPopIn {
-    from { transform: scale(0.92); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
 }
