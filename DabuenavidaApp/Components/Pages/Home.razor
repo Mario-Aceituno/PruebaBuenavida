@@ -1,13 +1,189 @@
-/// <summary>Descarga un archivo XML vía stream, enviando el token de autenticación</summary>
-private async Task DescargarArchivo(string nombreArchivo)
-{
-    var stream = await LoteService.DescargarArchivoStreamAsync(nombreArchivo);
-    if (stream is null)
+@using ManageAdminDMS_UI.Services
+@inject AuthService AuthService
+@inject NavigationManager NavManager
+
+<nav class="dab-navbar">
+    <div class="dab-navbar__brand">
+        <span class="dab-navbar__icon">◈</span>
+        <div class="dab-navbar__titles">
+            <span class="dab-navbar__name">Davivienda Honduras S.A</span>
+            <span class="dab-navbar__subtitle">PLATAFORMA DE GESTIÓN DOCUMENTAL DaBuenaVida</span>
+        </div>
+    </div>
+
+    <div class="dab-navbar__user">
+        <div class="dab-navbar__avatar">@AuthService.Nomenclatura</div>
+        <div class="dab-navbar__userinfo">
+            <span class="dab-navbar__username">@AuthService.DisplayName</span>
+            <span class="dab-navbar__userrole">@AuthService.Rol</span>
+        </div>
+
+        <div class="dab-navbar__divider"></div>
+
+        <button class="dab-navbar__logout" @onclick="HandleLogout" title="Cerrar sesión">
+            <span class="dab-navbar__logout-icon">⏻</span>
+            <span class="dab-navbar__logout-text">Salir</span>
+        </button>
+    </div>
+</nav>
+
+@code {
+    private async Task HandleLogout()
     {
-        MostrarToast($"Error al descargar el archivo: {nombreArchivo}", "danger");
-        return;
+        await AuthService.LogoutAsync();
+        NavManager.NavigateTo("/login", forceLoad: true);
+    }
+}
+.dab-navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, #c0392b 0%, #922b21 100%);
+    padding: 0 32px;
+    height: 64px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.dab-navbar__brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.dab-navbar__icon {
+    color: white;
+    font-size: 26px;
+    opacity: 0.95;
+}
+
+.dab-navbar__titles {
+    display: flex;
+    flex-direction: column;
+}
+
+.dab-navbar__name {
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    line-height: 1.3;
+}
+
+.dab-navbar__subtitle {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+}
+
+.dab-navbar__user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.dab-navbar__avatar {
+    background-color: rgba(0, 0, 0, 0.25);
+    color: white;
+    font-weight: 700;
+    font-size: 13px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    flex-shrink: 0;
+}
+
+.dab-navbar__userinfo {
+    display: flex;
+    flex-direction: column;
+    text-align: right;
+}
+
+.dab-navbar__username {
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.dab-navbar__userrole {
+    color: rgba(255, 255, 255, 0.70);
+    font-size: 10px;
+}
+
+/* --- Nuevo: separador y botón de logout --- */
+
+.dab-navbar__divider {
+    width: 1px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.25);
+    flex-shrink: 0;
+}
+
+.dab-navbar__logout {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.18);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.30);
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
+}
+
+.dab-navbar__logout:hover {
+    background: rgba(0, 0, 0, 0.35);
+    border-color: rgba(255, 255, 255, 0.55);
+}
+
+.dab-navbar__logout:active {
+    transform: scale(0.96);
+}
+
+.dab-navbar__logout-icon {
+    font-size: 15px;
+    line-height: 1;
+}
+
+@media (max-width: 600px) {
+    .dab-navbar {
+        padding: 0 16px;
+        height: 56px;
     }
 
-    using var streamRef = new DotNetStreamReference(stream: stream, leaveOpen: false);
-    await JS.InvokeVoidAsync("descargarArchivoStream", nombreArchivo, streamRef);
+    .dab-navbar__subtitle {
+        display: none;
+    }
+
+    .dab-navbar__userinfo {
+        display: none;
+    }
+
+    .dab-navbar__name {
+        font-size: 14px;
+    }
+
+    .dab-navbar__divider {
+        display: none;
+    }
+
+    .dab-navbar__logout-text {
+        display: none;
+    }
+
+    .dab-navbar__logout {
+        padding: 8px 10px;
+        border-radius: 50%;
+    }
 }
