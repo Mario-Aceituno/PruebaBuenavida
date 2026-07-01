@@ -1,205 +1,93 @@
-@inject LotesApp.Services.LoteService LoteService
-@inject LotesApp.Services.AuthService AuthService
-@inject NavigationManager NavManager
+// — Ciclo de vida
+protected override async Task OnAfterRenderAsync(bool firstRender)
+{
+    if (firstRender)
+    {
+        AuthService.MarcarJsDisponible(); // ← primero esto
+        await AuthService.LoadTokenAsync();
 
-<nav class="bmnav">
-    <div class="bmnav-brand">
-        <div class="bmnav-mark">B</div>
-        <span class="bmnav-title">Gestión de Lotes - Cronogramas de Pago</span>
-    </div>
+        _permisos = await FiltrosPermisosService
+            .GetPermisosAsync(AuthService.Token ?? "");
 
-    <div class="bmnav-right">
-        @if (!string.IsNullOrEmpty(ambienteActivo))
+        _permisos ??= new FiltrosPermisosDto
         {
-            <span class="bmnav-ambiente">@ambienteActivo</span>
+            MostrarCentroDeCosto = true,
+            MostrarDabuenavida = true
+        };
+
+        bool ok = await CargarDatos();
+        if (!ok)
+        {
+            return; // ya se navegó a /accessdenied o quedó el error, no marcar Permitido
         }
 
-        <span class="bmnav-avatar">@AuthService.Nomenclatura</span>
-        <span class="bmnav-user">@AuthService.DisplayName · @AuthService.Rol</span>
+        estado = Estado.Permitido;
+        StateHasChanged();
+    }
+}
 
-        <button class="bmnav-logout" @onclick="AbrirModalLogout" title="Cerrar sesión">⏻</button>
-    </div>
-</nav>
-
-@if (mostrarModalLogout)
+// — Métodos de paginación
+private async Task IrAPagina(int pagina)
 {
-    <div class="bmnav-modal-overlay" @onclick="CerrarModalLogout">
-        <div class="bmnav-modal" @onclick:stopPropagation="true">
-            <p class="bmnav-modal-text">¿Cerrar sesión?</p>
-            <div class="bmnav-modal-actions">
-                <button class="bmnav-modal-btn bmnav-modal-btn--cancel" @onclick="CerrarModalLogout">Cancelar</button>
-                <button class="bmnav-modal-btn bmnav-modal-btn--confirm" @onclick="ConfirmarLogout">Cerrar sesión</button>
-            </div>
-        </div>
-    </div>
+    paginaActual = pagina;
+    await CargarDatos();
 }
 
-@code {
-    private string? ambienteActivo;
-    private bool mostrarModalLogout = false;
-
-    private void AbrirModalLogout() => mostrarModalLogout = true;
-    private void CerrarModalLogout() => mostrarModalLogout = false;
-
-    private async Task ConfirmarLogout()
+private async Task PaginaAnterior()
+{
+    if (paginaActual > 1)
     {
-        mostrarModalLogout = false;
-        await AuthService.LogoutAsync();
-        NavManager.NavigateTo("/login", forceLoad: true);
+        paginaActual--;
+        await CargarDatos();
     }
 }
 
-.bmnav {
-    background: #df0000e8;
-    padding: 0 24px;
-    height: 52px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.bmnav-brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-}
-
-.bmnav-mark {
-    width: 28px;
-    height: 28px;
-    flex-shrink: 0;
-    background: rgba(255,255,255,0.2);
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-weight: 700;
-    font-size: 13px;
-}
-
-.bmnav-title {
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.bmnav-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-}
-
-.bmnav-ambiente {
-    font-size: 10px;
-    background: rgba(255,255,255,0.18);
-    color: #fff;
-    padding: 2px 8px;
-    border-radius: 99px;
-    font-weight: 600;
-}
-
-.bmnav-avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.2);
-    border: 1.5px solid rgba(255,255,255,0.35);
-    color: #fff;
-    font-weight: 700;
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.bmnav-user {
-    color: #fff;
-    font-size: 12px;
-    font-weight: 500;
-    opacity: 0.9;
-    white-space: nowrap;
-}
-
-.bmnav-logout {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(0,0,0,0.18);
-    border: 1px solid rgba(255,255,255,0.30);
-    color: #fff;
-    cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.bmnav-logout:hover {
-    background: rgba(0,0,0,0.35);
-}
-
-@media (max-width: 600px) {
-    .bmnav-title,
-    .bmnav-user,
-    .bmnav-ambiente {
-        display: none;
+private async Task PaginaSiguiente()
+{
+    if (paginaActual < resultado?.TotalPaginas)
+    {
+        paginaActual++;
+        await CargarDatos();
     }
 }
 
-/* Modal */
-.bmnav-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
+private async Task Buscar()
+{
+    paginaActual = 1;
+    await CargarDatos();
 }
 
-.bmnav-modal {
-    background: #fff;
-    border-radius: 12px;
-    padding: 24px;
-    width: 100%;
-    max-width: 320px;
-    text-align: center;
+private async Task Limpiar()
+{
+    filtros = new();
+    paginaActual = 1;
+    await CargarDatos();
 }
 
-.bmnav-modal-text {
-    font-size: 14px;
-    color: #333;
-    margin: 0 0 18px;
-}
-
-.bmnav-modal-actions {
-    display: flex;
-    gap: 10px;
-}
-
-.bmnav-modal-btn {
-    flex: 1;
-    padding: 9px 0;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    border: none;
-    cursor: pointer;
-}
-
-.bmnav-modal-btn--cancel {
-    background: #f1f1f1;
-    color: #333;
-}
-
-.bmnav-modal-btn--confirm {
-    background: #df0000;
-    color: #fff;
+// — Carga principal
+private async Task<bool> CargarDatos()
+{
+    cargando = true;
+    StateHasChanged();
+    try
+    {
+        resultado = await DabuenavidaService.ObtenerDatos(
+            paginaActual, AuthService.Token ?? "", filtros);
+        return true;
+    }
+    catch (UnauthorizedAccessException)
+    {
+        Nav.NavigateTo("/accessdenied");
+        return false;
+    }
+    catch (Exception ex)
+    {
+        errorMessage = ex.Message;
+        return false;
+    }
+    finally
+    {
+        cargando = false;
+        StateHasChanged();
+    }
 }
