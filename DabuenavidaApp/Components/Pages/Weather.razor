@@ -1,548 +1,1368 @@
-﻿/// <summary>
-/// Trae la lista de centros de costo disponibles desde CFP102 (DABUENAVIDA CONTROLLER BACKEND).
-/// </summary>
-[HttpGet("centros-costo")]
-public async Task<IActionResult> ObtenerCentrosCosto()
-{
-    try
-    {
-        string driver = _configManager.GetString("AS400ODBC.driver");
-        string server = _configManager.GetString("AS400ODBC.server");
-        string uid = DecryptBase64(_configManager.GetString("AS400ODBC.user"));
-        string pwd = DecryptBase64(_configManager.GetString("AS400ODBC.password"));
-        string port = _configManager.GetString("AS400ODBC.port");
-        string connectionString = $"Driver={{{driver}}};System={server};Uid={uid};Pwd={pwd};Port={port};";
+-----------------------------------------------------------------------
+LOTES RAZOR
 
-        string sql = @"
-            SELECT TRIM(CFPNCC) AS Codigo, TRIM(CFPNOMBRE) AS Nombre
-            FROM BNKPRD01.CFP102
-            ORDER BY CFPNCC";
+@page "/lotes"
+@layout LotesLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using LotesApp.Models
+@using LotesApp.Services
+@using Microsoft.Extensions.Options
+@using LotesApp.Frontend.Toast
+@using LotesApp.Frontend.Modals
+@using LotesApp.Frontend.Cards
+@using LotesApp.Frontend.Panels
+@using LotesApp.Frontend.Sections
+@inject LoteService LoteService
+@inject IOptions<LotesConfig> Config
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject AuthService AuthService
+@implements IDisposable
 
-        using var db = new OdbcConnection(connectionString);
-        var result = await db.QueryAsync<CentroCostoDto>(sql);
+<PageTitle>Gestión de Lotes - Cronogramas de Pago</PageTitle>
 
-        return Ok(result.ToList());
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Error al obtener centros de costo");
-        return StatusCode(500, new { error = ex.Message });
-    }
-}
+<div class="lotes-page">
+    <LotesApp.Frontend.Navbars.BatchManagementNav />
+    <div class="lotes-content">
 
-------------------------------------------------------------------------------------------------------------------
-DABUENAVIDA FILTERS
-------------------------------------------------------------------------------------------------------------------
-@using ManageAdminDMS_UI.Models
-@using ManageAdminDMS_UI.Services
-@inject DabuenavidaService ServicioDabuenavida
-
-<div class="dab-filters">
-    <div class="dab-filters__header">
-        <span class="dab-filters__title">CRITERIOS DE BÚSQUEDA</span>
-    </div>
-    <div class="dab-filters__body">
-
-        <div class="dab-filters__group">
-            <label class="dab-filters__label">CENTRO DE COSTO</label>
-            <input class="dab-filters__input-search"
-                   @bind="textoCentro"
-                   @bind:event="oninput"
-                   @onfocus="MostrarLista"
-                   @onblur="OcultarLista"
-                   placeholder="Buscar o seleccionar centro de costo..." />
-
-            @if (mostrarLista && centrosFiltrados.Any())
-            {
-                <div class="dab-filters__dropdown">
-                    @foreach (var centro in centrosFiltrados)
-                    {
-                        <div class="dab-filters__dropdown-item"
-                             @onmousedown="() => SeleccionarCentro(centro)">
-                            @centro.Display
-                        </div>
-                    }
-                </div>
-            }
+        <!-- ENCABEZADO -->
+        <div class="lotes-page-header">
+            <h1>Lotes de archivos</h1>
+            @* <p>Generación de cronogramas de pago desde AS400 · API: @Config.Value.ApiBaseUrl</p> *@
         </div>
 
-        <div class="dab-filters__group dab-filters__group--wide">
-            <label class="dab-filters__label">BUSCAR POR DNI O N° DABUENAVIDA</label>
-            <div class="dab-filters__input-wrapper">
-                <span class="dab-filters__input-icon">🔍</span>
-                <input class="dab-filters__input"
-                       @bind="Filtros.TextoBusqueda"
-                       @onkeydown="@(e => { if (e.Key == "Enter") OnBuscar.InvokeAsync(); })"
-                       placeholder="Ingrese DNI del cliente o número de Dabuenavida..." />
-            </div>
-        </div>
+        <!-- PANEL DE ACCIÓN PRINCIPAL -->
+        <AccionesPanel IsLoading="isLoading"
+                       IsRefreshing="isRefreshing"
+                       HayGeneracionEnProgreso="hayGeneracionEnProgreso"
+                       OnRefrescar="RefrescarEstado"
+                       OnGenerar="IniciarGeneracion" />
 
-        <div class="dab-filters__actions">
-            <button class="dab-filters__btn dab-filters__btn--buscar" @onclick="OnBuscar">
-                Buscar
-            </button>
-            <button class="dab-filters__btn dab-filters__btn--limpiar" @onclick="HandleLimpiar">
-                Limpiar
-            </button>
-        </div>
+        <!-- PANEL DE PROGRESO EN VIVO (solo si hay tarea activa) -->
+        @if (loteActual != null)
+        {
+            <ProgresoPanel Lote="loteActual"
+                           HayGeneracionEnProgreso="hayGeneracionEnProgreso"
+                           IsEnviando="isEnviando"
+                           RutaDestino="@Config.Value.RutaDestino"
+                           OnEnviarClick="() => AbrirModalEnvio(loteActual)"
+                           OnDescargarArchivo="DescargarArchivo" />
+        }
+
+        <!-- HISTORIAL DE LOTES (desde /listar) -->
+        <HistorialSection IsLoading="isLoading"
+                           ErrorMessage="errorMessage"
+                           Archivos="archivosHistorial"
+                           OnCardClick="(batch) => Nav.NavigateTo($"/cronogramas/{batch.NombreLote}")"
+                           OnDescargar="DescargarArchivo" />
+
+        <!-- TOAST -->
+        <LoteToast Message="@toastMessage"
+                   Type="@toastType"
+                   OnClose="() => toastMessage = null" />
+
+        <!-- MODAL DE CONFIRMACIÓN DE ENVÍO -->
+        <EnvioLoteModal Lote="loteParaEnviar"
+                         RutaDestinoPlaceholder="@Config.Value.RutaDestino"
+                         @bind-RutaDestinoOverride="rutaDestinoOverride"
+                         IsEnviando="isEnviando"
+                         OnCancel="CancelarEnvio"
+                         OnConfirm="EjecutarEnvio" />
     </div>
 </div>
 
-@code {
-    [Parameter] public FiltrosBusqueda Filtros { get; set; } = new();
-    [Parameter] public EventCallback OnBuscar { get; set; }
-    [Parameter] public EventCallback OnLimpiar { get; set; }
-    [Parameter] public string Token { get; set; } = "";
+-----------------------------------------------------------------------
 
-    private List<CentroCostoDto> centros = new();
-    private List<CentroCostoDto> centrosFiltrados = new();
-    private string textoCentro = "";
-    private bool mostrarLista = false;
+-----------------------------------------------------------------------
+LOTES CS
 
-    protected override async Task OnInitializedAsync()
-    {
-        centros = await ServicioDabuenavida.ObtenerCentrosCostoAsync(Token);
-        centrosFiltrados = centros;
-    }
+using LotesApp.Models;
+using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 
-    private void MostrarLista()
-    {
-        FiltrarCentros();
-        mostrarLista = true;
-    }
+namespace LotesApp.Frontend.Pages.Lotes;
 
-    private void OcultarLista()
-    {
-        // Delay para permitir el click en el item antes de ocultar
-        Task.Delay(200).ContinueWith(_ =>
-        {
-            mostrarLista = false;
-            InvokeAsync(StateHasChanged);
-        });
-    }
-
-    private void FiltrarCentros()
-    {
-        if (string.IsNullOrWhiteSpace(textoCentro))
-        {
-            centrosFiltrados = centros;
-        }
-        else
-        {
-            centrosFiltrados = centros
-                .Where(c => c.Display.Contains(textoCentro, 
-                    StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
-    }
-
-    private void SeleccionarCentro(CentroCostoDto centro)
-    {
-        textoCentro = centro.Display;
-        Filtros.CentroDeCosto = centro.Codigo;
-        mostrarLista = false;
-    }
-
-    private async Task HandleLimpiar()
-    {
-        textoCentro = "";
-        Filtros.TextoBusqueda = "";
-        Filtros.CentroDeCosto = "";
-        await OnLimpiar.InvokeAsync();
-    }
-}
-
--------------------------------------------------------------------------
-CSS
--------------------------------------------------------------------------
-
-.dab-filters__input-search {
-    padding: 0 12px;
-    border: 1px solid #d9d9d9;
-    border-radius: 4px;
-    font-size: 13px;
-    color: #444444;
-    background-color: white;
-    height: 40px;
-    width: 100%;
-    outline: none;
-    transition: border-color 0.2s;
-}
-
-.dab-filters__input-search:focus {
-    border-color: #c0392b;
-    box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.10);
-}
-
-.dab-filters__group {
-    position: relative;  /* ← Necesario para el dropdown absoluto */
-}
-
-.dab-filters__dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: white;
-    border: 1px solid #d9d9d9;
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-    max-height: 200px;
-    overflow-y: auto;
-    z-index: 100;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.10);
-}
-
-.dab-filters__dropdown-item {
-    padding: 9px 12px;
-    font-size: 13px;
-    color: #444444;
-    cursor: pointer;
-    border-bottom: 1px solid #f5f5f5;
-}
-
-.dab-filters__dropdown-item:hover {
-    background-color: #fff0f0;
-    color: #c0392b;
-}
-
-------------------------------------------------------
-SERVICE BACKEND
-------------------------------------------------------
-
-public async Task<List<CentroCostoDto>> ObtenerCentrosCostoAsync(string token)
+public partial class Lotes
 {
-    var client = _httpClientFactory.CreateClient("API");
-    client.DefaultRequestHeaders.Authorization = 
-        new AuthenticationHeaderValue("Bearer", token);
+    // — Estado de la UI -------------------------------------------------
 
-    var response = await client.GetAsync("api/dabuenavida/centros-costo");
+    private LoteModel? loteActual;
+    private List<BatchHistorialItemDto> archivosHistorial = new();
+    private bool isLoading = true;
+    private bool isRefreshing = false;
+    private bool isEnviando = false;
+    private bool hayGeneracionEnProgreso =>
+        loteActual?.Estado == "EnProgreso" || loteActual?.Estado == "Pendiente";
+    private string? errorMessage;
+    private string? ambienteActivo;
 
-    if (!response.IsSuccessStatusCode)
-        return new List<CentroCostoDto>();
+    // Toast
+    private string? toastMessage;
+    private string toastType = "success";
+    private CancellationTokenSource? _toastCts;
 
-    var json = await response.Content.ReadAsStringAsync();
-    return JsonSerializer.Deserialize<List<CentroCostoDto>>(json, 
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-        ?? new List<CentroCostoDto>();
-}
+    // Modal de envío
+    private LoteModel? loteParaEnviar;
+    private string? rutaDestinoOverride;
 
---------------------------------------------------------
-ENDPOINT
--------------------------------------------------------
+    // Timer de polling
+    private Timer? _pollingTimer;
 
-[HttpGet("centros-costo")]
-public async Task<IActionResult> ObtenerCentrosCosto()
-{
-    try
+    // — Inicialización -------------------------------------------------
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        string driver = _configManager.GetString("AS400ODBC.driver");
-        string server = _configManager.GetString("AS400ODBC.server");
-        string uid = DecryptBase64(_configManager.GetString("AS400ODBC.user"));
-        string pwd = DecryptBase64(_configManager.GetString("AS400ODBC.password"));
-        string port = _configManager.GetString("AS400ODBC.port");
-        string connectionString = $"Driver={{{driver}}};System={server};Uid={uid};Pwd={pwd};Port={port};";
+        if (!firstRender) return;
 
-        string sql = @"
-            SELECT 
-                TRIM(CHAR(CFBRCH)) AS Codigo,
-                TRIM(CFBRNM) AS Nombre
-            FROM BNKPRD01.CFP102
-            ORDER BY CFBRCH";
+        await AuthService.LoadTokenAsync();
 
-        using var db = new OdbcConnection(connectionString);
-        var result = await db.QueryAsync<CentroCostoDto>(sql);
-
-        return Ok(result.ToList());
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Error al obtener centros de costo");
-        return StatusCode(500, new { error = ex.Message });
-    }
-}
-
-
-___________________________________________________________
-BATCH CORE - PAGINACIÓN
-___________________________________________________________
-BLOQUE DE PAGINACIÓN
------------------------------------------------------------
-
-<div class="cron-pag-btns">
-    <button class="btn-pag" disabled="@(paginaActual == 1)" @onclick="PaginaAnterior">← Anterior</button>
-
-    @foreach (var item in GetPaginasVisibles())
-    {
-        if (item == -1)
+        if (!AuthService.IsAuthenticated)
         {
-            <span class="btn-pag-dots">...</span>
+            Nav.NavigateTo("/not-permiso");
+            return;
         }
-        else
+
+        LoteService.SetAuthToken(AuthService.Token);
+        await CargarDatosIniciales();
+        StateHasChanged();
+    }
+
+    private async Task CargarDatosIniciales()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
         {
-            var p = item;
-            <button class="btn-pag @(p == paginaActual ? "btn-pag-activo" : "")"
-                    @onclick="() => IrAPagina(p)">
-                @p
-            </button>
+            // Consultar estado actual de la API
+            loteActual = await LoteService.ConsultarEstadoAsync();
+            ambienteActivo = loteActual?.Ambiente;
+
+            // Cargar historial de archivos
+            archivosHistorial = await LoteService.ListarHistorialAsync();
+
+            // Si hay una generación en progreso, iniciar polling
+            if (hayGeneracionEnProgreso)
+                IniciarPolling();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"No se pudo conectar a la API: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
         }
     }
 
-    <button class="btn-pag" disabled="@(paginaActual == totalPaginas)" @onclick="PaginaSiguiente">Siguiente →</button>
-</div>
+    // — Polling de progreso -------------------------------------------------
 
--------------------------------------------------------------
-@code AMBOS ARCHIVOS 
--------------------------------------------------------------
-
-private List<int> GetPaginasVisibles()
-{
-    var paginas = new List<int>();
-    if (totalPaginas <= 7)
+    /// <summary>
+    /// Inicia el polling cada 2 segundos mientras la generación está en progreso.
+    /// Se detiene automáticamente cuando el estado cambia a Completado o Error.
+    /// </summary>
+    private void IniciarPolling()
     {
-        // Si hay 7 páginas o menos, muestra todas
-        for (int i = 1; i <= totalPaginas; i++)
-            paginas.Add(i);
-        return paginas;
-    }
-
-    // Siempre incluir primera página
-    paginas.Add(1);
-
-    // Puntos suspensivos al inicio si la página actual está lejos del inicio
-    if (paginaActual > 3)
-        paginas.Add(-1); // -1 representa "..."
-
-    // Páginas alrededor de la actual
-    int inicio = Math.Max(2, paginaActual - 1);
-    int fin    = Math.Min(totalPaginas - 1, paginaActual + 1);
-
-    for (int i = inicio; i <= fin; i++)
-        paginas.Add(i);
-
-    // Puntos suspensivos al final si la página actual está lejos del final
-    if (paginaActual < totalPaginas - 2)
-        paginas.Add(-1);
-
-    // Siempre incluir última página
-    paginas.Add(totalPaginas);
-
-    return paginas;
-}
-
---------------------------------------------------
-CSS
---------------------------------------------------
-
-.btn-pag-dots {
-    padding: 6px 8px;
-    font-size: 12px;
-    color: #aaa;
-    user-select: none;
-}
-
---------------------
-NUEVO RAZOR FILTERS
---------------------
-@using ManageAdminDMS_UI.Models
-@using ManageAdminDMS_UI.Services
-@inject DabuenavidaService ServicioDabuenavida
-
-<div class="dab-filters">
-    <div class="dab-filters__header">
-        <span class="dab-filters__title">CRITERIOS DE BÚSQUEDA</span>
-    </div>
-    <div class="dab-filters__body">
-
-        @* CENTRO DE COSTO *@
-        <div class="dab-filters__group">
-            <label class="dab-filters__label">CENTRO DE COSTO</label>
-            <div class="dab-filters__input-wrapper @(_errorCentro != "" ? "dab-filters__input-wrapper--error" : "")">
-                <input class="dab-filters__input"
-                       value="@_textoCentro"
-                       @oninput="OnCentroDeCostoInput"
-                       @onfocus="MostrarLista"
-                       @onblur="OcultarLista"
-                       placeholder="Buscar o seleccionar centro de costo..." />
-            </div>
-
-            @* Dropdown *@
-            @if (_mostrarLista && _centrosFiltrados.Any())
+        _pollingTimer?.Dispose();
+        _pollingTimer = new Timer(async _ =>
+        {
+            try
             {
-                <div class="dab-filters__dropdown">
-                    @foreach (var centro in _centrosFiltrados)
-                    {
-                        <div class="dab-filters__dropdown-item"
-                             @onmousedown="() => SeleccionarCentro(centro)">
-                            @centro.Display
-                        </div>
-                    }
-                </div>
-            }
-
-            @* Feedback *@
-            <div class="dab-filters__feedback-wrapper">
-                @if (_errorCentro != "")
+                var nuevoEstado = await LoteService.ConsultarEstadoAsync();
+                await InvokeAsync(() =>
                 {
-                    <span class="dab-filters__error">
-                        <span class="dab-filters__error-icon">⚠</span>
-                        @_errorCentro
-                    </span>
+                    loteActual = nuevoEstado;
+                    if (nuevoEstado != null)
+                        ambienteActivo = nuevoEstado.Ambiente;
+                    StateHasChanged();
+                });
+
+                // Detener polling si terminó
+                if (nuevoEstado?.Estado is "Completado" or "Error")
+                {
+                    _pollingTimer?.Dispose();
+
+                    // Recargar historial de archivos
+                    var archivos = await LoteService.ListarHistorialAsync();
+                    await InvokeAsync(() =>
+                    {
+                        archivosHistorial = archivos;
+                        StateHasChanged();
+                    });
+
+                    if (nuevoEstado.Estado == "Completado")
+                        await InvokeAsync(() => MostrarToast(
+                            $"Generación completada: {nuevoEstado.OrdenesCompletadas:N0} cronogramas en {nuevoEstado.ArchivosGenerados.Count} archivo(s).",
+                            "success"));
+                    else
+                        await InvokeAsync(() => MostrarToast("La generación terminó con errores.", "danger"));
                 }
-            </div>
-        </div>
-
-        @* BUSCAR POR DNI O N° DABUENAVIDA *@
-        <div class="dab-filters__group dab-filters__group--wide">
-            <label class="dab-filters__label">BUSCAR POR DNI O N° DABUENAVIDA</label>
-            <div class="dab-filters__input-wrapper">
-                <span class="dab-filters__input-icon">🔍</span>
-                <input class="dab-filters__input"
-                       value="@Filtros.TextoBusqueda"
-                       @oninput="OnTextoBusquedaInput"
-                       placeholder="Ingrese DNI (10 dígitos) o N° Dabuenavida (13 dígitos)..." />
-            </div>
-        </div>
-
-        @* BOTONES *@
-        <div class="dab-filters__actions">
-            <button class="dab-filters__btn dab-filters__btn--buscar" @onclick="OnBuscar">
-                Buscar
-            </button>
-            <button class="dab-filters__btn dab-filters__btn--limpiar" @onclick="HandleLimpiar">
-                Limpiar
-            </button>
-        </div>
-    </div>
-</div>
-
-@code {
-    [Parameter] public FiltrosBusqueda Filtros { get; set; } = new();
-    [Parameter] public EventCallback OnBuscar { get; set; }
-    [Parameter] public EventCallback OnLimpiar { get; set; }
-    [Parameter] public string Token { get; set; } = "";
-
-    private List<CentroCostoDto> _centros = new();
-    private List<CentroCostoDto> _centrosFiltrados = new();
-    private string _textoCentro = "";
-    private string _errorCentro = "";
-    private bool _mostrarLista = false;
-
-    protected override async Task OnInitializedAsync()
-    {
-        _centros = await ServicioDabuenavida.ObtenerCentrosCostoAsync(Token);
-        _centrosFiltrados = _centros;
+            }
+            catch
+            {
+                // Ignorar errores transitorios de red durante el polling
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
     }
 
-    private void OnCentroDeCostoInput(ChangeEventArgs e)
+    // — Acciones del usuario -------------------------------------------------
+
+    /// <summary>Inicia una nueva generación de cronogramas.</summary>
+    private async Task IniciarGeneracion()
     {
-        _textoCentro = e.Value?.ToString() ?? "";
-
-        // Filtrar lista en tiempo real
-        _centrosFiltrados = string.IsNullOrWhiteSpace(_textoCentro)
-            ? _centros
-            : _centros.Where(c => c.Display.Contains(_textoCentro,
-                StringComparison.OrdinalIgnoreCase)).ToList();
-
-        // Limpiar selección si el usuario edita manualmente
-        Filtros.CentroDeCosto = "";
-        _errorCentro = "";
-        _mostrarLista = true;
-    }
-
-    private void SeleccionarCentro(CentroCostoDto centro)
-    {
-        _textoCentro = centro.Display;
-        Filtros.CentroDeCosto = centro.Codigo;
-        _errorCentro = "";
-        _mostrarLista = false;
-    }
-
-    private void MostrarLista()
-    {
-        _centrosFiltrados = string.IsNullOrWhiteSpace(_textoCentro)
-            ? _centros
-            : _centros.Where(c => c.Display.Contains(_textoCentro,
-                StringComparison.OrdinalIgnoreCase)).ToList();
-        _mostrarLista = true;
-    }
-
-    private void OcultarLista()
-    {
-        Task.Delay(200).ContinueWith(_ =>
+        try
         {
-            _mostrarLista = false;
-            InvokeAsync(StateHasChanged);
+            var response = await LoteService.IniciarGeneracionAsync();
+            if (response == null) return;
+
+            MostrarToast($"Generación iniciada. ID: {response.TareaId}", "info");
+
+            // Actualizar estado inmediatamente y comenzar polling
+            await Task.Delay(500);
+            loteActual = await LoteService.ConsultarEstadoAsync();
+            IniciarPolling();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            MostrarToast($"Error al iniciar: {ex.Message}", "danger");
+        }
+    }
+
+    /// <summary>Refresca manualmente el estado y el historial.</summary>
+    private async Task RefrescarEstado()
+    {
+        isRefreshing = true;
+        try
+        {
+            loteActual = await LoteService.ConsultarEstadoAsync();
+            archivosHistorial = await LoteService.ListarHistorialAsync();
+            if (hayGeneracionEnProgreso) IniciarPolling();
+        }
+        catch (Exception ex)
+        {
+            MostrarToast($"Error al actualizar: {ex.Message}", "danger");
+        }
+        finally
+        {
+            isRefreshing = false;
+        }
+    }
+
+    /// <summary>Descarga un archivo XML vía stream, enviando el token de autenticación.</summary>
+    private async Task DescargarArchivo(string nombreArchivo)
+    {
+        var stream = await LoteService.DescargarArchivoStreamAsync(nombreArchivo);
+        if (stream is null)
+        {
+            MostrarToast($"Error al descargar el archivo: {nombreArchivo}", "danger");
+            return;
+        }
+
+        using var streamRef = new DotNetStreamReference(stream: stream, leaveOpen: false);
+        await JS.InvokeVoidAsync("descargarArchivoStream", nombreArchivo, streamRef);
+    }
+
+    // — Flujo de envío (usado por EnvioLoteModal) -------------------------------------------------
+
+    private void AbrirModalEnvio(LoteModel lote)
+    {
+        loteParaEnviar = lote;
+        rutaDestinoOverride = null; // Limpiar campo
+    }
+
+    private void CancelarEnvio() => loteParaEnviar = null;
+
+    private async Task EjecutarEnvio()
+    {
+        if (loteParaEnviar == null) return;
+        isEnviando = true;
+        var loteId = loteParaEnviar.TareaId;
+        loteParaEnviar = null; // Cerrar modal
+
+        try
+        {
+            var response = await LoteService.EnviarLoteAsync(loteId, rutaDestinoOverride);
+            if (response == null) return;
+
+            if (response.Exitoso)
+            {
+                var msg = $"✓ {response.ArchivosCopiados.Count} archivo(s) enviados a '{response.RutaDestino}'.";
+                if (response.ArchivosFallidos.Count > 0)
+                    msg += $" ({response.ArchivosFallidos.Count} fallidos)";
+                MostrarToast(msg, "success");
+            }
+            else
+            {
+                MostrarToast($"Error al enviar: {response.Mensaje}", "danger");
+            }
+        }
+        catch (Exception ex)
+        {
+            MostrarToast($"Error al enviar: {ex.Message}", "danger");
+        }
+        finally
+        {
+            isEnviando = false;
+        }
+    }
+
+    // — Toast (usado por LoteToast) -------------------------------------------------
+
+    private void MostrarToast(string mensaje, string tipo)
+    {
+        _toastCts?.Cancel();
+        _toastCts = new CancellationTokenSource();
+
+        toastMessage = mensaje;
+        toastType = tipo;
+        StateHasChanged();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(5000, _toastCts.Token);
+                await InvokeAsync(() =>
+                {
+                    toastMessage = null;
+                    StateHasChanged();
+                });
+            }
+            catch (TaskCanceledException) { /* Se canceló porque llegó otro toast */ }
         });
     }
 
-    private void OnTextoBusquedaInput(ChangeEventArgs e)
-    {
-        Filtros.TextoBusqueda = e.Value?.ToString() ?? "";
-    }
+    // — Cleanup -------------------------------------------------
 
-    private async Task HandleLimpiar()
+    public void Dispose()
     {
-        _textoCentro = "";
-        _errorCentro = "";
-        Filtros.CentroDeCosto = "";
-        Filtros.TextoBusqueda = "";
-        await OnLimpiar.InvokeAsync();
+        _pollingTimer?.Dispose();
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
     }
 }
 
----------------
-CSS
----------------
-.dab-filters__group {
-    position: relative;
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+LOTES CSS
+
+/* — Reset y base ------------------------------------------------- */
+.lotes-page * { box-sizing: border-box; }
+.lotes-page {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f5f5f5;
+    min-height: 100vh;
 }
 
-.dab-filters__dropdown {
-    position: absolute;
-    top: calc(100% - 20px);
-    left: 0;
-    right: 0;
-    background: white;
-    border: 1px solid #d9d9d9;
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-    max-height: 200px;
-    overflow-y: auto;
-    z-index: 100;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.10);
+/* — Contenido ------------------------------------------------- */
+.lotes-content { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+.lotes-page-header { margin-bottom: 1.75rem; }
+.lotes-page-header h1 {
+    font-size: 20px; font-weight: 600;
+    color: #1a1a1a; margin: 0 0 4px;
+}
+.lotes-page-header p { font-size: 13px; color: #888; margin: 0; }
+
+-----------------------------------------------------------------------
+
+
+-----------------------------------------------------------------------
+LOTECARD RAZOR
+
+@namespace LotesApp.Frontend.Cards
+@using LotesApp.Models
+
+<div class="lot-card" @onclick="HandleClick">
+
+    <!-- Nombre / ID -->
+    <div>
+        <div class="field-label">Lote</div>
+        <div class="lot-id">@(Batch.NombreLote ?? Batch.TareaId)</div>
+        <div class="lot-ambiente">@Batch.Ambiente</div>
+    </div>
+
+    <!-- Fecha -->
+    <div>
+        <div class="field-label">Fecha creación</div>
+        <div class="field-value">@Batch.CreatedAt.ToString("dd/MM/yyyy")</div>
+        <div class="lot-time">@Batch.CreatedAt.ToString("HH:mm")</div>
+    </div>
+
+    <!-- Tamaño / Progreso -->
+    <div>
+        <div class="field-label">Registros</div>
+        <div class="field-value">
+            @Batch.RegistrosProcesados.ToString("N0")
+            <span class="lot-total-registros">de @Batch.TotalRegistros.ToString("N0")</span>
+        </div>
+        <div class="lot-archivos-count">@Batch.LotesArchivosGenerados archivos XML</div>
+    </div>
+
+    <!-- Estado badge -->
+    <div>
+        @if (Batch.Estado == "Completado")
+        {
+            <span class="lot-badge badge-ready">
+                <span class="lot-badge-dot"></span> Completado
+            </span>
+        }
+        else if (Batch.Estado == "Enviado")
+        {
+            <span class="lot-badge badge-sent">
+                <span class="lot-badge-dot"></span> Enviado
+            </span>
+        }
+        else if (Batch.Estado == "Error")
+        {
+            <span class="lot-badge badge-error">
+                <span class="lot-badge-dot"></span> Error
+            </span>
+        }
+        else if (Batch.Estado == "EnProgreso" || Batch.Estado == "Pendiente")
+        {
+            <span class="lot-badge badge-running">
+                <span class="lot-badge-dot"></span> En Progreso
+            </span>
+        }
+    </div>
+
+    <!-- Acciones -->
+    <div class="card-actions">
+        @if (Batch.ArchivosGenerados.Count > 0)
+        {
+            <button class="btn-descargar"
+                    @onclick="HandleDescargar"
+                    @onclick:stopPropagation="true"
+                    title="Descargar primer archivo XML del lote">
+                ↓ Descargar
+            </button>
+        }
+    </div>
+</div>
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+LOTECARD CS
+
+using Microsoft.AspNetCore.Components;
+using LotesApp.Models;
+
+namespace LotesApp.Frontend.Cards;
+
+/// <summary>
+/// Card individual del historial de lotes generados.
+/// Es un componente de presentación: no navega ni descarga directamente,
+/// delega ambas acciones al padre mediante EventCallbacks para mantener
+/// la lógica de servicios (LoteService, navegación) centralizada.
+/// </summary>
+public partial class LoteCard
+{
+    /// <summary>Datos del lote a mostrar.</summary>
+    [Parameter, EditorRequired] public BatchHistorialItemDto Batch { get; set; } = default!;
+
+    /// <summary>Se dispara al hacer click en cualquier parte de la card (fuera del botón descargar).</summary>
+    [Parameter] public EventCallback OnCardClick { get; set; }
+
+    /// <summary>Se dispara al hacer click en "Descargar", con el nombre del archivo a descargar.</summary>
+    [Parameter] public EventCallback<string> OnDescargar { get; set; }
+
+    private async Task HandleClick() => await OnCardClick.InvokeAsync();
+
+    private async Task HandleDescargar()
+    {
+        var archivo = Batch.ArchivosGenerados.First();
+        await OnDescargar.InvokeAsync(archivo);
+    }
 }
 
-.dab-filters__dropdown-item {
-    padding: 9px 12px;
-    font-size: 13px;
-    color: #444444;
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+LOTECARD CSS
+
+/* — Card de lote ------------------------------------------------- */
+.lot-card {
+    background: #fff; border: 0.5px solid #e0e0e0;
+    border-radius: 10px; padding: 1.1rem 1.4rem;
+    display: grid;
+    grid-template-columns: 160px 130px 1fr 130px auto;
+    align-items: center; gap: 3.25rem;
+    transition: border-color 0.15s ease;
     cursor: pointer;
-    border-bottom: 1px solid #f5f5f5;
 }
 
-.dab-filters__dropdown-item:hover {
-    background-color: #fff0f0;
-    color: #c0392b;
+.lot-card:hover { border-color: #C8102E; }
+
+.field-label { font-size: 12px; color: #aaa; margin-bottom: 3px; }
+.field-value { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+
+.lot-id {
+    font-size: 14px; color: #C8102E; margin-top: 2px;
+    font-family: 'Courier New', monospace; letter-spacing: 0.02em;
 }
 
-.dab-filters__input-wrapper--error {
-    border-color: #c0392b;
+.lot-ambiente {
+    font-size: 10px; color: #888; margin-top: 2px;
 }
 
-.dab-filters__feedback-wrapper {
-    min-height: 18px;
-    margin-top: 4px;
-}
+.lot-time { font-size: 11px; color: #aaa; }
 
-.dab-filters__error {
-    font-size: 11px;
-    color: #c0392b;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
+.lot-total-registros { font-size: 11px; font-weight: normal; color: #aaa; }
 
-.dab-filters__error-icon {
+.lot-archivos-count { font-size: 11px; color: #aaa; margin-top: 2px; }
+
+/* — Acciones en card ------------------------------------------------- */
+.card-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+
+.btn-descargar {
+    background: #fff;
+    color: #bf0303;
+    border: 0.5px solid #bf0303;
+    border-radius: 6px;
+    padding: 6px 14px;
     font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
 }
+
+.btn-descargar:hover {
+    background: #bf0303;
+    color: #fff;
+}
+
+/* — Badges de estado ------------------------------------------------- */
+.lot-badge {
+    display: inline-flex; align-items: center;
+    font-size: 12px; font-weight: 500; gap: 5px;
+    border-radius: 99px; padding: 4px 11px;
+    white-space: nowrap;
+}
+
+.lot-badge-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+.badge-pending { background: #fff7ed; color: #92400e; border: 0.5px solid #fed7aa; }
+.badge-pending .lot-badge-dot { background: #f59e0b; }
+
+.badge-running { background: #eff6ff; color: #1d4ed8; border: 0.5px solid #bfdbfe; }
+.badge-running .lot-badge-dot { background: #3b82f6; animation: pulse-dot 1s ease-in-out infinite; }
+
+.badge-ready { background: #f0fdf4; color: #166534; border: 0.5px solid #bbf7d0; }
+.badge-ready .lot-badge-dot { background: #22c55e; }
+
+.badge-sent { background: #f5f3ff; color: #5b21b6; border: 0.5px solid #ddd6fe; }
+.badge-sent .lot-badge-dot { background: #7c3aed; }
+
+.badge-error { background: #fff5f5; color: #991b1b; border: 0.5px solid #fecaca; }
+.badge-error .lot-badge-dot { background: #ef4444; }
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+-----------------------------------------------------------------------
+
+
+-----------------------------------------------------------------------
+LIST RAZOR
+
+@namespace LotesApp.Frontend.Lists
+
+@if (Archivos.Count > 0)
+{
+    <div class="archivos-lista" style="margin-top: 12px;">
+        <div class="archivos-lista-title">Archivos generados (@Archivos.Count)</div>
+        @foreach (var archivo in Archivos)
+        {
+            <div class="archivo-item">
+                <span class="archivo-nombre">📄 @archivo</span>
+                <button class="btn-descargar"
+                        @onclick="() => HandleDescargar(archivo)">
+                    ↓ Descargar
+                </button>
+            </div>
+        }
+    </div>
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+LIST CS
+
+using Microsoft.AspNetCore.Components;
+
+namespace LotesApp.Frontend.Lists;
+
+/// <summary>
+/// Lista de archivos XML generados para un lote, cada uno con su botón de descarga.
+/// Es un componente de presentación: no descarga directamente, delega la acción
+/// al padre mediante un EventCallback con el nombre del archivo.
+/// </summary>
+public partial class ArchivosGeneradosList
+{
+    /// <summary>Nombres de los archivos generados a listar.</summary>
+    [Parameter, EditorRequired] public List<string> Archivos { get; set; } = new();
+
+    /// <summary>Se dispara al hacer click en "Descargar", con el nombre del archivo a descargar.</summary>
+    [Parameter] public EventCallback<string> OnDescargar { get; set; }
+
+    private async Task HandleDescargar(string archivo) => await OnDescargar.InvokeAsync(archivo);
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+LIST CSS
+
+/* — Lista de archivos generados durante la generación en curso ---- */
+.archivos-lista {
+    background: #f9f9f9; border-radius: 8px;
+    padding: 0.75rem 1rem; margin-top: 12px;
+    font-size: 12px; color: #555;
+}
+
+.archivos-lista-title {
+    font-size: 11px; font-weight: 600; color: #888;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin-bottom: 6px;
+}
+
+.archivo-item {
+    display: flex; align-items: center;
+    justify-content: space-between; padding: 3px 0;
+    border-bottom: 0.5px solid #eee;
+}
+.archivo-item:last-child { border-bottom: none; }
+.archivo-nombre {
+    font-family: 'Courier New', monospace;
+    font-size: 11px; color: #333;
+}
+
+.btn-descargar {
+    background: #fff;
+    color: #bf0303;
+    border: 0.5px solid #bf0303;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-descargar:hover {
+    background: #bf0303;
+    color: #fff;
+}
+
+-----------------------------------------------------------------------
+
+
+-----------------------------------------------------------------------
+MODALS RAZOR
+
+@namespace LotesApp.Frontend.Modals
+@using LotesApp.Models
+
+@if (Lote is not null)
+{
+    <div class="lotes-modal-backdrop">
+        <div class="lotes-modal">
+            <div class="lotes-modal-header">
+                <h2 class="lotes-modal-title">Confirmar envío a destino</h2>
+                <button class="lotes-modal-close" @onclick="HandleCancel">x</button>
+            </div>
+            <div class="lotes-modal-body">
+                <p>
+                    ¿Deseas copiar los archivos del lote
+                    <strong class="lot-id-modal">@Lote.Id</strong>
+                    a la carpeta destino?
+                </p>
+
+                <div class="lotes-modal-meta">
+                    <span>📁 Archivos: <strong>@Lote.ArchivosGenerados.Count archivo(s)</strong></span>
+                    <span>📄 Generado: <strong>@Lote.Creado.ToString("dd/MM/yyyy HH:mm")</strong></span>
+                    <span>💻 Ambiente: <strong>@Lote.Ambiente</strong></span>
+                </div>
+
+                <!-- Ruta destino override opcional -->
+                <div class="modal-input-group">
+                    <label class="modal-input-label">Carpeta destino</label>
+                    <input class="modal-input"
+                           value="@RutaDestinoOverride"
+                           @oninput="HandleRutaChanged"
+                           placeholder="@RutaDestinoPlaceholder" />
+                    <p class="modal-input-hint">
+                        Déjalo vacío para usar la ruta configurada en el servidor.
+                        Admite rutas locales y de red (\\servidor\carpeta).
+                    </p>
+                </div>
+
+                <div class="lotes-modal-warning">
+                    ⚠ Los archivos se copiarán desde el servidor a la carpeta destino.
+                    El proceso es irreversible pero no elimina los archivos de origen.
+                </div>
+            </div>
+            <div class="lotes-modal-footer">
+                <button class="btn-modal-cancel" @onclick="HandleCancel">Cancelar</button>
+                <button class="btn-modal-confirm" @onclick="HandleConfirm" disabled="@IsEnviando">
+                    @(IsEnviando ? "Enviando..." : "↑ Confirmar envío")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+MODALS CS
+
+using Microsoft.AspNetCore.Components;
+using LotesApp.Models;
+
+namespace LotesApp.Frontend.Modals;
+
+/// <summary>
+/// Modal de confirmación para enviar (copiar) los archivos de un lote a la carpeta destino.
+/// Es un componente de presentación: no llama al servicio directamente, delega
+/// la acción de confirmar/cancelar al padre mediante EventCallbacks.
+/// </summary>
+public partial class EnvioLoteModal
+{
+    /// <summary>Lote a enviar. Si es null, el modal no se muestra.</summary>
+    [Parameter] public LoteModel? Lote { get; set; }
+
+    /// <summary>Ruta destino configurada por defecto (se muestra como placeholder).</summary>
+    [Parameter] public string? RutaDestinoPlaceholder { get; set; }
+
+    /// <summary>Ruta destino override escrita por el usuario (soporta @bind-RutaDestinoOverride).</summary>
+    [Parameter] public string? RutaDestinoOverride { get; set; }
+    [Parameter] public EventCallback<string?> RutaDestinoOverrideChanged { get; set; }
+
+    /// <summary>Indica si el envío está en curso (deshabilita el botón de confirmar).</summary>
+    [Parameter] public bool IsEnviando { get; set; }
+
+    /// <summary>Se dispara al cancelar / cerrar el modal.</summary>
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    /// <summary>Se dispara al confirmar el envío.</summary>
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private async Task HandleRutaChanged(ChangeEventArgs e)
+    {
+        RutaDestinoOverride = e.Value?.ToString();
+        await RutaDestinoOverrideChanged.InvokeAsync(RutaDestinoOverride);
+    }
+
+    private async Task HandleCancel() => await OnCancel.InvokeAsync();
+
+    private async Task HandleConfirm() => await OnConfirm.InvokeAsync();
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+MODALS CSS
+
+/* — Modal ------------------------------------------------- */
+.lotes-modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex; align-items: center;
+    justify-content: center; z-index: 900;
+}
+
+.lotes-modal {
+    background: #fff; border-radius: 12px;
+    width: 100%; max-width: 480px;
+    padding: 1.75rem; margin: 1rem;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.lotes-modal-header {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; margin-bottom: 1.25rem;
+}
+
+.lotes-modal-title { font-size: 16px; font-weight: 600; color: #1a1a1a; margin: 0; }
+
+.lotes-modal-close {
+    background: none; border: none; font-size: 25px;
+    color: #aaa; cursor: pointer; line-height: 1; padding: 0;
+}
+
+.lotes-modal-close:hover {
+    color: #df0000e8;
+}
+
+.lotes-modal-body { font-size: 14px; color: #444; }
+
+.lotes-modal-meta {
+    background: #f9f9f9; border-radius: 6px;
+    padding: 0.75rem 1rem; margin: 1rem 0;
+    font-size: 13px; color: #555;
+    display: flex; flex-direction: column; gap: 6px;
+}
+
+.lot-id-modal {
+    color: #df0000e8;
+}
+
+.modal-input-group { margin-top: 1rem; }
+.modal-input-label { font-size: 12px; color: #888; margin-bottom: 4px; display: block; }
+
+.modal-input {
+    width: 100%; padding: 8px 12px; border: 0.5px solid #e0e0e0;
+    border-radius: 6px; font-size: 13px; color: #333;
+    outline: none; transition: border-color 0.15s;
+}
+
+.modal-input:focus { border-color: #C8102E; }
+.modal-input-hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+
+.lotes-modal-warning {
+    background: #fffbeb; border: 0.5px solid #fde68a;
+    border-radius: 6px; padding: 0.65rem 1rem;
+    font-size: 12px; color: #92400e; margin-top: 0.75rem;
+}
+
+.lotes-modal-footer {
+    display: flex; justify-content: flex-end;
+    gap: 8px; margin-top: 1.5rem;
+}
+
+.btn-modal-cancel {
+    background: #fff; border: 0.5px solid #e0e0e0;
+    border-radius: 6px; padding: 8px 20px;
+    font-size: 13px; cursor: pointer; color: #444;
+}
+
+.btn-modal-cancel:hover {
+    background: #dfdfdf;
+    color: #000000;
+    border-color: #ccc;
+}
+
+.btn-modal-confirm {
+    background: #df0000e8;
+    color: #fff;
+    border: none;
+    border-radius: 6px; padding: 8px 20px;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+}
+
+.btn-modal-confirm:hover {
+    background: #bf0303;
+}
+
+.btn-modal-confirm:disabled {
+    opacity: 0.5; cursor: not-allowed;
+}
+
+-----------------------------------------------------------------------
+
+
+-----------------------------------------------------------------------
+ACCIONES PANEL RAZOR
+
+@namespace LotesApp.Frontend.Panels
+
+<div class="action-panel">
+    <div class="action-info">
+        <h2>Generar cronogramas de pago</h2>
+        <p>Conecta al AS400 y genera los archivos XML con los cronogramas. La generación corre en segundo plano.</p>
+    </div>
+    <div class="action-buttons">
+
+        <button class="btn btn-secondary" @onclick="HandleRefrescar" disabled="@IsRefreshing">
+            @if (IsRefreshing) { <span>↻</span> } else { <span>↻</span> }
+            Actualizar
+        </button>
+        <button class="btn btn-primary"
+                @onclick="HandleGenerar"
+                disabled="@(HayGeneracionEnProgreso || IsLoading)">
+            @if (HayGeneracionEnProgreso)
+            {
+                <span class="lotes-spinner" style="width:14px;height:14px;border-width:2px;margin:0;"></span>
+                <span>Generando...</span>
+            }
+            else
+            {
+                <span>▶ Generar cronogramas</span>
+            }
+        </button>
+    </div>
+</div>
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+ACCIONES PANEL CS
+
+using Microsoft.AspNetCore.Components;
+
+namespace LotesApp.Frontend.Panels;
+
+/// <summary>
+/// Panel de acción principal de la página de Lotes: contiene el botón para
+/// refrescar el estado y el botón para iniciar una nueva generación de cronogramas.
+/// Es un componente de presentación: no llama a servicios directamente, delega
+/// ambas acciones al padre mediante EventCallbacks.
+/// </summary>
+public partial class AccionesPanel
+{
+    /// <summary>Indica si se está cargando el estado/historial inicial (deshabilita "Generar").</summary>
+    [Parameter] public bool IsLoading { get; set; }
+
+    /// <summary>Indica si hay un refresco manual en curso (deshabilita "Actualizar").</summary>
+    [Parameter] public bool IsRefreshing { get; set; }
+
+    /// <summary>Indica si hay una generación en progreso (deshabilita "Generar" y muestra spinner).</summary>
+    [Parameter] public bool HayGeneracionEnProgreso { get; set; }
+
+    /// <summary>Se dispara al hacer click en "Actualizar".</summary>
+    [Parameter] public EventCallback OnRefrescar { get; set; }
+
+    /// <summary>Se dispara al hacer click en "Generar cronogramas".</summary>
+    [Parameter] public EventCallback OnGenerar { get; set; }
+
+    private async Task HandleRefrescar() => await OnRefrescar.InvokeAsync();
+
+    private async Task HandleGenerar() => await OnGenerar.InvokeAsync();
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+ ACCIONES PANEL CSS
+
+/* — Panel de acciones ------------------------------------------------- */
+.action-panel {
+    background: #fff; border: 0.5px solid #e0e0e0;
+    border-radius: 12px; padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    display: flex; align-items: center;
+    justify-content: space-between; gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.action-info h2 {
+    font-size: 14px; font-weight: 600; color: #1a1a1a; margin: 0 0 4px;
+}
+
+.action-info p { font-size: 13px; color: #888; margin: 0 0 4px; }
+.action-buttons { display: flex; gap: 8px; margin: 0; flex-shrink: 0; }
+
+/* — Botones ------------------------------------------------- */
+.btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: none; border-radius: 7px; padding: 9px 18px;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: all 0.15s ease; white-space: nowrap;
+}
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary {
+    background: #df0000e8;
+    color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #bf0303;
+}
+
+.btn-secondary {
+    background: #fff; color: #444;
+    border: 0.5px solid #e0e0e0;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: #dfdfdf;
+    border-color: #ccc;
+    color: #000000;
+}
+
+/* — Spinner pequeño para el botón "Generando..." ------------------------------------------------- */
+.lotes-spinner {
+    width: 30px; height: 30px;
+    border: 3px solid #f0f0f0; border-top-color: #C8102E;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+-----------------------------------------------------------------------
+
+
+-----------------------------------------------------------------------
+PROGRESO PANEL RAZOR
+
+@namespace LotesApp.Frontend.Panels
+@using LotesApp.Models
+@using LotesApp.Frontend.Lists
+
+<div class="progress-panel">
+    <div class="progress-panel-header">
+        <div>
+            <div class="progress-title">
+                @if (Lote.Estado == "EnProgreso" || Lote.Estado == "Pendiente")
+                { <span>⚙ Generación en progreso</span> }
+                else if (Lote.Estado == "Completado")
+                { <span>✓ Generación completada</span> }
+                else if (Lote.Estado == "Error")
+                { <span>✗ Error en la generación</span> }
+                else
+                { <span>@Lote.Estado</span> }
+            </div>
+            <div class="progress-tarea-id">ID: @Lote.TareaId</div>
+            @if (!string.IsNullOrEmpty(Lote.UsuarioGenerando) && HayGeneracionEnProgreso)
+            {
+                <div style="font-size: 12px; color: #92400e; margin-top: 4px;
+                    border: 0.5px solid #fed7aa; border-radius: 6px;
+                    padding: 4px 10px; display: inline-block; background: #fff7ed;">
+                    👤 Generando por: <strong>@Lote.UsuarioGenerando</strong>
+                </div>
+            }
+        </div>
+        <div class="progress-pct">@Lote.PorcentajeProgreso%</div>
+    </div>
+
+    <div class="progress-track">
+        <div class="progress-fill @(Lote.Estado == "Completado" ? "complete" : Lote.Estado == "Error" ? "error-fill" : "")"
+             style="width: @Lote.PorcentajeProgreso%">
+        </div>
+    </div>
+
+    <div class="progress-meta">
+        <span>@Lote.MensajeProgreso</span>
+        <span>@Lote.DocumentosPendientes</span>
+    </div>
+
+    @if (Lote.Estado == "Error" && Lote.Error != null)
+    {
+        <div class="progress-error-msg">⚠ @Lote.Error</div>
+    }
+
+    <!-- Botón de envío: solo disponible cuando está Completado -->
+    @if (Lote.Estado == "Completado" && Lote.ArchivosGenerados.Count > 0)
+    {
+        <div style="margin-top: 1rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button class="btn btn-success"
+                    @onclick="HandleEnviarClick"
+                    disabled="@IsEnviando">
+                @if (IsEnviando)
+                { <span>Enviando...</span> }
+                else
+                { <span>↑ Enviar a destino (@Lote.ArchivosGenerados.Count archivo(s))</span> }
+            </button>
+            <span style="font-size: 12px; color: #888;">
+                Destino: <code style="font-size:11px;">@RutaDestino</code>
+            </span>
+        </div>
+    }
+
+    <!-- Lista de archivos generados -->
+    <ArchivosGeneradosList Archivos="Lote.ArchivosGenerados" OnDescargar="HandleDescargarArchivo" />
+</div>
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+PROGRESO PANEL CS
+
+using Microsoft.AspNetCore.Components;
+using LotesApp.Models;
+
+namespace LotesApp.Frontend.Panels;
+
+/// <summary>
+/// Panel de progreso en vivo de la generación de cronogramas: muestra el estado,
+/// el porcentaje de avance, mensajes/errores y la lista de archivos generados.
+/// Es un componente de presentación: no llama a servicios directamente, delega
+/// el envío y la descarga de archivos al padre mediante EventCallbacks.
+/// </summary>
+public partial class ProgresoPanel
+{
+    /// <summary>Estado actual del lote en generación.</summary>
+    [Parameter, EditorRequired] public LoteModel Lote { get; set; } = default!;
+
+    /// <summary>Indica si hay una generación en progreso (controla el badge de "Generando por").</summary>
+    [Parameter] public bool HayGeneracionEnProgreso { get; set; }
+
+    /// <summary>Indica si el envío a la carpeta destino está en curso (deshabilita el botón "Enviar").</summary>
+    [Parameter] public bool IsEnviando { get; set; }
+
+    /// <summary>Ruta destino configurada, mostrada como referencia junto al botón de envío.</summary>
+    [Parameter] public string? RutaDestino { get; set; }
+
+    /// <summary>Se dispara al hacer click en "Enviar a destino".</summary>
+    [Parameter] public EventCallback OnEnviarClick { get; set; }
+
+    /// <summary>Se dispara al hacer click en "Descargar" de un archivo generado.</summary>
+    [Parameter] public EventCallback<string> OnDescargarArchivo { get; set; }
+
+    private async Task HandleEnviarClick() => await OnEnviarClick.InvokeAsync();
+
+    private async Task HandleDescargarArchivo(string archivo) => await OnDescargarArchivo.InvokeAsync(archivo);
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+ PROGRESO PANEL CSS
+
+/* — Panel de progreso en vivo ------------------------------------------------- */
+.progress-panel {
+    background: #fff; border: 0.5px solid #e0e0e0;
+    border-radius: 12px; padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.progress-panel-header {
+    display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 1rem;
+}
+
+.progress-title {
+    font-size: 14px; font-weight: 600; color: #1a1a1a;
+}
+
+.progress-pct {
+    font-size: 22px;
+    font-weight: 700;
+    color: #df0000e8;
+}
+
+.progress-track {
+    height: 8px; background: #f0f0f0;
+    border-radius: 99px; overflow: hidden; margin-bottom: 10px;
+}
+
+.progress-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, #f59e0b, #f97316);
+    transition: width 0.5s ease;
+}
+
+.progress-fill.complete {
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+}
+
+.progress-fill.error-fill { background: #ef4444; }
+.progress-meta {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: #888; flex-wrap: wrap; gap: 4px;
+}
+
+.progress-tarea-id {
+    font-family: 'Courier New', monospace;
+    font-size: 11px; color: #C8102E; margin-top: 6px;
+}
+
+.progress-error-msg {
+    background: #fff5f5; border: 0.5px solid #fecaca;
+    border-radius: 6px; padding: 0.75rem 1rem;
+    font-size: 13px; color: #991b1b; margin-top: 10px;
+}
+
+/* — Botones (usados por el botón "Enviar a destino") ------------------------------------------------- */
+.btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: none; border-radius: 7px; padding: 9px 18px;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: all 0.15s ease; white-space: nowrap;
+}
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-success { background: #16a34a; color: #fff; }
+.btn-success:hover:not(:disabled) { background: #15803d; }
+
+-----------------------------------------------------------------------
+
+
+-----------------------------------------------------------------------
+SECTIONS RAZOR
+
+@namespace LotesApp.Frontend.Sections
+@using LotesApp.Models
+@using LotesApp.Frontend.Cards
+
+@if (IsLoading)
+{
+    <div class="lotes-center">
+        <div class="lotes-spinner"></div>
+        <p>Cargando historial...</p>
+    </div>
+}
+else if (ErrorMessage is not null)
+{
+    <div class="lotes-error">⚠ @ErrorMessage</div>
+}
+else if (Archivos.Count > 0)
+{
+    <div class="lotes-section-label">Historial de Lotes Generados</div>
+    <div class="lotes-grid">
+        @foreach (var batch in Archivos)
+        {
+            <LoteCard Batch="batch"
+                      OnCardClick="() => HandleCardClick(batch)"
+                      OnDescargar="HandleDescargar" />
+        }
+    </div>
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+SECTIONS CS
+
+using Microsoft.AspNetCore.Components;
+using LotesApp.Models;
+
+namespace LotesApp.Frontend.Sections;
+
+/// <summary>
+/// Sección de historial de lotes generados (desde /listar): maneja los tres
+/// estados posibles (cargando, error, listado) y renderiza una <see cref="LoteCard"/>
+/// por cada lote del historial.
+/// Es un componente de presentación: no navega ni descarga directamente, delega
+/// ambas acciones al padre mediante EventCallbacks.
+/// </summary>
+public partial class HistorialSection
+{
+    /// <summary>Indica si el historial se está cargando.</summary>
+    [Parameter] public bool IsLoading { get; set; }
+
+    /// <summary>Mensaje de error al consultar la API, si lo hubo.</summary>
+    [Parameter] public string? ErrorMessage { get; set; }
+
+    /// <summary>Historial de lotes generados a listar.</summary>
+    [Parameter, EditorRequired] public List<BatchHistorialItemDto> Archivos { get; set; } = new();
+
+    /// <summary>Se dispara al hacer click en una card del historial, con el lote seleccionado.</summary>
+    [Parameter] public EventCallback<BatchHistorialItemDto> OnCardClick { get; set; }
+
+    /// <summary>Se dispara al hacer click en "Descargar" de un archivo del historial.</summary>
+    [Parameter] public EventCallback<string> OnDescargar { get; set; }
+
+    private async Task HandleCardClick(BatchHistorialItemDto batch) => await OnCardClick.InvokeAsync(batch);
+
+    private async Task HandleDescargar(string archivo) => await OnDescargar.InvokeAsync(archivo);
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+SECTIONS CSS
+
+/* — Etiqueta de sección ------------------------------------------------- */
+.lotes-section-label {
+    font-size: 11px; font-weight: 600; color: #888;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 1rem;
+}
+
+/* — Grid de cards (el card en sí vive en LoteCard.razor.css) ------- */
+.lotes-grid { display: flex; flex-direction: column; gap: 10px; }
+
+/* — Estados vacíos ------------------------------------------------- */
+.lotes-center { text-align: center; padding: 4rem 0; color: #888; }
+.lotes-spinner {
+    width: 30px; height: 30px;
+    border: 3px solid #f0f0f0; border-top-color: #C8102E;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.lotes-error {
+    background: #fff5f5; border: 0.5px solid #fecaca;
+    border-radius: 8px; padding: 1rem 1.25rem;
+    color: #991b1b; font-size: 14px;
+}
+
+-----------------------------------------------------------------------
+
+
+-----------------------------------------------------------------------
+TOAST RAZOR
+
+@namespace LotesApp.Frontend.Toast
+
+@if (Message is not null)
+{
+    <div class="lotes-toast toast-@Type">
+        <span>@Message</span>
+        <button class="lotes-toast-close" @onclick="HandleClose">x</button>
+    </div>
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+TOAST CS
+
+using Microsoft.AspNetCore.Components;
+
+namespace LotesApp.Frontend.Toast;
+
+/// <summary>
+/// Componente de notificación tipo "toast".
+/// El estado (mensaje, tipo, tiempo de vida) lo controla el componente padre;
+/// este componente solo se encarga de la presentación y de avisar cuándo debe cerrarse.
+/// </summary>
+public partial class LoteToast
+{
+    /// <summary>Mensaje a mostrar. Si es null, el toast no se renderiza.</summary>
+    [Parameter] public string? Message { get; set; }
+
+    /// <summary>Tipo de toast: "success", "danger" o "info".</summary>
+    [Parameter] public string Type { get; set; } = "success";
+
+    /// <summary>Se dispara cuando el usuario hace click en la "x" para cerrar el toast.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private async Task HandleClose()
+    {
+        await OnClose.InvokeAsync();
+    }
+}
+
+-----------------------------------------------------------------------
+
+-----------------------------------------------------------------------
+TOAST CSS
+
+/* — Toast ------------------------------------------------- */
+.lotes-toast {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    background: #1a1a1a; color: #fff; border-radius: 8px;
+    padding: 0.75rem 1.25rem; font-size: 13px; font-weight: 500;
+    display: flex; align-items: center; gap: 12px;
+    z-index: 1000; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    animation: slide-in 0.2s ease;
+}
+
+.lotes-toast.toast-success { border-left: 3px solid #22c55e; }
+.lotes-toast.toast-danger  { border-left: 3px solid #C8102E; }
+.lotes-toast.toast-info    { border-left: 3px solid #3b82f6; }
+
+.lotes-toast-close {
+    background: none; border: none; color: #888;
+    cursor: pointer; font-size: 16px; line-height: 1; padding: 0;
+}
+
+@keyframes slide-in {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+
+-----------------------------------------------------------------------
