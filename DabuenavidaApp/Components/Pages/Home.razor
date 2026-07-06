@@ -1,93 +1,24 @@
-// — Ciclo de vida
-protected override async Task OnAfterRenderAsync(bool firstRender)
+options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
 {
-    if (firstRender)
+    Name = "Authorization",
+    Type = SecuritySchemeType.Http,
+    Scheme = "bearer",
+    BearerFormat = "JWT",
+    In = ParameterLocation.Header,
+    Description = "Ingresa el token JWT así: Bearer {tu token}"
+});
+
+options.AddSecurityRequirement(new OpenApiSecurityRequirement
+{
     {
-        AuthService.MarcarJsDisponible(); // ← primero esto
-        await AuthService.LoadTokenAsync();
-
-        _permisos = await FiltrosPermisosService
-            .GetPermisosAsync(AuthService.Token ?? "");
-
-        _permisos ??= new FiltrosPermisosDto
+        new OpenApiSecurityScheme
         {
-            MostrarCentroDeCosto = true,
-            MostrarDabuenavida = true
-        };
-
-        bool ok = await CargarDatos();
-        if (!ok)
-        {
-            return; // ya se navegó a /accessdenied o quedó el error, no marcar Permitido
-        }
-
-        estado = Estado.Permitido;
-        StateHasChanged();
+            Reference = new OpenApiReference
+            {
+                Type = ReferenceType.SecurityScheme,
+                Id = "Bearer"
+            }
+        },
+        new string[] {}
     }
-}
-
-// — Métodos de paginación
-private async Task IrAPagina(int pagina)
-{
-    paginaActual = pagina;
-    await CargarDatos();
-}
-
-private async Task PaginaAnterior()
-{
-    if (paginaActual > 1)
-    {
-        paginaActual--;
-        await CargarDatos();
-    }
-}
-
-private async Task PaginaSiguiente()
-{
-    if (paginaActual < resultado?.TotalPaginas)
-    {
-        paginaActual++;
-        await CargarDatos();
-    }
-}
-
-private async Task Buscar()
-{
-    paginaActual = 1;
-    await CargarDatos();
-}
-
-private async Task Limpiar()
-{
-    filtros = new();
-    paginaActual = 1;
-    await CargarDatos();
-}
-
-// — Carga principal
-private async Task<bool> CargarDatos()
-{
-    cargando = true;
-    StateHasChanged();
-    try
-    {
-        resultado = await DabuenavidaService.ObtenerDatos(
-            paginaActual, AuthService.Token ?? "", filtros);
-        return true;
-    }
-    catch (UnauthorizedAccessException)
-    {
-        Nav.NavigateTo("/accessdenied");
-        return false;
-    }
-    catch (Exception ex)
-    {
-        errorMessage = ex.Message;
-        return false;
-    }
-    finally
-    {
-        cargando = false;
-        StateHasChanged();
-    }
-}
+});
