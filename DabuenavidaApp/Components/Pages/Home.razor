@@ -1,24 +1,156 @@
-options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-{
-    Name = "Authorization",
-    Type = SecuritySchemeType.Http,
-    Scheme = "bearer",
-    BearerFormat = "JWT",
-    In = ParameterLocation.Header,
-    Description = "Ingresa el token JWT así: Bearer {tu token}"
-});
+@page "/detalles/{NumeroPrestamo}"
+@layout LotesLayout
+@rendermode InteractiveServer
+@using LotesApp.Models
+@using LotesApp.Services
+@using LotesApp.Frontend.Components.Prestamos
+@using LotesApp.Frontend.Components.Shared
+@inject CronogramaService CronogramaService
+@inject NavigationManager Nav
+@inject AuthService AuthService
 
-options.AddSecurityRequirement(new OpenApiSecurityRequirement
-{
-    {
-        new OpenApiSecurityScheme
-        {
-            Reference = new OpenApiReference
+<PageTitle>Detalles - @NumeroPrestamo</PageTitle>
+
+<div class="lotes-page">
+
+    <!-- NAVBAR -->
+    <LotesApp.Frontend.Components.Navbars.BatchManagementNav />
+
+    <div class="lotes-content">
+
+        <!-- Encabezado con datos del cliente -->
+        <div class="det-header">
+            <ClienteInfoHeader Cronograma="cronograma" TotalRegistros="totalRegistros" />
+        </div>
+
+        <!-- Filtro por fecha (comentado, listo para reactivar como componente independiente si se necesita) -->
+        @* <div class="cron-filtro-row">
+            <input class="cron-input" type="month" @oninput="OnFiltroChanged" />
+            @if (!string.IsNullOrWhiteSpace(filtroFecha))
             {
-                Type = ReferenceType.SecurityScheme,
-                Id = "Bearer"
+                <button class="btn-limpiar" @onclick="LimpiarFiltro">X Limpiar</button>
             }
-        },
-        new string[] {}
+        </div> *@
+
+        <!-- Tabla de detalles -->
+        @if (isLoading)
+        {
+            <div class="lotes-center">
+                <div class="lotes-spinner"></div>
+                <p>Cargando detalles...</p>
+            </div>
+        }
+        else if (errorMessage is not null)
+        {
+            <div class="lotes-error">⚠ @errorMessage</div>
+        }
+        else if (detalles is null || detalles.Count == 0)
+        {
+            <div class="lotes-center">No se encontraron detalles para este préstamo.</div>
+        }
+        else
+        {
+            <DetallesTable Detalles="detalles" PaginaActual="paginaActual" PorPagina="porPagina" />
+
+            <Paginador PaginaActual="paginaActual"
+                       TotalPaginas="totalPaginas"
+                       TotalRegistros="totalRegistros"
+                       PorPagina="porPagina"
+                       OnAnterior="PaginaAnterior"
+                       OnSiguiente="PaginaSiguiente"
+                       OnIrAPagina="IrAPagina" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string NumeroPrestamo { get; set; } = string.Empty;
+
+    private CronogramaModel? cronograma;
+    private List<DetallePrestamo>? detalles;
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string? filtroFecha;
+    private int paginaActual = 1;
+    private int porPagina = 12;
+    private int totalRegistros = 0;
+    private int totalPaginas => Math.Max(1, (int)Math.Ceiling((double)totalRegistros / porPagina));
+
+    // Guardamos el loteId para poder volver
+    private string? loteIdOrigen;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await AuthService.LoadTokenAsync();
+
+        if (!AuthService.IsAuthenticated)
+        {
+            Nav.NavigateTo("/not-permiso");
+            return;
+        }
+
+        CronogramaService.SetAuthToken(AuthService.Token);
+        cronograma = await CronogramaService.GetCronogramaByPrestamoAsync(NumeroPrestamo);
+        loteIdOrigen = cronograma?.LoteId;
+        await CargarDatos();
+        StateHasChanged();
     }
-});
+
+    private async Task CargarDatos()
+    {
+        try
+        {
+            isLoading = true;
+            totalRegistros = await CronogramaService.GetTotalDetallesAsync(NumeroPrestamo, filtroFecha);
+            detalles = await CronogramaService.GetDetallesByPrestamoAsync(NumeroPrestamo, paginaActual, porPagina, filtroFecha);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar los detalles: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OnFiltroChanged(ChangeEventArgs e)
+    {
+        filtroFecha = e.Value?.ToString();
+        paginaActual = 1;
+        await CargarDatos();
+    }
+
+    private async Task LimpiarFiltro()
+    {
+        filtroFecha = null;
+        paginaActual = 1;
+        await CargarDatos();
+    }
+
+    private async Task PaginaAnterior() { if (paginaActual > 1) { paginaActual--; await CargarDatos(); } }
+    private async Task PaginaSiguiente() { if (paginaActual < totalPaginas) { paginaActual++; await CargarDatos(); } }
+    private async Task IrAPagina(int p) { paginaActual = p; await CargarDatos(); }
+
+    private void Volver() => Nav.NavigateTo(loteIdOrigen is not null ? $"/cronogramas/{loteIdOrigen}" : "/lotes");
+}
+.lotes-page * { box-sizing: border-box; }
+.lotes-page { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; min-height: 100vh; }
+.lotes-content { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+.lotes-center { text-align: center; padding: 4rem 0; color: #888; }
+.lotes-spinner { width: 32px; height: 32px; border: 3px solid #f0f0f0; border-top-color: #C8102E; border-radius: 50%; animation: lotes-spin 0.7s linear infinite; margin: 0 auto 1rem; }
+@keyframes lotes-spin { to { transform: rotate(360deg); } }
+.lotes-error { background: #fff5f5; border: 0.5px solid #fecaca; border-radius: 8px; padding: 1rem 1.25rem; color: #991b1b; font-size: 14px; }
+
+.det-header { margin-bottom: 1.5rem; }
+.btn-volver { background: none; border: none; color: #C8102E; font-size: 13px; cursor: pointer; padding: 0; font-weight: 500; margin-bottom: 12px; display: inline-block; }
+.btn-volver:hover { text-decoration: underline; }
+
+/* Filtro por fecha: actualmente comentado en el markup, se deja listo por si se reactiva */
+.cron-filtro-row { margin-bottom: 1.25rem; display: flex; align-items: center; gap: 8px; }
+.cron-input { padding: 8px 14px; border: 0.5px solid #e0e0e0; border-radius: 6px; font-size: 13px; outline: none; background: #fff; }
+.cron-input:focus { border-color: #C8102E; }
+.btn-limpiar { background: none; border: 0.5px solid #e0e0e0; border-radius: 6px; padding: 7px 12px; font-size: 12px; cursor: pointer; color: #666; }
+.btn-limpiar:hover { border-color: #C8102E; color: #C8102E; }
