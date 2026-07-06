@@ -670,3 +670,582 @@ NOTAS IMPORTANTES DE MIGRACIÓN
    EventCallback<string> desde CronogramaTabla, y "ObtenerPaginasVisibles"
    vive dentro de CronogramaPaginacion.razor.cs en vez de la página. El
    comportamiento visible para el usuario es idéntico al original.
+
+
+
+
+
+==============================================================================
+SEGMENTACIÓN DE DetallesPrestamo.razor EN COMPONENTES
+================================================================================
+
+Estructura de carpetas resultante (dentro de Frontend/Components/):
+
+  Sections/
+    DetalleClienteHeader/
+      DetalleClienteHeader.razor
+      DetalleClienteHeader.razor.cs
+      DetalleClienteHeader.razor.css
+
+  Tables/
+    DetalleTabla/
+      DetalleTabla.razor
+      DetalleTabla.razor.cs
+      DetalleTabla.razor.css
+
+  Panels/
+    CronogramaPaginacion/   <-- YA EXISTE, se reutiliza sin cambios
+
+Y la página queda en:
+  Pages/Lotes/DetallesPrestamo.razor
+  Pages/Lotes/DetallesPrestamo.razor.css  (solo layout general + filtro comentado)
+
+================================================================================
+1) ARCHIVO: Frontend/Components/Sections/DetalleClienteHeader/DetalleClienteHeader.razor
+================================================================================
+
+@using LotesApp.Models
+
+<div class="det-header">
+
+    @if (Cronograma is not null)
+    {
+        <div class="det-cliente-card">
+            <div class="det-cliente-info">
+                <div class="det-cliente-nombre">@Cronograma.NombreCliente</div>
+                <div class="det-cliente-meta">
+                    <span class="det-meta-item">
+                        <span class="det-meta-label"><strong>Préstamo</strong></span>
+                        <span class="det-meta-value cron-mono">@Cronograma.NumeroPrestamo</span>
+                    </span>
+                    <span class="det-meta-sep">·</span>
+                    <span class="det-meta-item">
+                        <span class="det-meta-label">Teléfono</span>
+                        <span class="det-meta-value">@Cronograma.NumeroTelefonico</span>
+                    </span>
+                    <span class="det-meta-sep">·</span>
+                    <span class="det-meta-item">
+                        <span class="det-meta-label">Tasa</span>
+                        <span class="det-meta-value">@Cronograma.Tasa.ToString("N3")%</span>
+                    </span>
+                    <span class="det-meta-sep">·</span>
+                    <span class="det-meta-item">
+                        <span class="cron-tipo-badge @(Cronograma.Tipo == "Libranza" ? "tipo-libranza" : "tipo-personal")">
+                            @Cronograma.Tipo
+                        </span>
+                    </span>
+                </div>
+            </div>
+            <div class="det-total-badge">@TotalRegistros cuotas</div>
+        </div>
+    }
+
+</div>
+
+================================================================================
+2) ARCHIVO: Frontend/Components/Sections/DetalleClienteHeader/DetalleClienteHeader.razor.cs
+================================================================================
+
+using Microsoft.AspNetCore.Components;
+using LotesApp.Models;
+
+namespace LotesApp.Frontend.Components.Sections;
+
+public partial class DetalleClienteHeader
+{
+    [Parameter] public CronogramaModel? Cronograma { get; set; }
+    [Parameter] public int TotalRegistros { get; set; }
+}
+
+================================================================================
+3) ARCHIVO: Frontend/Components/Sections/DetalleClienteHeader/DetalleClienteHeader.razor.css
+================================================================================
+
+.det-header {
+    margin-bottom: 1.5rem;
+}
+
+.det-cliente-card {
+    background: #fff;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.det-cliente-nombre {
+    font-size: 18px;
+    font-weight: 500;
+    color: #1a1a1a;
+    margin-bottom: 8px;
+}
+
+.det-cliente-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.det-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.det-meta-label {
+    font-size: 11px;
+    color: #aaa;
+}
+
+.det-meta-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: #333;
+}
+
+.det-meta-sep {
+    color: #ddd;
+}
+
+.det-total-badge {
+    background: #f5f5f5;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 13px;
+    font-weight: 500;
+    color: #444;
+    white-space: nowrap;
+}
+
+.cron-mono {
+    font-family: 'Courier New', monospace;
+    color: #C8102E;
+    font-size: 12px;
+}
+
+.cron-tipo-badge {
+    display: inline-flex;
+    padding: 3px 10px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.tipo-libranza {
+    background: #f0fdf4;
+    color: #166534;
+    border: 0.5px solid #bbf7d0;
+}
+
+.tipo-personal {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 0.5px solid #bfdbfe;
+}
+
+================================================================================
+4) ARCHIVO: Frontend/Components/Tables/DetalleTabla/DetalleTabla.razor
+================================================================================
+
+@using LotesApp.Models
+
+<div class="cron-table-wrapper">
+    <table class="cron-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Fecha de pago</th>
+                <th class="text-right">Capital</th>
+                <th class="text-right">Intereses</th>
+                <th class="text-right">Cuota</th>
+                <th class="text-right">Seguros</th>
+                <th class="text-right">Cargo Dif. Mensual</th> <!-- Cargo Administrativo = Cargo Dif. Mensual -->
+                <th class="text-right">Cuota total</th>
+                <th class="text-right">Saldo</th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (int i = 0; i < Detalles.Count; i++)
+            {
+                var detalle = Detalles[i];
+                var numero = ((PaginaActual - 1) * PorPagina) + i + 1;
+                <tr>
+                    <td class="cron-num">@numero</td>
+                    <td>@detalle.FechaPago.ToString("dd/MM/yyyy")</td>
+                    <td class="text-right">@detalle.CapitalPago.ToString("N2")</td>
+                    <td class="text-right">@detalle.InteresPago.ToString("N2")</td>
+                    <td class="text-right">@detalle.Cuota.ToString("N2")</td>
+                    <td class="text-right">@detalle.Seguros.ToString("N2")</td>
+                    <td class="text-right">@detalle.CargoAdministrativo.ToString("N2")</td>
+                    <td class="text-right det-cuota-total">@detalle.CuotaTotal.ToString("N2")</td>
+                    <td class="text-right">@detalle.Saldo.ToString("N2")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+================================================================================
+5) ARCHIVO: Frontend/Components/Tables/DetalleTabla/DetalleTabla.razor.cs
+================================================================================
+
+using Microsoft.AspNetCore.Components;
+using LotesApp.Models;
+
+namespace LotesApp.Frontend.Components.Tables;
+
+public partial class DetalleTabla
+{
+    [Parameter] public List<DetallePrestamo> Detalles { get; set; } = new();
+    [Parameter] public int PaginaActual { get; set; }
+    [Parameter] public int PorPagina { get; set; }
+}
+
+================================================================================
+6) ARCHIVO: Frontend/Components/Tables/DetalleTabla/DetalleTabla.razor.css
+================================================================================
+
+.cron-table-wrapper {
+    background: #fff;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    overflow-x: auto;
+}
+
+.cron-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.cron-table thead tr {
+    background: #bf0303;
+}
+
+.cron-table thead th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 500;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.cron-table thead th.text-right {
+    text-align: right;
+}
+
+.cron-table tbody tr {
+    border-bottom: 0.5px solid #f0f0f0;
+    transition: background 0.1s;
+}
+
+.cron-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.cron-table tbody tr:hover {
+    background: #fafafa;
+}
+
+.cron-table tbody td {
+    padding: 11px 16px;
+    color: #333;
+    white-space: nowrap;
+}
+
+.cron-table tbody td.text-right {
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.cron-num {
+    color: #aaa;
+    font-size: 12px;
+    width: 40px;
+}
+
+.det-cuota-total {
+    font-weight: 600;
+    color: #1a1a1a !important;
+}
+
+================================================================================
+7) ARCHIVO (MODIFICADO): Pages/Lotes/DetallesPrestamo.razor
+================================================================================
+
+@page "/detalles/{NumeroPrestamo}"
+@layout LotesLayout
+@rendermode InteractiveServer
+@using LotesApp.Models
+@using LotesApp.Services
+@using LotesApp.Frontend.Components.Sections
+@using LotesApp.Frontend.Components.Tables
+@using LotesApp.Frontend.Components.Panels
+@inject CronogramaService CronogramaService
+@inject NavigationManager Nav
+@inject AuthService AuthService
+
+<PageTitle>Detalles - @NumeroPrestamo</PageTitle>
+
+<div class="lotes-page">
+
+    <!-- NAVBAR -->
+    <LotesApp.Frontend.Components.Navbars.BatchManagementNav />
+
+    <div class="lotes-content">
+
+        <!-- Encabezado con datos del cliente -->
+        <DetalleClienteHeader Cronograma="cronograma" TotalRegistros="totalRegistros" />
+
+        <!-- Filtro por fecha -->
+        @* <div class="cron-filtro-row">
+            <input class="cron-input"
+                   type="month"
+                   @oninput="OnFiltroChanged" />
+            @if (!string.IsNullOrWhiteSpace(filtroFecha))
+            {
+                <button class="btn-limpiar" @onclick="LimpiarFiltro">✕ Limpiar</button>
+            }
+        </div> *@
+
+        <!-- Tabla de detalles -->
+        @if (isLoading)
+        {
+            <div class="lotes-center">
+                <div class="lotes-spinner"></div>
+                <p>Cargando detalles...</p>
+            </div>
+        }
+        else if (errorMessage is not null)
+        {
+            <div class="lotes-error">⚠ @errorMessage</div>
+        }
+        else if (detalles is null || detalles.Count == 0)
+        {
+            <div class="lotes-center">No se encontraron detalles para este préstamo.</div>
+        }
+        else
+        {
+            <DetalleTabla Detalles="detalles"
+                          PaginaActual="paginaActual"
+                          PorPagina="porPagina" />
+
+            <CronogramaPaginacion PaginaActual="paginaActual"
+                                   TotalPaginas="totalPaginas"
+                                   TotalRegistros="totalRegistros"
+                                   PorPagina="porPagina"
+                                   OnPaginaAnterior="PaginaAnterior"
+                                   OnPaginaSiguiente="PaginaSiguiente"
+                                   OnIrAPagina="IrAPagina" />
+        }
+
+    </div>
+
+</div>
+
+@code {
+    [Parameter] public string NumeroPrestamo { get; set; } = string.Empty;
+
+    private CronogramaModel?         cronograma;
+    private List<DetallePrestamo>?   detalles;
+    private bool                     isLoading       = true;
+    private string?                  errorMessage;
+    private string?                  filtroFecha;
+    private int                      paginaActual    = 1;
+    private int                      porPagina       = 12;
+    private int                      totalRegistros  = 0;
+    private int                      totalPaginas    => Math.Max(1, (int)Math.Ceiling((double)totalRegistros / porPagina));
+
+    // Guardamos el loteId para poder volver
+    private string? loteIdOrigen;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await AuthService.LoadTokenAsync();
+
+        if (!AuthService.IsAuthenticated)
+        {
+            Nav.NavigateTo("/not-permiso");
+            return;
+        }
+
+        CronogramaService.SetAuthToken(AuthService.Token);
+        cronograma   = await CronogramaService.GetCronogramaByPrestamoAsync(NumeroPrestamo);
+        loteIdOrigen = cronograma?.LoteId;
+        await CargarDatos();
+        StateHasChanged();
+    }
+
+    private async Task CargarDatos()
+    {
+        try
+        {
+            isLoading       = true;
+            totalRegistros  = await CronogramaService.GetTotalDetallesAsync(NumeroPrestamo, filtroFecha);
+            detalles        = await CronogramaService.GetDetallesByPrestamoAsync(NumeroPrestamo, paginaActual, porPagina, filtroFecha);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar los detalles: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OnFiltroChanged(ChangeEventArgs e)
+    {
+        filtroFecha  = e.Value?.ToString();
+        paginaActual = 1;
+        await CargarDatos();
+    }
+
+    private async Task LimpiarFiltro()
+    {
+        filtroFecha  = null;
+        paginaActual = 1;
+        await CargarDatos();
+    }
+
+    private async Task PaginaAnterior()  { if (paginaActual > 1)             { paginaActual--; await CargarDatos(); } }
+    private async Task PaginaSiguiente() { if (paginaActual < totalPaginas)  { paginaActual++; await CargarDatos(); } }
+    private async Task IrAPagina(int p)  { paginaActual = p; await CargarDatos(); }
+
+    private void Volver() => Nav.NavigateTo(loteIdOrigen is not null ? $"/cronogramas/{loteIdOrigen}" : "/lotes");
+}
+
+================================================================================
+8) ARCHIVO (MODIFICADO): Pages/Lotes/DetallesPrestamo.razor.css
+================================================================================
+
+/* Layout general de la página + estilos del filtro por fecha
+   (actualmente comentado en el markup, se dejan listos por si se activa). */
+
+.lotes-page * {
+    box-sizing: border-box;
+}
+
+.lotes-page {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f5;
+    min-height: 100vh;
+}
+
+.lotes-content {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.lotes-center {
+    text-align: center;
+    padding: 4rem 0;
+    color: #888;
+}
+
+.lotes-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #f0f0f0;
+    border-top-color: #C8102E;
+    border-radius: 50%;
+    animation: lotes-spin 0.7s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes lotes-spin {
+    to { transform: rotate(360deg); }
+}
+
+.lotes-error {
+    background: #fff5f5;
+    border: 0.5px solid #fecaca;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    color: #991b1b;
+    font-size: 14px;
+}
+
+.btn-volver {
+    background: none;
+    border: none;
+    color: #C8102E;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+    font-weight: 500;
+    margin-bottom: 12px;
+    display: inline-block;
+}
+
+.btn-volver:hover {
+    text-decoration: underline;
+}
+
+.cron-filtro-row {
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cron-input {
+    padding: 8px 14px;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    background: #fff;
+}
+
+.cron-input:focus {
+    border-color: #C8102E;
+}
+
+.btn-limpiar {
+    background: none;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #666;
+}
+
+.btn-limpiar:hover {
+    border-color: #C8102E;
+    color: #C8102E;
+}
+
+================================================================================
+NOTAS IMPORTANTES DE MIGRACIÓN
+================================================================================
+
+1. CronogramaPaginacion se reutiliza tal cual (ya vive en
+   Frontend/Components/Panels/CronogramaPaginacion). No dupliques ese
+   componente ni su CSS; solo agrega el @using correspondiente en esta página.
+
+2. El método "Volver" y el filtro por fecha (OnFiltroChanged, LimpiarFiltro,
+   filtroFecha) se dejaron intactos en el @code de la página tal como estaban
+   en el original, aunque actualmente no tienen un botón/input visible en el
+   markup (estaban comentados). No se eliminó nada de la lógica existente.
+
+3. "cron-mono" y las clases "cron-tipo-badge/tipo-libranza/tipo-personal" se
+   duplicaron en DetalleClienteHeader.razor.css porque con CSS isolation cada
+   componente necesita sus propias reglas; esto no genera conflicto con las
+   que ya existen en CronogramaHeader.razor.css de la otra página.
+
+4. Ajusta los namespaces "using LotesApp.Frontend.Components.X" si tu
+   namespace raíz real difiere del inferido.
