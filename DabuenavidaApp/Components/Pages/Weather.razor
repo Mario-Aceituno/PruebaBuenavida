@@ -1,114 +1,552 @@
------------------------------------------------------------------------
-LOTES RAZOR
+================================================================================
+SEGMENTACIÓN DE Cronogramas.razor EN COMPONENTES
+================================================================================
 
-@page "/lotes"
-@layout LotesLayout
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@using LotesApp.Models
-@using LotesApp.Services
-@using Microsoft.Extensions.Options
-@using LotesApp.Frontend.Toast
-@using LotesApp.Frontend.Modals
-@using LotesApp.Frontend.Cards
-@using LotesApp.Frontend.Panels
-@using LotesApp.Frontend.Sections
-@inject LoteService LoteService
-@inject IOptions<LotesConfig> Config
-@inject IJSRuntime JS
-@inject NavigationManager Nav
-@inject AuthService AuthService
-@implements IDisposable
+Estructura de carpetas resultante (dentro de Frontend/Components/):
 
-<PageTitle>Gestión de Lotes - Cronogramas de Pago</PageTitle>
+  Sections/
+    CronogramaHeader/
+      CronogramaHeader.razor
+      CronogramaHeader.razor.cs
+      CronogramaHeader.razor.css
 
-<div class="lotes-page">
-    <LotesApp.Frontend.Navbars.BatchManagementNav />
-    <div class="lotes-content">
+  Filters/
+    CronogramaFiltro/
+      CronogramaFiltro.razor
+      CronogramaFiltro.razor.cs
+      CronogramaFiltro.razor.css
 
-        <!-- ENCABEZADO -->
-        <div class="lotes-page-header">
-            <h1>Lotes de archivos</h1>
-            @* <p>Generación de cronogramas de pago desde AS400 · API: @Config.Value.ApiBaseUrl</p> *@
-        </div>
+  Tables/
+    CronogramaTabla/
+      CronogramaTabla.razor
+      CronogramaTabla.razor.cs
+      CronogramaTabla.razor.css
 
-        <!-- PANEL DE ACCIÓN PRINCIPAL -->
-        <AccionesPanel IsLoading="isLoading"
-                       IsRefreshing="isRefreshing"
-                       HayGeneracionEnProgreso="hayGeneracionEnProgreso"
-                       OnRefrescar="RefrescarEstado"
-                       OnGenerar="IniciarGeneracion" />
+  Panels/
+    CronogramaPaginacion/
+      CronogramaPaginacion.razor
+      CronogramaPaginacion.razor.cs
+      CronogramaPaginacion.razor.css
 
-        <!-- PANEL DE PROGRESO EN VIVO (solo si hay tarea activa) -->
-        @if (loteActual != null)
-        {
-            <ProgresoPanel Lote="loteActual"
-                           HayGeneracionEnProgreso="hayGeneracionEnProgreso"
-                           IsEnviando="isEnviando"
-                           RutaDestino="@Config.Value.RutaDestino"
-                           OnEnviarClick="() => AbrirModalEnvio(loteActual)"
-                           OnDescargarArchivo="DescargarArchivo" />
-        }
+Y la página original queda en:
+  Pages/Lotes/Cronogramas.razor
+  Pages/Lotes/Cronogramas.razor.cs   (nuevo, opcional si prefieres code-behind)
+  Pages/Lotes/Cronogramas.razor.css  (solo estilos de layout general)
 
-        <!-- HISTORIAL DE LOTES (desde /listar) -->
-        <HistorialSection IsLoading="isLoading"
-                           ErrorMessage="errorMessage"
-                           Archivos="archivosHistorial"
-                           OnCardClick="(batch) => Nav.NavigateTo($"/cronogramas/{batch.NombreLote}")"
-                           OnDescargar="DescargarArchivo" />
+NOTA: Si tu convención actual (como en LoteCard) es dejar el @code dentro del
+.razor y no en un .razor.cs separado, simplemente pega el bloque @code que te
+doy al final del .razor de la página, tal como estaba. Te dejo la versión ya
+separada en .cs para que decidas.
 
-        <!-- TOAST -->
-        <LoteToast Message="@toastMessage"
-                   Type="@toastType"
-                   OnClose="() => toastMessage = null" />
+================================================================================
+1) ARCHIVO: Frontend/Components/Sections/CronogramaHeader/CronogramaHeader.razor
+================================================================================
 
-        <!-- MODAL DE CONFIRMACIÓN DE ENVÍO -->
-        <EnvioLoteModal Lote="loteParaEnviar"
-                         RutaDestinoPlaceholder="@Config.Value.RutaDestino"
-                         @bind-RutaDestinoOverride="rutaDestinoOverride"
-                         IsEnviando="isEnviando"
-                         OnCancel="CancelarEnvio"
-                         OnConfirm="EjecutarEnvio" />
+<div class="cron-header">
+    <div>
+        <h1>Cronogramas del lote <span class="cron-lote-id">@LoteId</span></h1>
+        <p>Lista de clientes y sus préstamos asociados</p>
+    </div>
+    <div class="cron-total-badge">
+        @TotalRegistros registros
     </div>
 </div>
 
------------------------------------------------------------------------
+================================================================================
+2) ARCHIVO: Frontend/Components/Sections/CronogramaHeader/CronogramaHeader.razor.cs
+================================================================================
 
------------------------------------------------------------------------
-LOTES CS
-
-using LotesApp.Models;
 using Microsoft.AspNetCore.Components;
-using Microsoft.JSInterop;
 
-namespace LotesApp.Frontend.Pages.Lotes;
+namespace LotesApp.Frontend.Components.Sections;
 
-public partial class Lotes
+public partial class CronogramaHeader
 {
-    // — Estado de la UI -------------------------------------------------
+    [Parameter] public string LoteId { get; set; } = string.Empty;
+    [Parameter] public int TotalRegistros { get; set; }
+}
 
-    private LoteModel? loteActual;
-    private List<BatchHistorialItemDto> archivosHistorial = new();
-    private bool isLoading = true;
-    private bool isRefreshing = false;
-    private bool isEnviando = false;
-    private bool hayGeneracionEnProgreso =>
-        loteActual?.Estado == "EnProgreso" || loteActual?.Estado == "Pendiente";
-    private string? errorMessage;
-    private string? ambienteActivo;
+================================================================================
+3) ARCHIVO: Frontend/Components/Sections/CronogramaHeader/CronogramaHeader.razor.css
+================================================================================
 
-    // Toast
-    private string? toastMessage;
-    private string toastType = "success";
-    private CancellationTokenSource? _toastCts;
+.cron-header {
+    background: #fff;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+}
 
-    // Modal de envío
-    private LoteModel? loteParaEnviar;
-    private string? rutaDestinoOverride;
+.cron-header h1 {
+    font-size: 20px;
+    font-weight: 500;
+    color: #1a1a1a;
+    margin: 8px 0 4px;
+}
 
-    // Timer de polling
-    private Timer? _pollingTimer;
+.cron-header p {
+    font-size: 13px;
+    color: #888;
+    margin: 0;
+}
 
-    // — Inicialización -------------------------------------------------
+.cron-lote-id {
+    color: #C8102E;
+    font-family: 'Courier New', monospace;
+}
+
+.cron-total-badge {
+    background: #fff;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 13px;
+    font-weight: 500;
+    color: #444;
+    align-self: center;
+}
+
+.btn-volver {
+    background: none;
+    border: none;
+    color: #C8102E;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+    font-weight: 500;
+}
+
+.btn-volver:hover {
+    text-decoration: underline;
+}
+
+================================================================================
+4) ARCHIVO: Frontend/Components/Filters/CronogramaFiltro/CronogramaFiltro.razor
+================================================================================
+
+<div class="cron-filtro-row">
+    <input class="cron-input"
+           type="text"
+           placeholder="Buscar por nombre o número de préstamo..."
+           @oninput="OnFiltroChanged" />
+</div>
+
+================================================================================
+5) ARCHIVO: Frontend/Components/Filters/CronogramaFiltro/CronogramaFiltro.razor.cs
+================================================================================
+
+using Microsoft.AspNetCore.Components;
+
+namespace LotesApp.Frontend.Components.Filters;
+
+public partial class CronogramaFiltro
+{
+    [Parameter] public EventCallback<ChangeEventArgs> OnFiltroChanged { get; set; }
+}
+
+================================================================================
+6) ARCHIVO: Frontend/Components/Filters/CronogramaFiltro/CronogramaFiltro.razor.css
+================================================================================
+
+.cron-filtro-row {
+    margin-bottom: 1.25rem;
+}
+
+.cron-input {
+    width: 100%;
+    max-width: 420px;
+    padding: 8px 14px;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    background: #fff;
+}
+
+.cron-input:focus {
+    border-color: #C8102E;
+}
+
+================================================================================
+7) ARCHIVO: Frontend/Components/Tables/CronogramaTabla/CronogramaTabla.razor
+================================================================================
+
+@using LotesApp.Models
+
+<div class="cron-table-wrapper">
+    <table class="cron-table">
+        <thead class="cron-table-header">
+            <tr class="cron-table-header">
+                <th>#</th>
+                <th>Nombre del cliente</th>
+                <th>Número de préstamo</th>
+                <th>Teléfono</th>
+                <th>Tasa</th>
+                <th>Tipo</th>
+                <th class="text-center">Acción</th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (int i = 0; i < Cronogramas.Count; i++)
+            {
+                var cronograma = Cronogramas[i];
+                var numero = ((PaginaActual - 1) * PorPagina) + i + 1;
+                <tr>
+                    <td class="cron-num">@numero</td>
+                    <td class="cron-nombre">@cronograma.NombreCliente</td>
+                    <td class="cron-mono">@cronograma.NumeroPrestamo</td>
+                    <td>@cronograma.NumeroTelefonico</td>
+                    <td>@cronograma.Tasa.ToString("N3")%</td>
+                    <td>
+                        <span class="cron-tipo-badge @(cronograma.Tipo == "Libranza" ? "tipo-libranza" : "tipo-personal")">
+                            @cronograma.Tipo
+                        </span>
+                    </td>
+                    <td class="text-center">
+                        <button class="btn-ver-detalles"
+                                @onclick="() => OnVerDetalles.InvokeAsync(cronograma.NumeroPrestamo)">
+                            Ver detalles
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+================================================================================
+8) ARCHIVO: Frontend/Components/Tables/CronogramaTabla/CronogramaTabla.razor.cs
+================================================================================
+
+using Microsoft.AspNetCore.Components;
+using LotesApp.Models;
+
+namespace LotesApp.Frontend.Components.Tables;
+
+public partial class CronogramaTabla
+{
+    [Parameter] public List<CronogramaModel> Cronogramas { get; set; } = new();
+    [Parameter] public int PaginaActual { get; set; }
+    [Parameter] public int PorPagina { get; set; }
+    [Parameter] public EventCallback<string> OnVerDetalles { get; set; }
+}
+
+================================================================================
+9) ARCHIVO: Frontend/Components/Tables/CronogramaTabla/CronogramaTabla.razor.css
+================================================================================
+
+.cron-table-wrapper {
+    background: #fff;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.cron-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.cron-table thead tr {
+    background: #bf0303;
+}
+
+.cron-table thead th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 500;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.cron-table thead th.text-center {
+    text-align: center;
+}
+
+.cron-table tbody tr {
+    border-bottom: 0.5px solid #f0f0f0;
+    transition: background 0.1s;
+}
+
+.cron-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.cron-table tbody tr:hover {
+    background: #fafafa;
+}
+
+.cron-table tbody td {
+    padding: 12px 16px;
+    color: #333;
+}
+
+.cron-table tbody td.text-center {
+    text-align: center;
+}
+
+.cron-num {
+    color: #aaa;
+    font-size: 12px;
+    width: 40px;
+}
+
+.cron-nombre {
+    font-weight: 500;
+    color: #1a1a1a;
+}
+
+.cron-mono {
+    font-family: 'Courier New', monospace;
+    color: #C8102E;
+    font-size: 12px;
+}
+
+.cron-tipo-badge {
+    display: inline-flex;
+    padding: 3px 10px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.tipo-libranza {
+    background: #f0fdf4;
+    color: #166534;
+    border: 0.5px solid #bbf7d0;
+}
+
+.tipo-personal {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 0.5px solid #bfdbfe;
+}
+
+.btn-ver-detalles {
+    background: #fff;
+    color: #bf0303;
+    border: 0.5px solid #bf0303;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-ver-detalles:hover {
+    background: #bf0303;
+    color: #fff;
+}
+
+================================================================================
+10) ARCHIVO: Frontend/Components/Panels/CronogramaPaginacion/CronogramaPaginacion.razor
+================================================================================
+
+<div class="cron-paginacion">
+    <span class="cron-pag-info">
+        Mostrando @(((PaginaActual - 1) * PorPagina) + 1)-@(Math.Min(PaginaActual * PorPagina, TotalRegistros)) de @TotalRegistros
+    </span>
+    <div class="cron-pag-btns">
+        <button class="btn-pag" disabled="@(PaginaActual <= 1)" @onclick="() => OnPaginaAnterior.InvokeAsync()">← Anterior</button>
+        @{
+            var paginasVisibles = ObtenerPaginasVisibles();
+            int? paginaAnteriorVisible = null;
+            foreach (var pagNum in paginasVisibles)
+            {
+                if (paginaAnteriorVisible.HasValue && pagNum - paginaAnteriorVisible.Value > 1)
+                {
+                    <span class="btn-pag" style="cursor:default;border:none;color:#aaa;">…</span>
+                }
+                var p = pagNum;
+                <button class="btn-pag @(p == PaginaActual ? "btn-pag-activo" : "")"
+                        @onclick="() => OnIrAPagina.InvokeAsync(p)">
+                    @p
+                </button>
+                paginaAnteriorVisible = pagNum;
+            }
+        }
+        <button class="btn-pag" disabled="@(PaginaActual >= TotalPaginas)" @onclick="() => OnPaginaSiguiente.InvokeAsync()">Siguiente →</button>
+    </div>
+</div>
+
+================================================================================
+11) ARCHIVO: Frontend/Components/Panels/CronogramaPaginacion/CronogramaPaginacion.razor.cs
+================================================================================
+
+using Microsoft.AspNetCore.Components;
+
+namespace LotesApp.Frontend.Components.Panels;
+
+public partial class CronogramaPaginacion
+{
+    [Parameter] public int PaginaActual { get; set; }
+    [Parameter] public int TotalPaginas { get; set; }
+    [Parameter] public int TotalRegistros { get; set; }
+    [Parameter] public int PorPagina { get; set; }
+
+    [Parameter] public EventCallback OnPaginaAnterior { get; set; }
+    [Parameter] public EventCallback OnPaginaSiguiente { get; set; }
+    [Parameter] public EventCallback<int> OnIrAPagina { get; set; }
+
+    /// <summary>
+    /// Retorna los números de página visibles con agrupación inteligente.
+    /// Siempre muestra: primera, última, actual, y 1 vecino a cada lado.
+    /// Los huecos se representan con "…" en la UI al detectar saltos > 1.
+    /// </summary>
+    private List<int> ObtenerPaginasVisibles()
+    {
+        var paginas = new SortedSet<int>();
+        paginas.Add(1);
+        paginas.Add(TotalPaginas);
+        for (int i = PaginaActual - 1; i <= PaginaActual + 1; i++)
+        {
+            if (i >= 1 && i <= TotalPaginas)
+                paginas.Add(i);
+        }
+        return paginas.ToList();
+    }
+}
+
+================================================================================
+12) ARCHIVO: Frontend/Components/Panels/CronogramaPaginacion/CronogramaPaginacion.razor.css
+================================================================================
+
+.cron-paginacion {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 1.25rem;
+}
+
+.cron-pag-info {
+    font-size: 12px;
+    color: #888;
+}
+
+.cron-pag-btns {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-pag {
+    background: #fff;
+    border: 0.5px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #444;
+    transition: all 0.15s;
+}
+
+.btn-pag:hover:not(:disabled) {
+    border-color: #C8102E;
+    color: #C8102E;
+}
+
+.btn-pag:disabled {
+    color: #ccc;
+    cursor: not-allowed;
+}
+
+.btn-pag-activo {
+    background: #bf0303;
+    color: #fff;
+    border-color: #C8102E;
+}
+
+.btn-pag-activo:hover {
+    background: #C8102E;
+    color: #fff;
+}
+
+================================================================================
+13) ARCHIVO (MODIFICADO): Pages/Lotes/Cronogramas.razor
+================================================================================
+
+@page "/cronogramas/{LoteId}"
+@layout LotesLayout
+@rendermode InteractiveServer
+@using LotesApp.Models
+@using LotesApp.Services
+@using LotesApp.Frontend.Components.Sections
+@using LotesApp.Frontend.Components.Filters
+@using LotesApp.Frontend.Components.Tables
+@using LotesApp.Frontend.Components.Panels
+@inject CronogramaService CronogramaService
+@inject NavigationManager Nav
+@inject AuthService AuthService
+
+<PageTitle>Cronogramas - @LoteId</PageTitle>
+
+<div class="lotes-page">
+
+    <!-- NAVBAR -->
+    <LotesApp.Frontend.Components.Navbars.BatchManagementNav />
+
+    <div class="lotes-content">
+
+        <!-- Encabezado -->
+        <CronogramaHeader LoteId="@LoteId" TotalRegistros="@totalRegistros" />
+
+        <!-- Filtro -->
+        <CronogramaFiltro OnFiltroChanged="OnFiltroChanged" />
+
+        <!-- Contenido -->
+        @if (isLoading)
+        {
+            <div class="lotes-center">
+                <div class="lotes-spinner"></div>
+                <p>Cargando cronogramas...</p>
+            </div>
+        }
+        else if (errorMessage is not null)
+        {
+            <div class="lotes-error">⚠ @errorMessage</div>
+        }
+        else if (cronogramas is null || cronogramas.Count == 0)
+        {
+            <div class="lotes-center">No se encontraron cronogramas para este lote.</div>
+        }
+        else
+        {
+            <CronogramaTabla Cronogramas="cronogramas"
+                              PaginaActual="paginaActual"
+                              PorPagina="porPagina"
+                              OnVerDetalles="VerDetalles" />
+
+            <CronogramaPaginacion PaginaActual="paginaActual"
+                                   TotalPaginas="totalPaginas"
+                                   TotalRegistros="totalRegistros"
+                                   PorPagina="porPagina"
+                                   OnPaginaAnterior="PaginaAnterior"
+                                   OnPaginaSiguiente="PaginaSiguiente"
+                                   OnIrAPagina="IrAPagina" />
+        }
+
+    </div>
+
+</div>
+
+@code {
+    [Parameter] public string LoteId { get; set; } = string.Empty;
+
+    private List<CronogramaModel>? cronogramas;
+    private bool     isLoading      = true;
+    private string?  errorMessage;
+    private string?  filtro;
+    private int      paginaActual   = 1;
+    private int      porPagina      = 15;
+    private int      totalRegistros = 0;
+    private int      totalPaginas   => Math.Max(1, (int)Math.Ceiling((double)totalRegistros / porPagina));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -122,32 +560,22 @@ public partial class Lotes
             return;
         }
 
-        LoteService.SetAuthToken(AuthService.Token);
-        await CargarDatosIniciales();
+        CronogramaService.SetAuthToken(AuthService.Token);
+        await CargarDatos();
         StateHasChanged();
     }
 
-    private async Task CargarDatosIniciales()
+    private async Task CargarDatos()
     {
-        isLoading = true;
-        errorMessage = null;
-
         try
         {
-            // Consultar estado actual de la API
-            loteActual = await LoteService.ConsultarEstadoAsync();
-            ambienteActivo = loteActual?.Ambiente;
-
-            // Cargar historial de archivos
-            archivosHistorial = await LoteService.ListarHistorialAsync();
-
-            // Si hay una generación en progreso, iniciar polling
-            if (hayGeneracionEnProgreso)
-                IniciarPolling();
+            isLoading       = true;
+            totalRegistros  = await CronogramaService.GetTotalCronogramasAsync(LoteId, filtro);
+            cronogramas     = await CronogramaService.GetCronogramasByLoteAsync(LoteId, paginaActual, porPagina, filtro);
         }
         catch (Exception ex)
         {
-            errorMessage = $"No se pudo conectar a la API: {ex.Message}";
+            errorMessage = $"Error al cargar los cronogramas: {ex.Message}";
         }
         finally
         {
@@ -155,1214 +583,90 @@ public partial class Lotes
         }
     }
 
-    // — Polling de progreso -------------------------------------------------
-
-    /// <summary>
-    /// Inicia el polling cada 2 segundos mientras la generación está en progreso.
-    /// Se detiene automáticamente cuando el estado cambia a Completado o Error.
-    /// </summary>
-    private void IniciarPolling()
+    private async Task OnFiltroChanged(ChangeEventArgs e)
     {
-        _pollingTimer?.Dispose();
-        _pollingTimer = new Timer(async _ =>
-        {
-            try
-            {
-                var nuevoEstado = await LoteService.ConsultarEstadoAsync();
-                await InvokeAsync(() =>
-                {
-                    loteActual = nuevoEstado;
-                    if (nuevoEstado != null)
-                        ambienteActivo = nuevoEstado.Ambiente;
-                    StateHasChanged();
-                });
-
-                // Detener polling si terminó
-                if (nuevoEstado?.Estado is "Completado" or "Error")
-                {
-                    _pollingTimer?.Dispose();
-
-                    // Recargar historial de archivos
-                    var archivos = await LoteService.ListarHistorialAsync();
-                    await InvokeAsync(() =>
-                    {
-                        archivosHistorial = archivos;
-                        StateHasChanged();
-                    });
-
-                    if (nuevoEstado.Estado == "Completado")
-                        await InvokeAsync(() => MostrarToast(
-                            $"Generación completada: {nuevoEstado.OrdenesCompletadas:N0} cronogramas en {nuevoEstado.ArchivosGenerados.Count} archivo(s).",
-                            "success"));
-                    else
-                        await InvokeAsync(() => MostrarToast("La generación terminó con errores.", "danger"));
-                }
-            }
-            catch
-            {
-                // Ignorar errores transitorios de red durante el polling
-            }
-        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        filtro       = e.Value?.ToString();
+        paginaActual = 1;
+        await CargarDatos();
     }
 
-    // — Acciones del usuario -------------------------------------------------
+    private async Task PaginaAnterior() { if (paginaActual > 1) { paginaActual--; await CargarDatos(); } }
+    private async Task PaginaSiguiente() { if (paginaActual < totalPaginas) { paginaActual++; await CargarDatos(); } }
+    private async Task IrAPagina(int p) { paginaActual = p; await CargarDatos(); }
 
-    /// <summary>Inicia una nueva generación de cronogramas.</summary>
-    private async Task IniciarGeneracion()
-    {
-        try
-        {
-            var response = await LoteService.IniciarGeneracionAsync();
-            if (response == null) return;
-
-            MostrarToast($"Generación iniciada. ID: {response.TareaId}", "info");
-
-            // Actualizar estado inmediatamente y comenzar polling
-            await Task.Delay(500);
-            loteActual = await LoteService.ConsultarEstadoAsync();
-            IniciarPolling();
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            MostrarToast($"Error al iniciar: {ex.Message}", "danger");
-        }
-    }
-
-    /// <summary>Refresca manualmente el estado y el historial.</summary>
-    private async Task RefrescarEstado()
-    {
-        isRefreshing = true;
-        try
-        {
-            loteActual = await LoteService.ConsultarEstadoAsync();
-            archivosHistorial = await LoteService.ListarHistorialAsync();
-            if (hayGeneracionEnProgreso) IniciarPolling();
-        }
-        catch (Exception ex)
-        {
-            MostrarToast($"Error al actualizar: {ex.Message}", "danger");
-        }
-        finally
-        {
-            isRefreshing = false;
-        }
-    }
-
-    /// <summary>Descarga un archivo XML vía stream, enviando el token de autenticación.</summary>
-    private async Task DescargarArchivo(string nombreArchivo)
-    {
-        var stream = await LoteService.DescargarArchivoStreamAsync(nombreArchivo);
-        if (stream is null)
-        {
-            MostrarToast($"Error al descargar el archivo: {nombreArchivo}", "danger");
-            return;
-        }
-
-        using var streamRef = new DotNetStreamReference(stream: stream, leaveOpen: false);
-        await JS.InvokeVoidAsync("descargarArchivoStream", nombreArchivo, streamRef);
-    }
-
-    // — Flujo de envío (usado por EnvioLoteModal) -------------------------------------------------
-
-    private void AbrirModalEnvio(LoteModel lote)
-    {
-        loteParaEnviar = lote;
-        rutaDestinoOverride = null; // Limpiar campo
-    }
-
-    private void CancelarEnvio() => loteParaEnviar = null;
-
-    private async Task EjecutarEnvio()
-    {
-        if (loteParaEnviar == null) return;
-        isEnviando = true;
-        var loteId = loteParaEnviar.TareaId;
-        loteParaEnviar = null; // Cerrar modal
-
-        try
-        {
-            var response = await LoteService.EnviarLoteAsync(loteId, rutaDestinoOverride);
-            if (response == null) return;
-
-            if (response.Exitoso)
-            {
-                var msg = $"✓ {response.ArchivosCopiados.Count} archivo(s) enviados a '{response.RutaDestino}'.";
-                if (response.ArchivosFallidos.Count > 0)
-                    msg += $" ({response.ArchivosFallidos.Count} fallidos)";
-                MostrarToast(msg, "success");
-            }
-            else
-            {
-                MostrarToast($"Error al enviar: {response.Mensaje}", "danger");
-            }
-        }
-        catch (Exception ex)
-        {
-            MostrarToast($"Error al enviar: {ex.Message}", "danger");
-        }
-        finally
-        {
-            isEnviando = false;
-        }
-    }
-
-    // — Toast (usado por LoteToast) -------------------------------------------------
-
-    private void MostrarToast(string mensaje, string tipo)
-    {
-        _toastCts?.Cancel();
-        _toastCts = new CancellationTokenSource();
-
-        toastMessage = mensaje;
-        toastType = tipo;
-        StateHasChanged();
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(5000, _toastCts.Token);
-                await InvokeAsync(() =>
-                {
-                    toastMessage = null;
-                    StateHasChanged();
-                });
-            }
-            catch (TaskCanceledException) { /* Se canceló porque llegó otro toast */ }
-        });
-    }
-
-    // — Cleanup -------------------------------------------------
-
-    public void Dispose()
-    {
-        _pollingTimer?.Dispose();
-        _toastCts?.Cancel();
-        _toastCts?.Dispose();
-    }
+    private void VerDetalles(string numeroPrestamo) => Nav.NavigateTo($"/detalles/{numeroPrestamo}");
 }
 
------------------------------------------------------------------------
+================================================================================
+14) ARCHIVO (MODIFICADO): Pages/Lotes/Cronogramas.razor.css
+================================================================================
 
------------------------------------------------------------------------
-LOTES CSS
+/* Solo quedan aquí los estilos de layout general de la página,
+   ya que el resto se movió a los componentes correspondientes. */
 
-/* — Reset y base ------------------------------------------------- */
-.lotes-page * { box-sizing: border-box; }
+.lotes-page * {
+    box-sizing: border-box;
+}
+
 .lotes-page {
-    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: #f5f5f5;
     min-height: 100vh;
 }
 
-/* — Contenido ------------------------------------------------- */
-.lotes-content { padding: 2rem; max-width: 1100px; margin: 0 auto; }
-.lotes-page-header { margin-bottom: 1.75rem; }
-.lotes-page-header h1 {
-    font-size: 20px; font-weight: 600;
-    color: #1a1a1a; margin: 0 0 4px;
-}
-.lotes-page-header p { font-size: 13px; color: #888; margin: 0; }
-
------------------------------------------------------------------------
-
-
------------------------------------------------------------------------
-LOTECARD RAZOR
-
-@namespace LotesApp.Frontend.Cards
-@using LotesApp.Models
-
-<div class="lot-card" @onclick="HandleClick">
-
-    <!-- Nombre / ID -->
-    <div>
-        <div class="field-label">Lote</div>
-        <div class="lot-id">@(Batch.NombreLote ?? Batch.TareaId)</div>
-        <div class="lot-ambiente">@Batch.Ambiente</div>
-    </div>
-
-    <!-- Fecha -->
-    <div>
-        <div class="field-label">Fecha creación</div>
-        <div class="field-value">@Batch.CreatedAt.ToString("dd/MM/yyyy")</div>
-        <div class="lot-time">@Batch.CreatedAt.ToString("HH:mm")</div>
-    </div>
-
-    <!-- Tamaño / Progreso -->
-    <div>
-        <div class="field-label">Registros</div>
-        <div class="field-value">
-            @Batch.RegistrosProcesados.ToString("N0")
-            <span class="lot-total-registros">de @Batch.TotalRegistros.ToString("N0")</span>
-        </div>
-        <div class="lot-archivos-count">@Batch.LotesArchivosGenerados archivos XML</div>
-    </div>
-
-    <!-- Estado badge -->
-    <div>
-        @if (Batch.Estado == "Completado")
-        {
-            <span class="lot-badge badge-ready">
-                <span class="lot-badge-dot"></span> Completado
-            </span>
-        }
-        else if (Batch.Estado == "Enviado")
-        {
-            <span class="lot-badge badge-sent">
-                <span class="lot-badge-dot"></span> Enviado
-            </span>
-        }
-        else if (Batch.Estado == "Error")
-        {
-            <span class="lot-badge badge-error">
-                <span class="lot-badge-dot"></span> Error
-            </span>
-        }
-        else if (Batch.Estado == "EnProgreso" || Batch.Estado == "Pendiente")
-        {
-            <span class="lot-badge badge-running">
-                <span class="lot-badge-dot"></span> En Progreso
-            </span>
-        }
-    </div>
-
-    <!-- Acciones -->
-    <div class="card-actions">
-        @if (Batch.ArchivosGenerados.Count > 0)
-        {
-            <button class="btn-descargar"
-                    @onclick="HandleDescargar"
-                    @onclick:stopPropagation="true"
-                    title="Descargar primer archivo XML del lote">
-                ↓ Descargar
-            </button>
-        }
-    </div>
-</div>
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-LOTECARD CS
-
-using Microsoft.AspNetCore.Components;
-using LotesApp.Models;
-
-namespace LotesApp.Frontend.Cards;
-
-/// <summary>
-/// Card individual del historial de lotes generados.
-/// Es un componente de presentación: no navega ni descarga directamente,
-/// delega ambas acciones al padre mediante EventCallbacks para mantener
-/// la lógica de servicios (LoteService, navegación) centralizada.
-/// </summary>
-public partial class LoteCard
-{
-    /// <summary>Datos del lote a mostrar.</summary>
-    [Parameter, EditorRequired] public BatchHistorialItemDto Batch { get; set; } = default!;
-
-    /// <summary>Se dispara al hacer click en cualquier parte de la card (fuera del botón descargar).</summary>
-    [Parameter] public EventCallback OnCardClick { get; set; }
-
-    /// <summary>Se dispara al hacer click en "Descargar", con el nombre del archivo a descargar.</summary>
-    [Parameter] public EventCallback<string> OnDescargar { get; set; }
-
-    private async Task HandleClick() => await OnCardClick.InvokeAsync();
-
-    private async Task HandleDescargar()
-    {
-        var archivo = Batch.ArchivosGenerados.First();
-        await OnDescargar.InvokeAsync(archivo);
-    }
+.lotes-content {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-LOTECARD CSS
-
-/* — Card de lote ------------------------------------------------- */
-.lot-card {
-    background: #fff; border: 0.5px solid #e0e0e0;
-    border-radius: 10px; padding: 1.1rem 1.4rem;
-    display: grid;
-    grid-template-columns: 160px 130px 1fr 130px auto;
-    align-items: center; gap: 3.25rem;
-    transition: border-color 0.15s ease;
-    cursor: pointer;
+.lotes-center {
+    text-align: center;
+    padding: 4rem 0;
+    color: #888;
 }
 
-.lot-card:hover { border-color: #C8102E; }
-
-.field-label { font-size: 12px; color: #aaa; margin-bottom: 3px; }
-.field-value { font-size: 14px; font-weight: 600; color: #1a1a1a; }
-
-.lot-id {
-    font-size: 14px; color: #C8102E; margin-top: 2px;
-    font-family: 'Courier New', monospace; letter-spacing: 0.02em;
-}
-
-.lot-ambiente {
-    font-size: 10px; color: #888; margin-top: 2px;
-}
-
-.lot-time { font-size: 11px; color: #aaa; }
-
-.lot-total-registros { font-size: 11px; font-weight: normal; color: #aaa; }
-
-.lot-archivos-count { font-size: 11px; color: #aaa; margin-top: 2px; }
-
-/* — Acciones en card ------------------------------------------------- */
-.card-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-
-.btn-descargar {
-    background: #fff;
-    color: #bf0303;
-    border: 0.5px solid #bf0303;
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.btn-descargar:hover {
-    background: #bf0303;
-    color: #fff;
-}
-
-/* — Badges de estado ------------------------------------------------- */
-.lot-badge {
-    display: inline-flex; align-items: center;
-    font-size: 12px; font-weight: 500; gap: 5px;
-    border-radius: 99px; padding: 4px 11px;
-    white-space: nowrap;
-}
-
-.lot-badge-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
-
-.badge-pending { background: #fff7ed; color: #92400e; border: 0.5px solid #fed7aa; }
-.badge-pending .lot-badge-dot { background: #f59e0b; }
-
-.badge-running { background: #eff6ff; color: #1d4ed8; border: 0.5px solid #bfdbfe; }
-.badge-running .lot-badge-dot { background: #3b82f6; animation: pulse-dot 1s ease-in-out infinite; }
-
-.badge-ready { background: #f0fdf4; color: #166534; border: 0.5px solid #bbf7d0; }
-.badge-ready .lot-badge-dot { background: #22c55e; }
-
-.badge-sent { background: #f5f3ff; color: #5b21b6; border: 0.5px solid #ddd6fe; }
-.badge-sent .lot-badge-dot { background: #7c3aed; }
-
-.badge-error { background: #fff5f5; color: #991b1b; border: 0.5px solid #fecaca; }
-.badge-error .lot-badge-dot { background: #ef4444; }
-
-@keyframes pulse-dot {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-}
-
------------------------------------------------------------------------
-
-
------------------------------------------------------------------------
-LIST RAZOR
-
-@namespace LotesApp.Frontend.Lists
-
-@if (Archivos.Count > 0)
-{
-    <div class="archivos-lista" style="margin-top: 12px;">
-        <div class="archivos-lista-title">Archivos generados (@Archivos.Count)</div>
-        @foreach (var archivo in Archivos)
-        {
-            <div class="archivo-item">
-                <span class="archivo-nombre">📄 @archivo</span>
-                <button class="btn-descargar"
-                        @onclick="() => HandleDescargar(archivo)">
-                    ↓ Descargar
-                </button>
-            </div>
-        }
-    </div>
-}
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-LIST CS
-
-using Microsoft.AspNetCore.Components;
-
-namespace LotesApp.Frontend.Lists;
-
-/// <summary>
-/// Lista de archivos XML generados para un lote, cada uno con su botón de descarga.
-/// Es un componente de presentación: no descarga directamente, delega la acción
-/// al padre mediante un EventCallback con el nombre del archivo.
-/// </summary>
-public partial class ArchivosGeneradosList
-{
-    /// <summary>Nombres de los archivos generados a listar.</summary>
-    [Parameter, EditorRequired] public List<string> Archivos { get; set; } = new();
-
-    /// <summary>Se dispara al hacer click en "Descargar", con el nombre del archivo a descargar.</summary>
-    [Parameter] public EventCallback<string> OnDescargar { get; set; }
-
-    private async Task HandleDescargar(string archivo) => await OnDescargar.InvokeAsync(archivo);
-}
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-LIST CSS
-
-/* — Lista de archivos generados durante la generación en curso ---- */
-.archivos-lista {
-    background: #f9f9f9; border-radius: 8px;
-    padding: 0.75rem 1rem; margin-top: 12px;
-    font-size: 12px; color: #555;
-}
-
-.archivos-lista-title {
-    font-size: 11px; font-weight: 600; color: #888;
-    text-transform: uppercase; letter-spacing: 0.05em;
-    margin-bottom: 6px;
-}
-
-.archivo-item {
-    display: flex; align-items: center;
-    justify-content: space-between; padding: 3px 0;
-    border-bottom: 0.5px solid #eee;
-}
-.archivo-item:last-child { border-bottom: none; }
-.archivo-nombre {
-    font-family: 'Courier New', monospace;
-    font-size: 11px; color: #333;
-}
-
-.btn-descargar {
-    background: #fff;
-    color: #bf0303;
-    border: 0.5px solid #bf0303;
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.btn-descargar:hover {
-    background: #bf0303;
-    color: #fff;
-}
-
------------------------------------------------------------------------
-
-
------------------------------------------------------------------------
-MODALS RAZOR
-
-@namespace LotesApp.Frontend.Modals
-@using LotesApp.Models
-
-@if (Lote is not null)
-{
-    <div class="lotes-modal-backdrop">
-        <div class="lotes-modal">
-            <div class="lotes-modal-header">
-                <h2 class="lotes-modal-title">Confirmar envío a destino</h2>
-                <button class="lotes-modal-close" @onclick="HandleCancel">x</button>
-            </div>
-            <div class="lotes-modal-body">
-                <p>
-                    ¿Deseas copiar los archivos del lote
-                    <strong class="lot-id-modal">@Lote.Id</strong>
-                    a la carpeta destino?
-                </p>
-
-                <div class="lotes-modal-meta">
-                    <span>📁 Archivos: <strong>@Lote.ArchivosGenerados.Count archivo(s)</strong></span>
-                    <span>📄 Generado: <strong>@Lote.Creado.ToString("dd/MM/yyyy HH:mm")</strong></span>
-                    <span>💻 Ambiente: <strong>@Lote.Ambiente</strong></span>
-                </div>
-
-                <!-- Ruta destino override opcional -->
-                <div class="modal-input-group">
-                    <label class="modal-input-label">Carpeta destino</label>
-                    <input class="modal-input"
-                           value="@RutaDestinoOverride"
-                           @oninput="HandleRutaChanged"
-                           placeholder="@RutaDestinoPlaceholder" />
-                    <p class="modal-input-hint">
-                        Déjalo vacío para usar la ruta configurada en el servidor.
-                        Admite rutas locales y de red (\\servidor\carpeta).
-                    </p>
-                </div>
-
-                <div class="lotes-modal-warning">
-                    ⚠ Los archivos se copiarán desde el servidor a la carpeta destino.
-                    El proceso es irreversible pero no elimina los archivos de origen.
-                </div>
-            </div>
-            <div class="lotes-modal-footer">
-                <button class="btn-modal-cancel" @onclick="HandleCancel">Cancelar</button>
-                <button class="btn-modal-confirm" @onclick="HandleConfirm" disabled="@IsEnviando">
-                    @(IsEnviando ? "Enviando..." : "↑ Confirmar envío")
-                </button>
-            </div>
-        </div>
-    </div>
-}
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-MODALS CS
-
-using Microsoft.AspNetCore.Components;
-using LotesApp.Models;
-
-namespace LotesApp.Frontend.Modals;
-
-/// <summary>
-/// Modal de confirmación para enviar (copiar) los archivos de un lote a la carpeta destino.
-/// Es un componente de presentación: no llama al servicio directamente, delega
-/// la acción de confirmar/cancelar al padre mediante EventCallbacks.
-/// </summary>
-public partial class EnvioLoteModal
-{
-    /// <summary>Lote a enviar. Si es null, el modal no se muestra.</summary>
-    [Parameter] public LoteModel? Lote { get; set; }
-
-    /// <summary>Ruta destino configurada por defecto (se muestra como placeholder).</summary>
-    [Parameter] public string? RutaDestinoPlaceholder { get; set; }
-
-    /// <summary>Ruta destino override escrita por el usuario (soporta @bind-RutaDestinoOverride).</summary>
-    [Parameter] public string? RutaDestinoOverride { get; set; }
-    [Parameter] public EventCallback<string?> RutaDestinoOverrideChanged { get; set; }
-
-    /// <summary>Indica si el envío está en curso (deshabilita el botón de confirmar).</summary>
-    [Parameter] public bool IsEnviando { get; set; }
-
-    /// <summary>Se dispara al cancelar / cerrar el modal.</summary>
-    [Parameter] public EventCallback OnCancel { get; set; }
-
-    /// <summary>Se dispara al confirmar el envío.</summary>
-    [Parameter] public EventCallback OnConfirm { get; set; }
-
-    private async Task HandleRutaChanged(ChangeEventArgs e)
-    {
-        RutaDestinoOverride = e.Value?.ToString();
-        await RutaDestinoOverrideChanged.InvokeAsync(RutaDestinoOverride);
-    }
-
-    private async Task HandleCancel() => await OnCancel.InvokeAsync();
-
-    private async Task HandleConfirm() => await OnConfirm.InvokeAsync();
-}
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-MODALS CSS
-
-/* — Modal ------------------------------------------------- */
-.lotes-modal-backdrop {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.4);
-    display: flex; align-items: center;
-    justify-content: center; z-index: 900;
-}
-
-.lotes-modal {
-    background: #fff; border-radius: 12px;
-    width: 100%; max-width: 480px;
-    padding: 1.75rem; margin: 1rem;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-}
-
-.lotes-modal-header {
-    display: flex; align-items: flex-start;
-    justify-content: space-between; margin-bottom: 1.25rem;
-}
-
-.lotes-modal-title { font-size: 16px; font-weight: 600; color: #1a1a1a; margin: 0; }
-
-.lotes-modal-close {
-    background: none; border: none; font-size: 25px;
-    color: #aaa; cursor: pointer; line-height: 1; padding: 0;
-}
-
-.lotes-modal-close:hover {
-    color: #df0000e8;
-}
-
-.lotes-modal-body { font-size: 14px; color: #444; }
-
-.lotes-modal-meta {
-    background: #f9f9f9; border-radius: 6px;
-    padding: 0.75rem 1rem; margin: 1rem 0;
-    font-size: 13px; color: #555;
-    display: flex; flex-direction: column; gap: 6px;
-}
-
-.lot-id-modal {
-    color: #df0000e8;
-}
-
-.modal-input-group { margin-top: 1rem; }
-.modal-input-label { font-size: 12px; color: #888; margin-bottom: 4px; display: block; }
-
-.modal-input {
-    width: 100%; padding: 8px 12px; border: 0.5px solid #e0e0e0;
-    border-radius: 6px; font-size: 13px; color: #333;
-    outline: none; transition: border-color 0.15s;
-}
-
-.modal-input:focus { border-color: #C8102E; }
-.modal-input-hint { font-size: 11px; color: #aaa; margin-top: 4px; }
-
-.lotes-modal-warning {
-    background: #fffbeb; border: 0.5px solid #fde68a;
-    border-radius: 6px; padding: 0.65rem 1rem;
-    font-size: 12px; color: #92400e; margin-top: 0.75rem;
-}
-
-.lotes-modal-footer {
-    display: flex; justify-content: flex-end;
-    gap: 8px; margin-top: 1.5rem;
-}
-
-.btn-modal-cancel {
-    background: #fff; border: 0.5px solid #e0e0e0;
-    border-radius: 6px; padding: 8px 20px;
-    font-size: 13px; cursor: pointer; color: #444;
-}
-
-.btn-modal-cancel:hover {
-    background: #dfdfdf;
-    color: #000000;
-    border-color: #ccc;
-}
-
-.btn-modal-confirm {
-    background: #df0000e8;
-    color: #fff;
-    border: none;
-    border-radius: 6px; padding: 8px 20px;
-    font-size: 13px; font-weight: 500; cursor: pointer;
-}
-
-.btn-modal-confirm:hover {
-    background: #bf0303;
-}
-
-.btn-modal-confirm:disabled {
-    opacity: 0.5; cursor: not-allowed;
-}
-
------------------------------------------------------------------------
-
-
------------------------------------------------------------------------
-ACCIONES PANEL RAZOR
-
-@namespace LotesApp.Frontend.Panels
-
-<div class="action-panel">
-    <div class="action-info">
-        <h2>Generar cronogramas de pago</h2>
-        <p>Conecta al AS400 y genera los archivos XML con los cronogramas. La generación corre en segundo plano.</p>
-    </div>
-    <div class="action-buttons">
-
-        <button class="btn btn-secondary" @onclick="HandleRefrescar" disabled="@IsRefreshing">
-            @if (IsRefreshing) { <span>↻</span> } else { <span>↻</span> }
-            Actualizar
-        </button>
-        <button class="btn btn-primary"
-                @onclick="HandleGenerar"
-                disabled="@(HayGeneracionEnProgreso || IsLoading)">
-            @if (HayGeneracionEnProgreso)
-            {
-                <span class="lotes-spinner" style="width:14px;height:14px;border-width:2px;margin:0;"></span>
-                <span>Generando...</span>
-            }
-            else
-            {
-                <span>▶ Generar cronogramas</span>
-            }
-        </button>
-    </div>
-</div>
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-ACCIONES PANEL CS
-
-using Microsoft.AspNetCore.Components;
-
-namespace LotesApp.Frontend.Panels;
-
-/// <summary>
-/// Panel de acción principal de la página de Lotes: contiene el botón para
-/// refrescar el estado y el botón para iniciar una nueva generación de cronogramas.
-/// Es un componente de presentación: no llama a servicios directamente, delega
-/// ambas acciones al padre mediante EventCallbacks.
-/// </summary>
-public partial class AccionesPanel
-{
-    /// <summary>Indica si se está cargando el estado/historial inicial (deshabilita "Generar").</summary>
-    [Parameter] public bool IsLoading { get; set; }
-
-    /// <summary>Indica si hay un refresco manual en curso (deshabilita "Actualizar").</summary>
-    [Parameter] public bool IsRefreshing { get; set; }
-
-    /// <summary>Indica si hay una generación en progreso (deshabilita "Generar" y muestra spinner).</summary>
-    [Parameter] public bool HayGeneracionEnProgreso { get; set; }
-
-    /// <summary>Se dispara al hacer click en "Actualizar".</summary>
-    [Parameter] public EventCallback OnRefrescar { get; set; }
-
-    /// <summary>Se dispara al hacer click en "Generar cronogramas".</summary>
-    [Parameter] public EventCallback OnGenerar { get; set; }
-
-    private async Task HandleRefrescar() => await OnRefrescar.InvokeAsync();
-
-    private async Task HandleGenerar() => await OnGenerar.InvokeAsync();
-}
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
- ACCIONES PANEL CSS
-
-/* — Panel de acciones ------------------------------------------------- */
-.action-panel {
-    background: #fff; border: 0.5px solid #e0e0e0;
-    border-radius: 12px; padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    display: flex; align-items: center;
-    justify-content: space-between; gap: 1rem;
-    flex-wrap: wrap;
-}
-
-.action-info h2 {
-    font-size: 14px; font-weight: 600; color: #1a1a1a; margin: 0 0 4px;
-}
-
-.action-info p { font-size: 13px; color: #888; margin: 0 0 4px; }
-.action-buttons { display: flex; gap: 8px; margin: 0; flex-shrink: 0; }
-
-/* — Botones ------------------------------------------------- */
-.btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    border: none; border-radius: 7px; padding: 9px 18px;
-    font-size: 13px; font-weight: 500; cursor: pointer;
-    transition: all 0.15s ease; white-space: nowrap;
-}
-
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-primary {
-    background: #df0000e8;
-    color: #fff;
-}
-
-.btn-primary:hover:not(:disabled) {
-    background: #bf0303;
-}
-
-.btn-secondary {
-    background: #fff; color: #444;
-    border: 0.5px solid #e0e0e0;
-}
-
-.btn-secondary:hover:not(:disabled) {
-    background: #dfdfdf;
-    border-color: #ccc;
-    color: #000000;
-}
-
-/* — Spinner pequeño para el botón "Generando..." ------------------------------------------------- */
 .lotes-spinner {
-    width: 30px; height: 30px;
-    border: 3px solid #f0f0f0; border-top-color: #C8102E;
-    border-radius: 50%; animation: spin 0.7s linear infinite;
+    width: 32px;
+    height: 32px;
+    border: 3px solid #f0f0f0;
+    border-top-color: #C8102E;
+    border-radius: 50%;
+    animation: lotes-spin 0.7s linear infinite;
     margin: 0 auto 1rem;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
-
------------------------------------------------------------------------
-
-
------------------------------------------------------------------------
-PROGRESO PANEL RAZOR
-
-@namespace LotesApp.Frontend.Panels
-@using LotesApp.Models
-@using LotesApp.Frontend.Lists
-
-<div class="progress-panel">
-    <div class="progress-panel-header">
-        <div>
-            <div class="progress-title">
-                @if (Lote.Estado == "EnProgreso" || Lote.Estado == "Pendiente")
-                { <span>⚙ Generación en progreso</span> }
-                else if (Lote.Estado == "Completado")
-                { <span>✓ Generación completada</span> }
-                else if (Lote.Estado == "Error")
-                { <span>✗ Error en la generación</span> }
-                else
-                { <span>@Lote.Estado</span> }
-            </div>
-            <div class="progress-tarea-id">ID: @Lote.TareaId</div>
-            @if (!string.IsNullOrEmpty(Lote.UsuarioGenerando) && HayGeneracionEnProgreso)
-            {
-                <div style="font-size: 12px; color: #92400e; margin-top: 4px;
-                    border: 0.5px solid #fed7aa; border-radius: 6px;
-                    padding: 4px 10px; display: inline-block; background: #fff7ed;">
-                    👤 Generando por: <strong>@Lote.UsuarioGenerando</strong>
-                </div>
-            }
-        </div>
-        <div class="progress-pct">@Lote.PorcentajeProgreso%</div>
-    </div>
-
-    <div class="progress-track">
-        <div class="progress-fill @(Lote.Estado == "Completado" ? "complete" : Lote.Estado == "Error" ? "error-fill" : "")"
-             style="width: @Lote.PorcentajeProgreso%">
-        </div>
-    </div>
-
-    <div class="progress-meta">
-        <span>@Lote.MensajeProgreso</span>
-        <span>@Lote.DocumentosPendientes</span>
-    </div>
-
-    @if (Lote.Estado == "Error" && Lote.Error != null)
-    {
-        <div class="progress-error-msg">⚠ @Lote.Error</div>
-    }
-
-    <!-- Botón de envío: solo disponible cuando está Completado -->
-    @if (Lote.Estado == "Completado" && Lote.ArchivosGenerados.Count > 0)
-    {
-        <div style="margin-top: 1rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <button class="btn btn-success"
-                    @onclick="HandleEnviarClick"
-                    disabled="@IsEnviando">
-                @if (IsEnviando)
-                { <span>Enviando...</span> }
-                else
-                { <span>↑ Enviar a destino (@Lote.ArchivosGenerados.Count archivo(s))</span> }
-            </button>
-            <span style="font-size: 12px; color: #888;">
-                Destino: <code style="font-size:11px;">@RutaDestino</code>
-            </span>
-        </div>
-    }
-
-    <!-- Lista de archivos generados -->
-    <ArchivosGeneradosList Archivos="Lote.ArchivosGenerados" OnDescargar="HandleDescargarArchivo" />
-</div>
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-PROGRESO PANEL CS
-
-using Microsoft.AspNetCore.Components;
-using LotesApp.Models;
-
-namespace LotesApp.Frontend.Panels;
-
-/// <summary>
-/// Panel de progreso en vivo de la generación de cronogramas: muestra el estado,
-/// el porcentaje de avance, mensajes/errores y la lista de archivos generados.
-/// Es un componente de presentación: no llama a servicios directamente, delega
-/// el envío y la descarga de archivos al padre mediante EventCallbacks.
-/// </summary>
-public partial class ProgresoPanel
-{
-    /// <summary>Estado actual del lote en generación.</summary>
-    [Parameter, EditorRequired] public LoteModel Lote { get; set; } = default!;
-
-    /// <summary>Indica si hay una generación en progreso (controla el badge de "Generando por").</summary>
-    [Parameter] public bool HayGeneracionEnProgreso { get; set; }
-
-    /// <summary>Indica si el envío a la carpeta destino está en curso (deshabilita el botón "Enviar").</summary>
-    [Parameter] public bool IsEnviando { get; set; }
-
-    /// <summary>Ruta destino configurada, mostrada como referencia junto al botón de envío.</summary>
-    [Parameter] public string? RutaDestino { get; set; }
-
-    /// <summary>Se dispara al hacer click en "Enviar a destino".</summary>
-    [Parameter] public EventCallback OnEnviarClick { get; set; }
-
-    /// <summary>Se dispara al hacer click en "Descargar" de un archivo generado.</summary>
-    [Parameter] public EventCallback<string> OnDescargarArchivo { get; set; }
-
-    private async Task HandleEnviarClick() => await OnEnviarClick.InvokeAsync();
-
-    private async Task HandleDescargarArchivo(string archivo) => await OnDescargarArchivo.InvokeAsync(archivo);
+@keyframes lotes-spin {
+    to { transform: rotate(360deg); }
 }
 
------------------------------------------------------------------------
-
------------------------------------------------------------------------
- PROGRESO PANEL CSS
-
-/* — Panel de progreso en vivo ------------------------------------------------- */
-.progress-panel {
-    background: #fff; border: 0.5px solid #e0e0e0;
-    border-radius: 12px; padding: 1.5rem;
-    margin-bottom: 1.5rem;
-}
-.progress-panel-header {
-    display: flex; align-items: center;
-    justify-content: space-between; margin-bottom: 1rem;
-}
-
-.progress-title {
-    font-size: 14px; font-weight: 600; color: #1a1a1a;
-}
-
-.progress-pct {
-    font-size: 22px;
-    font-weight: 700;
-    color: #df0000e8;
-}
-
-.progress-track {
-    height: 8px; background: #f0f0f0;
-    border-radius: 99px; overflow: hidden; margin-bottom: 10px;
-}
-
-.progress-fill {
-    height: 100%; border-radius: 99px;
-    background: linear-gradient(90deg, #f59e0b, #f97316);
-    transition: width 0.5s ease;
-}
-
-.progress-fill.complete {
-    background: linear-gradient(90deg, #22c55e, #16a34a);
-}
-
-.progress-fill.error-fill { background: #ef4444; }
-.progress-meta {
-    display: flex; justify-content: space-between;
-    font-size: 12px; color: #888; flex-wrap: wrap; gap: 4px;
-}
-
-.progress-tarea-id {
-    font-family: 'Courier New', monospace;
-    font-size: 11px; color: #C8102E; margin-top: 6px;
-}
-
-.progress-error-msg {
-    background: #fff5f5; border: 0.5px solid #fecaca;
-    border-radius: 6px; padding: 0.75rem 1rem;
-    font-size: 13px; color: #991b1b; margin-top: 10px;
-}
-
-/* — Botones (usados por el botón "Enviar a destino") ------------------------------------------------- */
-.btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    border: none; border-radius: 7px; padding: 9px 18px;
-    font-size: 13px; font-weight: 500; cursor: pointer;
-    transition: all 0.15s ease; white-space: nowrap;
-}
-
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-success { background: #16a34a; color: #fff; }
-.btn-success:hover:not(:disabled) { background: #15803d; }
-
------------------------------------------------------------------------
-
-
------------------------------------------------------------------------
-SECTIONS RAZOR
-
-@namespace LotesApp.Frontend.Sections
-@using LotesApp.Models
-@using LotesApp.Frontend.Cards
-
-@if (IsLoading)
-{
-    <div class="lotes-center">
-        <div class="lotes-spinner"></div>
-        <p>Cargando historial...</p>
-    </div>
-}
-else if (ErrorMessage is not null)
-{
-    <div class="lotes-error">⚠ @ErrorMessage</div>
-}
-else if (Archivos.Count > 0)
-{
-    <div class="lotes-section-label">Historial de Lotes Generados</div>
-    <div class="lotes-grid">
-        @foreach (var batch in Archivos)
-        {
-            <LoteCard Batch="batch"
-                      OnCardClick="() => HandleCardClick(batch)"
-                      OnDescargar="HandleDescargar" />
-        }
-    </div>
-}
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-SECTIONS CS
-
-using Microsoft.AspNetCore.Components;
-using LotesApp.Models;
-
-namespace LotesApp.Frontend.Sections;
-
-/// <summary>
-/// Sección de historial de lotes generados (desde /listar): maneja los tres
-/// estados posibles (cargando, error, listado) y renderiza una <see cref="LoteCard"/>
-/// por cada lote del historial.
-/// Es un componente de presentación: no navega ni descarga directamente, delega
-/// ambas acciones al padre mediante EventCallbacks.
-/// </summary>
-public partial class HistorialSection
-{
-    /// <summary>Indica si el historial se está cargando.</summary>
-    [Parameter] public bool IsLoading { get; set; }
-
-    /// <summary>Mensaje de error al consultar la API, si lo hubo.</summary>
-    [Parameter] public string? ErrorMessage { get; set; }
-
-    /// <summary>Historial de lotes generados a listar.</summary>
-    [Parameter, EditorRequired] public List<BatchHistorialItemDto> Archivos { get; set; } = new();
-
-    /// <summary>Se dispara al hacer click en una card del historial, con el lote seleccionado.</summary>
-    [Parameter] public EventCallback<BatchHistorialItemDto> OnCardClick { get; set; }
-
-    /// <summary>Se dispara al hacer click en "Descargar" de un archivo del historial.</summary>
-    [Parameter] public EventCallback<string> OnDescargar { get; set; }
-
-    private async Task HandleCardClick(BatchHistorialItemDto batch) => await OnCardClick.InvokeAsync(batch);
-
-    private async Task HandleDescargar(string archivo) => await OnDescargar.InvokeAsync(archivo);
-}
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-SECTIONS CSS
-
-/* — Etiqueta de sección ------------------------------------------------- */
-.lotes-section-label {
-    font-size: 11px; font-weight: 600; color: #888;
-    text-transform: uppercase; letter-spacing: 0.06em;
-    margin-bottom: 1rem;
-}
-
-/* — Grid de cards (el card en sí vive en LoteCard.razor.css) ------- */
-.lotes-grid { display: flex; flex-direction: column; gap: 10px; }
-
-/* — Estados vacíos ------------------------------------------------- */
-.lotes-center { text-align: center; padding: 4rem 0; color: #888; }
-.lotes-spinner {
-    width: 30px; height: 30px;
-    border: 3px solid #f0f0f0; border-top-color: #C8102E;
-    border-radius: 50%; animation: spin 0.7s linear infinite;
-    margin: 0 auto 1rem;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
 .lotes-error {
-    background: #fff5f5; border: 0.5px solid #fecaca;
-    border-radius: 8px; padding: 1rem 1.25rem;
-    color: #991b1b; font-size: 14px;
+    background: #fff5f5;
+    border: 0.5px solid #fecaca;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    color: #991b1b;
+    font-size: 14px;
 }
 
------------------------------------------------------------------------
+================================================================================
+NOTAS IMPORTANTES DE MIGRACIÓN
+================================================================================
 
+1. Ajusta el "using LotesApp.Frontend.Components.X" en la página según el
+   namespace raíz real de tu proyecto (lo inferí del patrón de LoteCard en
+   LotesApp.Frontend.Components.Cards y BatchManagementNav en Navbars).
 
------------------------------------------------------------------------
-TOAST RAZOR
+2. Si tu build usa CSS isolation (archivos .razor.css), Blazor genera
+   automáticamente los scopes; no necesitas registrar nada extra, solo
+   asegúrate que cada .razor.css tenga exactamente el mismo nombre base que
+   su .razor correspondiente.
 
-@namespace LotesApp.Frontend.Toast
+3. La lógica de negocio (llamadas a CronogramaService, control de paginación,
+   filtro, navegación) permanece 100% intacta en Cronogramas.razor; solo se
+   movió el HTML/CSS/eventos de presentación a los 4 componentes.
 
-@if (Message is not null)
-{
-    <div class="lotes-toast toast-@Type">
-        <span>@Message</span>
-        <button class="lotes-toast-close" @onclick="HandleClose">x</button>
-    </div>
-}
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-TOAST CS
-
-using Microsoft.AspNetCore.Components;
-
-namespace LotesApp.Frontend.Toast;
-
-/// <summary>
-/// Componente de notificación tipo "toast".
-/// El estado (mensaje, tipo, tiempo de vida) lo controla el componente padre;
-/// este componente solo se encarga de la presentación y de avisar cuándo debe cerrarse.
-/// </summary>
-public partial class LoteToast
-{
-    /// <summary>Mensaje a mostrar. Si es null, el toast no se renderiza.</summary>
-    [Parameter] public string? Message { get; set; }
-
-    /// <summary>Tipo de toast: "success", "danger" o "info".</summary>
-    [Parameter] public string Type { get; set; } = "success";
-
-    /// <summary>Se dispara cuando el usuario hace click en la "x" para cerrar el toast.</summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    private async Task HandleClose()
-    {
-        await OnClose.InvokeAsync();
-    }
-}
-
------------------------------------------------------------------------
-
------------------------------------------------------------------------
-TOAST CSS
-
-/* — Toast ------------------------------------------------- */
-.lotes-toast {
-    position: fixed; bottom: 1.5rem; right: 1.5rem;
-    background: #1a1a1a; color: #fff; border-radius: 8px;
-    padding: 0.75rem 1.25rem; font-size: 13px; font-weight: 500;
-    display: flex; align-items: center; gap: 12px;
-    z-index: 1000; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-    animation: slide-in 0.2s ease;
-}
-
-.lotes-toast.toast-success { border-left: 3px solid #22c55e; }
-.lotes-toast.toast-danger  { border-left: 3px solid #C8102E; }
-.lotes-toast.toast-info    { border-left: 3px solid #3b82f6; }
-
-.lotes-toast-close {
-    background: none; border: none; color: #888;
-    cursor: pointer; font-size: 16px; line-height: 1; padding: 0;
-}
-
-@keyframes slide-in {
-    from { transform: translateX(100%); opacity: 0; }
-    to   { transform: translateX(0);    opacity: 1; }
-}
-
------------------------------------------------------------------------
+4. El único cambio funcional real es que "VerDetalles" ahora se invoca vía
+   EventCallback<string> desde CronogramaTabla, y "ObtenerPaginasVisibles"
+   vive dentro de CronogramaPaginacion.razor.cs en vez de la página. El
+   comportamiento visible para el usuario es idéntico al original.
