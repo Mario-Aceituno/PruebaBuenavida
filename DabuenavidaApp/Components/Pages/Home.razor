@@ -1,18 +1,387 @@
-.lotes-page * { box-sizing: border-box; }
-.lotes-page { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; min-height: 100vh; }
-.lotes-content { padding: 2rem; max-width: 1200px; margin: 0 auto; }
-.lotes-center { text-align: center; padding: 4rem 0; color: #888; }
-.lotes-spinner { width: 32px; height: 32px; border: 3px solid #f0f0f0; border-top-color: #C8102E; border-radius: 50%; animation: lotes-spin 0.7s linear infinite; margin: 0 auto 1rem; }
-@keyframes lotes-spin { to { transform: rotate(360deg); } }
-.lotes-error { background: #fff5f5; border: 0.5px solid #fecaca; border-radius: 8px; padding: 1rem 1.25rem; color: #991b1b; font-size: 14px; }
+@page "/lotes"
+@layout LotesLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using LotesApp.Models
+@using LotesApp.Services
+@using Microsoft.Extensions.Options
+@using LotesApp.Frontend.Toast
+@using LotesApp.Frontend.Modals
+@using LotesApp.Frontend.Cards
+@using LotesApp.Frontend.Panels
+@using LotesApp.Frontend.Sections
+@inject LoteService LoteService
+@inject IOptions<LotesConfig> Config
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject AuthService AuthService
+@implements IDisposable
 
-.det-header { margin-bottom: 1.5rem; }
-.btn-volver { background: none; border: none; color: #C8102E; font-size: 13px; cursor: pointer; padding: 0; font-weight: 500; margin-bottom: 12px; display: inline-block; }
-.btn-volver:hover { text-decoration: underline; }
+<PageTitle>Gestión de Lotes - Cronogramas de Pago</PageTitle>
 
-/* Filtro por fecha: actualmente comentado en el markup, se deja listo por si se reactiva */
-.cron-filtro-row { margin-bottom: 1.25rem; display: flex; align-items: center; gap: 8px; }
-.cron-input { padding: 8px 14px; border: 0.5px solid #e0e0e0; border-radius: 6px; font-size: 13px; outline: none; background: #fff; }
-.cron-input:focus { border-color: #C8102E; }
-.btn-limpiar { background: none; border: 0.5px solid #e0e0e0; border-radius: 6px; padding: 7px 12px; font-size: 12px; cursor: pointer; color: #666; }
-.btn-limpiar:hover { border-color: #C8102E; color: #C8102E; }
+@* No se renderiza NADA del contenido hasta confirmar que el usuario está
+   autenticado. Esto evita el "flash" de la carcasa de la página (navbar,
+   encabezado, paneles vacíos) antes de redirigir a /not-permiso. *@
+@if (isAuthChecked)
+{
+    <div class="lotes-page">
+        <!-- NAVBAR -->
+        <LotesApp.Frontend.Components.Navbars.BatchManagementNav />
+
+        <div class="lotes-content">
+            <!-- ENCABEZADO -->
+            <div class="lotes-page-header">
+                <h1>Lotes de archivos</h1>
+                @* <p>Generación de cronogramas de pago desde AS400 · API: @Config.Value.ApiBaseUrl</p> *@
+            </div>
+
+            <!-- PANEL DE ACCIÓN PRINCIPAL -->
+            <AccionesPanel
+                IsLoading="isLoading"
+                IsRefreshing="isRefreshing"
+                HayGeneracionEnProgreso="hayGeneracionEnProgreso"
+                OnRefrescar="RefrescarEstado"
+                OnGenerar="IniciarGeneracion" />
+
+            <!-- PANEL DE PROGRESO EN VIVO (solo si hay tarea activa) -->
+            @if (loteActual != null)
+            {
+                <ProgresoPanel
+                    Lote="loteActual"
+                    HayGeneracionEnProgreso="hayGeneracionEnProgreso"
+                    IsEnviando="isEnviando"
+                    RutaDestino="@Config.Value.RutaDestino"
+                    OnEnviarClick="() => AbrirModalEnvio(loteActual)"
+                    OnDescargarArchivo="DescargarArchivo" />
+            }
+
+            <!-- HISTORIAL DE LOTES (desde /listar) -->
+            <HistorialSection
+                IsLoading="isLoading"
+                ErrorMessage="@errorMessage"
+                Archivos="archivosHistorial"
+                OnCardClick='(batch) => Nav.NavigateTo($"/cronogramas/{batch.NombreLote}")'
+                OnDescargar="DescargarArchivo" />
+
+            <!-- TOAST -->
+            <LoteToast
+                Message="@toastMessage"
+                Type="@toastType"
+                OnClose="() => toastMessage = null" />
+
+            <!-- MODAL DE CONFIRMACIÓN DE ENVÍO -->
+            <EnvioLoteModal
+                Lote="loteParaEnviar"
+                RutaDestinoPlaceholder="@Config.Value.RutaDestino"
+                @bind-RutaDestinoOverride="rutaDestinoOverride"
+                IsEnviando="isEnviando"
+                OnCancel="CancelarEnvio"
+                OnConfirm="EjecutarEnvio" />
+        </div>
+    </div>
+}
+using LotesApp.Models;
+using LotesApp.Services;
+using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
+
+namespace LotesApp.Frontend.Pages.Lotes;
+
+public partial class Lotes : IDisposable
+{
+    // - Estado de la UI ----------------------------------------
+    private LoteModel? loteActual;
+    private List<BatchHistorialItemDto> archivosHistorial = new();
+    private bool isLoading = true;
+    private bool isRefreshing = false;
+    private bool isEnviando = false;
+    private bool isAuthChecked = false; // true solo cuando ya se confirmó que el usuario está autenticado
+    private bool hayGeneracionEnProgreso =>
+        loteActual?.Estado == "EnProgreso" || loteActual?.Estado == "Pendiente";
+    private string? errorMessage;
+    private string? ambienteActivo;
+
+    // Toast
+    private string? toastMessage;
+    private string toastType = "success";
+    private CancellationTokenSource? _toastCts;
+
+    // Modal de envio
+    private LoteModel? loteParaEnviar;
+    private string? rutaDestinoOverride;
+
+    // Polling (reemplaza el Timer original para evitar ejecuciones solapadas)
+    private CancellationTokenSource? _pollingCts;
+
+    // - Inicialización ----------------------------------------
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await AuthService.LoadTokenAsync();
+        if (!AuthService.IsAuthenticated)
+        {
+            Nav.NavigateTo("/not-permiso");
+            return;
+        }
+
+        LoteService.SetAuthToken(AuthService.Token);
+        isAuthChecked = true; // recién ahora es seguro renderizar el contenido de la página
+        await CargarDatosIniciales();
+        StateHasChanged();
+    }
+
+    private async Task CargarDatosIniciales()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            // Consultar estado actual de la API
+            loteActual = await LoteService.ConsultarEstadoAsync();
+            ambienteActivo = loteActual?.Ambiente;
+
+            // Cargar historial de archivos
+            archivosHistorial = await LoteService.ListarHistorialAsync();
+
+            // Si hay una generación en progreso, iniciar polling
+            if (hayGeneracionEnProgreso)
+                IniciarPolling();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"No se pudo conectar a la API: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    // - Polling de progreso -------------------------------------
+    /// <summary>
+    /// Inicia el polling cada 2 segundos mientras la generación está en progreso.
+    /// Se detiene automáticamente cuando el estado cambia a Completado o Error,
+    /// o si se detectan demasiados fallos de red consecutivos.
+    /// </summary>
+    private void IniciarPolling()
+    {
+        // Cancela cualquier polling anterior antes de iniciar uno nuevo
+        _pollingCts?.Cancel();
+        _pollingCts?.Dispose();
+        _pollingCts = new CancellationTokenSource();
+
+        _ = EjecutarPollingAsync(_pollingCts.Token);
+    }
+
+    private async Task EjecutarPollingAsync(CancellationToken token)
+    {
+        var fallosConsecutivos = 0;
+        const int maxFallosConsecutivos = 15; // ~30s de fallos seguidos (15 x 2s)
+
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+
+        try
+        {
+            // WaitForNextTickAsync no dispara el siguiente tick hasta que
+            // el cuerpo del while termina, por lo que las ejecuciones
+            // nunca se solapan (a diferencia del Timer original).
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                try
+                {
+                    var nuevoEstado = await LoteService.ConsultarEstadoAsync();
+                    fallosConsecutivos = 0;
+
+                    await InvokeAsync(() =>
+                    {
+                        loteActual = nuevoEstado;
+                        if (nuevoEstado != null)
+                            ambienteActivo = nuevoEstado.Ambiente;
+                        StateHasChanged();
+                    });
+
+                    // Detener polling si terminó
+                    if (nuevoEstado?.Estado is "Completado" or "Error")
+                    {
+                        // Recargar historial de archivos
+                        var archivos = await LoteService.ListarHistorialAsync();
+                        await InvokeAsync(() =>
+                        {
+                            archivosHistorial = archivos;
+                            StateHasChanged();
+                        });
+
+                        if (nuevoEstado.Estado == "Completado")
+                            await InvokeAsync(() => MostrarToast(
+                                $"Generación completada: {nuevoEstado.OrdenesCompletadas:N0} cronogramas en {nuevoEstado.ArchivosGenerados.Count} archivo(s).",
+                                "success"));
+                        else
+                            await InvokeAsync(() => MostrarToast("La generación terminó con errores.", "danger"));
+
+                        return; // Termina el polling
+                    }
+                }
+                catch (Exception) when (!token.IsCancellationRequested)
+                {
+                    // Ignorar errores transitorios de red durante el polling,
+                    // pero no indefinidamente: avisar al usuario tras varios fallos seguidos.
+                    fallosConsecutivos++;
+                    if (fallosConsecutivos >= maxFallosConsecutivos)
+                    {
+                        await InvokeAsync(() => MostrarToast(
+                            "No se pudo confirmar el estado de la generación (fallos de red repetidos).",
+                            "danger"));
+                        return;
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Polling cancelado intencionalmente (se inició uno nuevo, o se hizo Dispose)
+        }
+    }
+
+    /// <summary>Refresca manualmente el estado y el historial.</summary>
+    private async Task RefrescarEstado()
+    {
+        isRefreshing = true;
+        try
+        {
+            loteActual = await LoteService.ConsultarEstadoAsync();
+            archivosHistorial = await LoteService.ListarHistorialAsync();
+            if (hayGeneracionEnProgreso) IniciarPolling();
+        }
+        catch (Exception ex)
+        {
+            MostrarToast($"Error al actualizar: {ex.Message}", "danger");
+        }
+        finally
+        {
+            isRefreshing = false;
+        }
+    }
+
+    /// <summary>Descarga un archivo XML vía stream, enviando el token de autenticación.</summary>
+    private async Task DescargarArchivo(string nombreArchivo)
+    {
+        var stream = await LoteService.DescargarArchivoStreamAsync(nombreArchivo);
+        if (stream is null)
+        {
+            MostrarToast($"Error al descargar el archivo: {nombreArchivo}", "danger");
+            return;
+        }
+
+        using var streamRef = new DotNetStreamReference(stream: stream, leaveOpen: false);
+        await JS.InvokeVoidAsync("descargarArchivoStream", nombreArchivo, streamRef);
+    }
+
+    // - Acciones del usuario --------------------------------------
+    /// <summary>Inicia una nueva generación de cronogramas.</summary>
+    private async Task IniciarGeneracion()
+    {
+        try
+        {
+            var response = await LoteService.IniciarGeneracionAsync();
+            if (response == null) return;
+
+            MostrarToast($"Generación iniciada. ID: {response.TareaId}", "info");
+
+            // Actualizar estado inmediatamente y comenzar polling
+            await Task.Delay(500);
+            loteActual = await LoteService.ConsultarEstadoAsync();
+            IniciarPolling();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            MostrarToast($"Error al iniciar: {ex.Message}", "danger");
+        }
+    }
+
+    // - Flujo de envio (usado por EnvioLoteModal) --------------
+    private void AbrirModalEnvio(LoteModel lote)
+    {
+        loteParaEnviar = lote;
+        rutaDestinoOverride = null; // Limpiar campo
+    }
+
+    private void CancelarEnvio() => loteParaEnviar = null;
+
+    private async Task EjecutarEnvio()
+    {
+        if (loteParaEnviar == null) return;
+
+        isEnviando = true;
+        var loteId = loteParaEnviar.TareaId;
+        loteParaEnviar = null; // Cerrar modal
+
+        try
+        {
+            var response = await LoteService.EnviarLoteAsync(loteId, rutaDestinoOverride);
+            if (response == null) return;
+
+            if (response.Exitoso)
+            {
+                var msg = $"{response.ArchivosCopiados.Count} archivo(s) enviados a '{response.RutaDestino}'.";
+                if (response.ArchivosFallidos.Count > 0)
+                    msg += $" ({response.ArchivosFallidos.Count} fallidos)";
+                MostrarToast(msg, "success");
+            }
+            else
+            {
+                MostrarToast($"Error al enviar: {response.Mensaje}", "danger");
+            }
+        }
+        catch (Exception ex)
+        {
+            MostrarToast($"Error al enviar: {ex.Message}", "danger");
+        }
+        finally
+        {
+            isEnviando = false;
+        }
+    }
+
+    // - Toast (usado por LoteToast) ------------------------------
+    private void MostrarToast(string mensaje, string tipo)
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+
+        toastMessage = mensaje;
+        toastType = tipo;
+        StateHasChanged();
+
+        // Se llama directamente al método async (sin Task.Run):
+        // Task.Delay ya es asíncrono y no necesita un hilo dedicado del threadpool.
+        _ = OcultarToastDespuesDeAsync(_toastCts.Token);
+    }
+
+    private async Task OcultarToastDespuesDeAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(5000, token);
+            await InvokeAsync(() =>
+            {
+                toastMessage = null;
+                StateHasChanged();
+            });
+        }
+        catch (TaskCanceledException)
+        {
+            // Se canceló porque llegó otro toast
+        }
+    }
+
+    // - Cleanup ----------------------------------
+    public void Dispose()
+    {
+        _pollingCts?.Cancel();
+        _pollingCts?.Dispose();
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+    }
+}
