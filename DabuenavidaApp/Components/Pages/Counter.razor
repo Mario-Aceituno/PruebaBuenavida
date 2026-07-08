@@ -1,4 +1,3 @@
-@page "/"
 @page "/login"
 @rendermode InteractiveServer
 
@@ -9,22 +8,13 @@
     <div class="login-background" aria-hidden="true">
         <div class="blob blob--top"></div>
         <div class="blob blob--bottom"></div>
-        <svg class="ribbon" viewBox="0 0 1440 600" preserveAspectRatio="none">
-            <path d="M-100 420 C 300 300, 500 520, 900 340 S 1400 120, 1600 220"
-                  stroke="url(#ribbonGradient)" stroke-width="2" fill="none" />
-            <defs>
-                <linearGradient id="ribbonGradient" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stop-color="#C8102E" stop-opacity="0.35" />
-                    <stop offset="100%" stop-color="#9C1457" stop-opacity="0.05" />
-                </linearGradient>
-            </defs>
-        </svg>
+        <div class="ribbon"></div>
     </div>
 
     <main class="login-card" role="main">
 
         <div class="brand">
-            <img src="icons/logo.svg" alt="" class="brand__mark" />
+            <div class="brand__mark" aria-hidden="true"></div>
             <div class="brand__text">
                 <h1 class="brand__title">DaviWiki</h1>
                 <p class="brand__subtitle">Plataforma interna de conocimiento del Área de Tecnología</p>
@@ -37,11 +27,7 @@
             @if (!string.IsNullOrEmpty(ErrorMessage))
             {
                 <div class="alert alert--error" role="alert">
-                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                        <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5" />
-                        <path d="M10 6.5V10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                        <circle cx="10" cy="13.25" r="0.9" fill="currentColor" />
-                    </svg>
+                    <span class="icon icon-alert" aria-hidden="true"></span>
                     <span>@ErrorMessage</span>
                 </div>
             }
@@ -49,7 +35,10 @@
             <div class="field">
                 <label for="username">Usuario</label>
                 <div class="field__control">
-                    <img src="icons/user.svg" alt="" class="field__icon" />
+                    <span class="icon icon-user field__icon" aria-hidden="true">
+                        <span class="icon-user__head"></span>
+                        <span class="icon-user__body"></span>
+                    </span>
                     <InputText id="username"
                                @bind-Value="_model.Username"
                                placeholder="Tu usuario corporativo"
@@ -63,7 +52,12 @@
             <div class="field">
                 <label for="password">Contraseña</label>
                 <div class="field__control">
-                    <img src="icons/lock.svg" alt="" class="field__icon" />
+                    <span class="icon icon-lock field__icon" aria-hidden="true">
+                        <span class="icon-lock__shackle"></span>
+                        <span class="icon-lock__body">
+                            <span class="icon-lock__hole"></span>
+                        </span>
+                    </span>
                     <InputText id="password"
                                @bind-Value="_model.Password"
                                type="@(_showPassword ? "text" : "password")"
@@ -76,7 +70,11 @@
                             @onclick="TogglePasswordVisibility"
                             disabled="@IsLoading"
                             aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
-                        <img src="@(_showPassword ? "icons/eye-off.svg" : "icons/eye.svg")" alt="" />
+                        <span class="icon icon-eye @(_showPassword ? "icon-eye--off" : "")" aria-hidden="true">
+                            <span class="icon-eye__outer"></span>
+                            <span class="icon-eye__pupil"></span>
+                            <span class="icon-eye__slash"></span>
+                        </span>
                     </button>
                 </div>
                 <ValidationMessage For="@(() => _model.Password)" class="field__error" />
@@ -116,13 +114,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DaviWiki.Components.Pages.Login;
 
-/// <summary>
-/// Code-behind for the DaviWiki login screen.
-/// Authentication is currently a temporary local check (admin / admin123)
-/// so that the interface can be built and validated before the real
-/// identity provider (JWT) is wired in. Replace <see cref="HandleLoginAsync"/>
-/// with a call to the real auth service without touching the markup or CSS.
-/// </summary>
 public partial class Login : ComponentBase
 {
     [Inject] private NavigationManager Navigation { get; set; } = default!;
@@ -130,13 +121,9 @@ public partial class Login : ComponentBase
     private readonly LoginModel _model = new();
     private bool _showPassword;
 
-    /// <summary>True while the temporary/real authentication call is in flight.</summary>
     public bool IsLoading { get; private set; }
-
-    /// <summary>Elegant inline error shown inside the card. Never uses alert().</summary>
     public string? ErrorMessage { get; private set; }
 
-    // --- Temporary credentials until the real backend/JWT service exists ---
     private const string TempUsername = "admin";
     private const string TempPassword = "admin123";
 
@@ -151,8 +138,6 @@ public partial class Login : ComponentBase
         IsLoading = true;
         StateHasChanged();
 
-        // Simulates network/validation latency so the loading state (spinner)
-        // is visible, exactly like a real call to the identity provider would be.
         await Task.Delay(700);
 
         var isValid = _model.Username == TempUsername && _model.Password == TempPassword;
@@ -180,15 +165,6 @@ public partial class Login : ComponentBase
     }
 }
 
-
-/* ============================================================
-   DaviWiki — Login
-   Design tokens live here so the screen can evolve without
-   touching markup or C#. Palette matches the DaviWiki dashboard:
-   corporate red as primary, magenta only as a soft background
-   accent, white/gray for everything structural.
-   ============================================================ */
-
 :root {
     --davi-red: #C8102E;
     --davi-red-dark: #9E0C24;
@@ -203,7 +179,6 @@ public partial class Login : ComponentBase
     --gray-900: #23242A;
 
     --radius-lg: 24px;
-    --radius-md: 16px;
     --radius-sm: 14px;
 
     --shadow-card: 0 30px 70px -30px rgba(24, 24, 40, 0.20), 0 2px 8px rgba(24, 24, 40, 0.04);
@@ -258,11 +233,20 @@ public partial class Login : ComponentBase
     background: radial-gradient(circle at 70% 70%, rgba(156, 20, 87, 0.14), rgba(156, 20, 87, 0) 70%);
 }
 
+/* Signature "ribbon" — pure CSS gradient sweep, replaces the old SVG path */
 .ribbon {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
+    width: 160%;
+    height: 2px;
+    left: -30%;
+    top: 58%;
+    background: linear-gradient(90deg,
+        rgba(200, 16, 46, 0) 0%,
+        rgba(200, 16, 46, 0.30) 35%,
+        rgba(156, 20, 87, 0.18) 65%,
+        rgba(156, 20, 87, 0) 100%);
+    transform: rotate(-5deg);
+    filter: blur(1.5px);
 }
 
 /* ---------- Card ---------- */
@@ -285,14 +269,8 @@ public partial class Login : ComponentBase
 }
 
 @keyframes card-in {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* ---------- Brand ---------- */
@@ -305,9 +283,29 @@ public partial class Login : ComponentBase
     margin-bottom: 30px;
 }
 
+/* Logo mark — rounded square + CSS clip-path "open book" glyph, no SVG file needed */
 .brand__mark {
     width: 44px;
     height: 44px;
+    border-radius: 12px;
+    background: var(--davi-red);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+}
+
+.brand__mark::before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.95) 0%,
+        rgba(255, 255, 255, 0.95) 50%,
+        rgba(255, 255, 255, 0.65) 50%,
+        rgba(255, 255, 255, 0.65) 100%);
+    clip-path: polygon(50% 6%, 100% 20%, 100% 94%, 50% 100%, 0 94%, 0 20%);
 }
 
 .brand__title {
@@ -357,9 +355,8 @@ public partial class Login : ComponentBase
 .field__icon {
     position: absolute;
     left: 16px;
-    width: 18px;
-    height: 18px;
-    opacity: 0.45;
+    color: var(--gray-500);
+    opacity: 0.7;
     pointer-events: none;
 }
 
@@ -375,12 +372,13 @@ public partial class Login : ComponentBase
     background: transparent;
     border-radius: 999px;
     cursor: pointer;
-    opacity: 0.55;
+    color: var(--gray-500);
+    opacity: 0.75;
     transition: opacity var(--transition-fast), background var(--transition-fast);
 }
 
 .field__toggle:hover {
-    opacity: 0.9;
+    opacity: 1;
     background: var(--gray-100);
 }
 
@@ -409,9 +407,7 @@ public partial class Login : ComponentBase
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
 }
 
-.input::placeholder {
-    color: var(--gray-500);
-}
+.input::placeholder { color: var(--gray-500); }
 
 .input:hover:not(:disabled) {
     border-color: var(--gray-300);
@@ -435,17 +431,11 @@ public partial class Login : ComponentBase
     background: rgba(200, 16, 46, 0.03);
 }
 
-/* padding right for the password field so text doesn't sit under the eye icon */
-#password {
-    padding-right: 46px;
-}
+#password { padding-right: 46px; }
 
 /* ---------- Checkbox ---------- */
 
-.field--inline {
-    flex-direction: row;
-    align-items: center;
-}
+.field--inline { flex-direction: row; align-items: center; }
 
 .checkbox {
     display: flex;
@@ -455,6 +445,7 @@ public partial class Login : ComponentBase
     color: var(--gray-700);
     cursor: pointer;
     user-select: none;
+    position: relative;
 }
 
 .checkbox input {
@@ -516,6 +507,7 @@ public partial class Login : ComponentBase
     cursor: pointer;
     box-shadow: var(--shadow-btn);
     transition: transform var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
+    width: 100%;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -529,10 +521,7 @@ public partial class Login : ComponentBase
     box-shadow: 0 8px 16px -8px rgba(200, 16, 46, 0.45);
 }
 
-.btn-primary:disabled {
-    cursor: not-allowed;
-    opacity: 0.85;
-}
+.btn-primary:disabled { cursor: not-allowed; opacity: 0.85; }
 
 .btn-primary:focus-visible {
     outline: 2px solid var(--davi-red-dark);
@@ -548,9 +537,7 @@ public partial class Login : ComponentBase
     animation: spin 700ms linear infinite;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- Alert (inline error) ---------- */
 
@@ -585,9 +572,7 @@ public partial class Login : ComponentBase
     transition: color var(--transition-fast);
 }
 
-.help-link:hover {
-    color: var(--davi-red);
-}
+.help-link:hover { color: var(--davi-red); }
 
 .footer-note {
     margin: 18px 0 0;
@@ -595,29 +580,155 @@ public partial class Login : ComponentBase
     color: var(--gray-300);
 }
 
+/* ============================================================
+   CSS-only icons (no SVG, no images) — built from spans/divs
+   using borders, border-radius and clip-path.
+   ============================================================ */
+
+.icon {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    flex: none;
+}
+
+/* Usuario: cabeza + hombros */
+.icon-user__head {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 7px;
+    height: 7px;
+    border: 1.6px solid currentColor;
+    border-radius: 50%;
+}
+
+.icon-user__body {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 15px;
+    height: 8px;
+    border: 1.6px solid currentColor;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+}
+
+/* Candado: arco + cuerpo + ojo de cerradura */
+.icon-lock__shackle {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px;
+    height: 9px;
+    border: 1.6px solid currentColor;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+}
+
+.icon-lock__body {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 16px;
+    height: 10px;
+    border: 1.6px solid currentColor;
+    border-radius: 3px;
+}
+
+.icon-lock__hole {
+    position: absolute;
+    top: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2.4px;
+    height: 2.4px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+/* Ojo (mostrar/ocultar contraseña) */
+.icon-eye__outer {
+    position: absolute;
+    inset: 2px 0;
+    border: 1.6px solid currentColor;
+    border-radius: 50% / 60%;
+}
+
+.icon-eye__pupil {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    transform: translate(-50%, -50%);
+}
+
+.icon-eye__slash {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: -1px;
+    width: 20px;
+    height: 1.6px;
+    background: currentColor;
+    border-radius: 2px;
+    transform: translateY(-50%) rotate(-40deg);
+}
+
+.icon-eye--off .icon-eye__outer { opacity: 0.45; }
+.icon-eye--off .icon-eye__slash { display: block; }
+
+/* Alerta (círculo + exclamación) */
+.icon-alert {
+    border-radius: 50%;
+    border: 1.6px solid currentColor;
+    flex: none;
+}
+
+.icon-alert::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1.6px;
+    height: 6px;
+    background: currentColor;
+    border-radius: 1px;
+}
+
+.icon-alert::after {
+    content: "";
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1.6px;
+    height: 1.6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 480px) {
-    .login-card {
-        padding: 36px 24px 26px;
-        border-radius: 20px;
-    }
-
-    .brand__subtitle {
-        max-width: 100%;
-    }
+    .login-card { padding: 36px 24px 26px; border-radius: 20px; }
+    .brand__subtitle { max-width: 100%; }
 }
 
 /* ---------- Reduced motion ---------- */
 
 @media (prefers-reduced-motion: reduce) {
-    .login-card,
-    .alert,
-    .btn-primary,
-    .spinner {
+    .login-card, .alert, .btn-primary, .spinner {
         animation: none !important;
         transition: none !important;
     }
 }
-
-
