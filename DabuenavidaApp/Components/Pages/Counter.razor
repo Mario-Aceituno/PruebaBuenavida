@@ -1,136 +1,623 @@
-/* Wrapper del botón de campana */
-.topbar__notifications-wrap {
+@page "/"
+@page "/login"
+@rendermode InteractiveServer
+
+<PageTitle>Iniciar sesión · DaviWiki</PageTitle>
+
+<div class="login-screen">
+
+    <div class="login-background" aria-hidden="true">
+        <div class="blob blob--top"></div>
+        <div class="blob blob--bottom"></div>
+        <svg class="ribbon" viewBox="0 0 1440 600" preserveAspectRatio="none">
+            <path d="M-100 420 C 300 300, 500 520, 900 340 S 1400 120, 1600 220"
+                  stroke="url(#ribbonGradient)" stroke-width="2" fill="none" />
+            <defs>
+                <linearGradient id="ribbonGradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#C8102E" stop-opacity="0.35" />
+                    <stop offset="100%" stop-color="#9C1457" stop-opacity="0.05" />
+                </linearGradient>
+            </defs>
+        </svg>
+    </div>
+
+    <main class="login-card" role="main">
+
+        <div class="brand">
+            <img src="icons/logo.svg" alt="" class="brand__mark" />
+            <div class="brand__text">
+                <h1 class="brand__title">DaviWiki</h1>
+                <p class="brand__subtitle">Plataforma interna de conocimiento del Área de Tecnología</p>
+            </div>
+        </div>
+
+        <EditForm Model="@_model" OnValidSubmit="HandleLoginAsync" class="login-form">
+            <DataAnnotationsValidator />
+
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert--error" role="alert">
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5" />
+                        <path d="M10 6.5V10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <circle cx="10" cy="13.25" r="0.9" fill="currentColor" />
+                    </svg>
+                    <span>@ErrorMessage</span>
+                </div>
+            }
+
+            <div class="field">
+                <label for="username">Usuario</label>
+                <div class="field__control">
+                    <img src="icons/user.svg" alt="" class="field__icon" />
+                    <InputText id="username"
+                               @bind-Value="_model.Username"
+                               placeholder="Tu usuario corporativo"
+                               autocomplete="username"
+                               disabled="@IsLoading"
+                               class="@FieldClass()" />
+                </div>
+                <ValidationMessage For="@(() => _model.Username)" class="field__error" />
+            </div>
+
+            <div class="field">
+                <label for="password">Contraseña</label>
+                <div class="field__control">
+                    <img src="icons/lock.svg" alt="" class="field__icon" />
+                    <InputText id="password"
+                               @bind-Value="_model.Password"
+                               type="@(_showPassword ? "text" : "password")"
+                               placeholder="Tu contraseña"
+                               autocomplete="current-password"
+                               disabled="@IsLoading"
+                               class="@FieldClass()" />
+                    <button type="button"
+                            class="field__toggle"
+                            @onclick="TogglePasswordVisibility"
+                            disabled="@IsLoading"
+                            aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
+                        <img src="@(_showPassword ? "icons/eye-off.svg" : "icons/eye.svg")" alt="" />
+                    </button>
+                </div>
+                <ValidationMessage For="@(() => _model.Password)" class="field__error" />
+            </div>
+
+            <div class="field field--inline">
+                <label class="checkbox">
+                    <input type="checkbox" @bind="_model.RememberMe" disabled="@IsLoading" />
+                    <span class="checkbox__box" aria-hidden="true"></span>
+                    <span>Recordar sesión</span>
+                </label>
+            </div>
+
+            <button type="submit" class="btn-primary" disabled="@IsLoading">
+                @if (IsLoading)
+                {
+                    <span class="spinner" aria-hidden="true"></span>
+                    <span>Validando…</span>
+                }
+                else
+                {
+                    <span>Ingresar</span>
+                }
+            </button>
+        </EditForm>
+
+        <a href="#" class="help-link">¿Necesitás ayuda?</a>
+
+        <p class="footer-note">© Davivienda · Área de Tecnología</p>
+
+    </main>
+</div>
+
+
+using Microsoft.AspNetCore.Components;
+using System.ComponentModel.DataAnnotations;
+
+namespace DaviWiki.Components.Pages.Login;
+
+/// <summary>
+/// Code-behind for the DaviWiki login screen.
+/// Authentication is currently a temporary local check (admin / admin123)
+/// so that the interface can be built and validated before the real
+/// identity provider (JWT) is wired in. Replace <see cref="HandleLoginAsync"/>
+/// with a call to the real auth service without touching the markup or CSS.
+/// </summary>
+public partial class Login : ComponentBase
+{
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    private readonly LoginModel _model = new();
+    private bool _showPassword;
+
+    /// <summary>True while the temporary/real authentication call is in flight.</summary>
+    public bool IsLoading { get; private set; }
+
+    /// <summary>Elegant inline error shown inside the card. Never uses alert().</summary>
+    public string? ErrorMessage { get; private set; }
+
+    // --- Temporary credentials until the real backend/JWT service exists ---
+    private const string TempUsername = "admin";
+    private const string TempPassword = "admin123";
+
+    private void TogglePasswordVisibility() => _showPassword = !_showPassword;
+
+    private string FieldClass() =>
+        string.IsNullOrEmpty(ErrorMessage) ? "input" : "input input--error";
+
+    private async Task HandleLoginAsync()
+    {
+        ErrorMessage = null;
+        IsLoading = true;
+        StateHasChanged();
+
+        // Simulates network/validation latency so the loading state (spinner)
+        // is visible, exactly like a real call to the identity provider would be.
+        await Task.Delay(700);
+
+        var isValid = _model.Username == TempUsername && _model.Password == TempPassword;
+
+        if (isValid)
+        {
+            Navigation.NavigateTo("/home");
+            return;
+        }
+
+        IsLoading = false;
+        ErrorMessage = "Usuario o contraseña incorrectos. Verificá tus datos e intentá nuevamente.";
+        StateHasChanged();
+    }
+
+    private sealed class LoginModel
+    {
+        [Required(ErrorMessage = "Ingresá tu usuario.")]
+        public string Username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Ingresá tu contraseña.")]
+        public string Password { get; set; } = string.Empty;
+
+        public bool RememberMe { get; set; }
+    }
+}
+
+
+/* ============================================================
+   DaviWiki — Login
+   Design tokens live here so the screen can evolve without
+   touching markup or C#. Palette matches the DaviWiki dashboard:
+   corporate red as primary, magenta only as a soft background
+   accent, white/gray for everything structural.
+   ============================================================ */
+
+:root {
+    --davi-red: #C8102E;
+    --davi-red-dark: #9E0C24;
+    --davi-magenta: #9C1457;
+
+    --gray-50: #FAFAFA;
+    --gray-100: #F4F4F6;
+    --gray-200: #E8E8EC;
+    --gray-300: #D5D5DC;
+    --gray-500: #8C8D97;
+    --gray-700: #4B4C55;
+    --gray-900: #23242A;
+
+    --radius-lg: 24px;
+    --radius-md: 16px;
+    --radius-sm: 14px;
+
+    --shadow-card: 0 30px 70px -30px rgba(24, 24, 40, 0.20), 0 2px 8px rgba(24, 24, 40, 0.04);
+    --shadow-btn: 0 12px 24px -10px rgba(200, 16, 46, 0.45);
+
+    --transition-fast: 200ms ease;
+    --transition-med: 300ms ease;
+}
+
+/* ---------- Screen & background ---------- */
+
+.login-screen {
     position: relative;
-}
-
-/* Fondo invisible que cierra el dropdown al hacer click fuera */
-.notifications-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    background: transparent;
-}
-
-/* Panel del dropdown */
-.notifications-dropdown {
-    position: absolute;
-    top: calc(100% + 10px);
-    right: 0;
-    width: 340px;
-    max-height: 420px;
-    overflow-y: auto;
-    background: #1A1A2E;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
-    box-shadow: 0 12px 32px rgba(0,0,0,0.45);
-    z-index: 101;
-    animation: notif-fade-in .15s ease-out;
-}
-
-@keyframes notif-fade-in {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-/* Header del dropdown */
-.notifications-dropdown__header {
+    min-height: 100vh;
+    width: 100%;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    justify-content: center;
+    background: var(--gray-50);
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    padding: 24px;
 }
 
-.notifications-dropdown__header span {
-    font-weight: 600;
-    font-size: 14px;
-    color: #fff;
+.login-background {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
 }
 
-.notifications-dropdown__header .link-btn {
-    background: none;
-    border: none;
-    color: #C41230;
-    font-size: 12.5px;
-    font-weight: 500;
-    cursor: pointer;
-    padding: 0;
+.blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: 0.5;
 }
 
-.notifications-dropdown__header .link-btn:hover {
-    text-decoration: underline;
+.blob--top {
+    width: 520px;
+    height: 520px;
+    top: -180px;
+    left: -160px;
+    background: radial-gradient(circle at 30% 30%, rgba(200, 16, 46, 0.16), rgba(200, 16, 46, 0) 70%);
 }
 
-/* Cada notificación */
-.notifications-dropdown__item {
+.blob--bottom {
+    width: 620px;
+    height: 620px;
+    bottom: -220px;
+    right: -180px;
+    background: radial-gradient(circle at 70% 70%, rgba(156, 20, 87, 0.14), rgba(156, 20, 87, 0) 70%);
+}
+
+.ribbon {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---------- Card ---------- */
+
+.login-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 440px;
+    background: #FFFFFF;
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    padding: 44px 40px 32px;
     display: flex;
-    gap: 12px;
-    align-items: flex-start;
-    padding: 12px 16px;
-    text-decoration: none;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    transition: background .15s;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    animation: card-in var(--transition-med) ease both;
 }
 
-.notifications-dropdown__item:last-child {
-    border-bottom: none;
+@keyframes card-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-.notifications-dropdown__item:hover {
-    background: rgba(255,255,255,0.04);
+/* ---------- Brand ---------- */
+
+.brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 30px;
 }
 
-.notifications-dropdown__item.is-unread {
-    background: rgba(196,18,48,0.08);
+.brand__mark {
+    width: 44px;
+    height: 44px;
 }
 
-.notifications-dropdown__item.is-unread:hover {
-    background: rgba(196,18,48,0.13);
+.brand__title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    color: var(--gray-900);
 }
 
-/* Icono dentro de cada item */
-.notifications-dropdown__item svg,
-.notifications-dropdown__item .icon {
-    flex-shrink: 0;
+.brand__subtitle {
+    margin: 6px 0 0;
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: var(--gray-500);
+    max-width: 300px;
+}
+
+/* ---------- Form layout ---------- */
+
+.login-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    text-align: left;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.field label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-700);
+}
+
+.field__control {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.field__icon {
+    position: absolute;
+    left: 16px;
     width: 18px;
     height: 18px;
-    margin-top: 2px;
-    color: #8B0E25;
+    opacity: 0.45;
+    pointer-events: none;
 }
 
-.notifications-dropdown__item.is-unread svg,
-.notifications-dropdown__item.is-unread .icon {
-    color: #C41230;
+.field__toggle {
+    position: absolute;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity var(--transition-fast), background var(--transition-fast);
 }
 
-.notifications-dropdown__item strong {
-    display: block;
-    font-size: 13.5px;
-    color: #fff;
-    font-weight: 600;
-    margin-bottom: 2px;
+.field__toggle:hover {
+    opacity: 0.9;
+    background: var(--gray-100);
 }
 
-.notifications-dropdown__item p {
+.field__toggle:disabled {
+    cursor: not-allowed;
+    opacity: 0.3;
+}
+
+.field__error {
     font-size: 12.5px;
-    color: rgba(255,255,255,0.55);
+    color: var(--davi-red-dark);
+}
+
+/* ---------- Inputs ---------- */
+
+.input {
+    width: 100%;
+    height: 52px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--gray-200);
+    background: var(--gray-50);
+    padding: 0 16px 0 46px;
+    font-size: 14.5px;
+    color: var(--gray-900);
+    outline: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+}
+
+.input::placeholder {
+    color: var(--gray-500);
+}
+
+.input:hover:not(:disabled) {
+    border-color: var(--gray-300);
+    background: #FFFFFF;
+}
+
+.input:focus {
+    border-color: var(--davi-red);
+    background: #FFFFFF;
+    box-shadow: 0 0 0 4px rgba(200, 16, 46, 0.10);
+}
+
+.input:disabled {
+    background: var(--gray-100);
+    color: var(--gray-500);
+    cursor: not-allowed;
+}
+
+.input--error {
+    border-color: rgba(200, 16, 46, 0.55);
+    background: rgba(200, 16, 46, 0.03);
+}
+
+/* padding right for the password field so text doesn't sit under the eye icon */
+#password {
+    padding-right: 46px;
+}
+
+/* ---------- Checkbox ---------- */
+
+.field--inline {
+    flex-direction: row;
+    align-items: center;
+}
+
+.checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13.5px;
+    color: var(--gray-700);
+    cursor: pointer;
+    user-select: none;
+}
+
+.checkbox input {
+    position: absolute;
+    opacity: 0;
+    width: 18px;
+    height: 18px;
     margin: 0;
-    line-height: 1.4;
+    cursor: pointer;
 }
 
-/* Estado vacío (opcional, ver abajo) */
-.notifications-dropdown__empty {
-    padding: 32px 16px;
-    text-align: center;
-    color: rgba(255,255,255,0.4);
+.checkbox__box {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1.5px solid var(--gray-300);
+    background: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+    flex: none;
+}
+
+.checkbox input:checked + .checkbox__box {
+    background: var(--davi-red);
+    border-color: var(--davi-red);
+}
+
+.checkbox input:checked + .checkbox__box::after {
+    content: "";
+    width: 5px;
+    height: 9px;
+    border: solid white;
+    border-width: 0 1.6px 1.6px 0;
+    transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.checkbox input:focus-visible + .checkbox__box {
+    outline: 2px solid var(--davi-red);
+    outline-offset: 2px;
+}
+
+/* ---------- Primary button ---------- */
+
+.btn-primary {
+    height: 52px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(180deg, var(--davi-red) 0%, var(--davi-red-dark) 100%);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    box-shadow: var(--shadow-btn);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 30px -10px rgba(200, 16, 46, 0.5);
+}
+
+.btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+    filter: brightness(0.96);
+    box-shadow: 0 8px 16px -8px rgba(200, 16, 46, 0.45);
+}
+
+.btn-primary:disabled {
+    cursor: not-allowed;
+    opacity: 0.85;
+}
+
+.btn-primary:focus-visible {
+    outline: 2px solid var(--davi-red-dark);
+    outline-offset: 3px;
+}
+
+.spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
+    animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---------- Alert (inline error) ---------- */
+
+.alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
     font-size: 13px;
+    animation: fade-in var(--transition-fast) ease both;
 }
 
-/* Scrollbar discreto */
-.notifications-dropdown::-webkit-scrollbar {
-    width: 6px;
+.alert--error {
+    background: rgba(200, 16, 46, 0.06);
+    color: var(--davi-red-dark);
+    border: 1px solid rgba(200, 16, 46, 0.18);
 }
-.notifications-dropdown::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.15);
-    border-radius: 3px;
+
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
 }
+
+/* ---------- Footer ---------- */
+
+.help-link {
+    margin-top: 22px;
+    font-size: 13px;
+    color: var(--gray-500);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+.help-link:hover {
+    color: var(--davi-red);
+}
+
+.footer-note {
+    margin: 18px 0 0;
+    font-size: 11.5px;
+    color: var(--gray-300);
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 480px) {
+    .login-card {
+        padding: 36px 24px 26px;
+        border-radius: 20px;
+    }
+
+    .brand__subtitle {
+        max-width: 100%;
+    }
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+    .login-card,
+    .alert,
+    .btn-primary,
+    .spinner {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+
