@@ -1,19 +1,107 @@
-﻿@page "/counter"
-@rendermode InteractiveServer
-
-<PageTitle>Counter</PageTitle>
-
-<h1>Counter</h1>
-
-<p role="status">Current count: @currentCount</p>
-
-<button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
-
-@code {
-    private int currentCount = 0;
-
-    private void IncrementCount()
+private void GenerateNotifications()
+{
+    var samples = new[]
     {
-        currentCount++;
+        ("comment", "Nuevo comentario", "Alguien comentó en tu artículo."),
+        ("edit", "Artículo actualizado", "Un colaborador editó un artículo que sigues."),
+        ("bell", "Mención", "Te mencionaron en un comentario."),
+        ("plus", "Nuevo artículo", "Se publicó un nuevo artículo en tu categoría."),
+        ("star", "Favorito", "Tu artículo fue agregado a favoritos."),
+    };
+
+    for (int i = 0; i < 8; i++)
+    {
+        var (icon, title, msg) = samples[_rng.Next(samples.Length)];
+        _notifications.Add(new NotificationItem
+        {
+            Id = Guid.NewGuid(),
+            Icon = icon,
+            Title = title,
+            Message = msg,
+            Url = _articles.Count > 0 ? $"/articulos/{_articles[_rng.Next(_articles.Count)].Id}" : null,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-_rng.Next(5, 4000)),
+            IsRead = _rng.Next(0, 3) == 0 // ~1/3 ya leídas
+        });
     }
 }
+
+public IReadOnlyList<NotificationItem> GetNotifications()
+    => _notifications.OrderByDescending(n => n.CreatedAt).ToList();
+
+public int GetUnreadNotificationsCount()
+    => _notifications.Count(n => !n.IsRead);
+
+public void MarkNotificationAsRead(Guid id)
+{
+    var n = _notifications.FirstOrDefault(x => x.Id == id);
+    if (n is not null) n.IsRead = true;
+}
+
+public void MarkAllNotificationsAsRead()
+{
+    foreach (var n in _notifications) n.IsRead = true;
+}
+
+@code {
+    [Inject] private UiStateService _ui { get; set; } = default!;
+    [Inject] private IWikiDataService _wiki { get; set; } = default!;
+
+    private bool _showNotifications;
+
+    private void ToggleNotifications() => _showNotifications = !_showNotifications;
+
+    private void MarkAsRead(NotificationItem n)
+    {
+        _wiki.MarkNotificationAsRead(n.Id);
+        _showNotifications = false;
+    }
+
+    protected override void OnInitialized() => _ui.OnChange += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    private void ToggleTheme() => _ui.ToggleTheme();
+    public void Dispose() => _ui.OnChange -= Refresh;
+}
+
+<div class="topbar__notifications-wrap">
+    <button class="icon-btn icon-btn--ghost" @onclick="ToggleNotifications" title="Notificaciones">
+        <Icon Name="bell" />
+        @if (_wiki.GetUnreadNotificationsCount() > 0)
+        {
+            <span class="icon-btn__dot"></span>
+        }
+    </button>
+
+    @if (_showNotifications)
+    {
+        <div class="notifications-backdrop" @onclick="() => _showNotifications = false"></div>
+        <div class="notifications-dropdown">
+            <div class="notifications-dropdown__header">
+                <span>Notificaciones</span>
+                <button class="link-btn" @onclick="() => { _wiki.MarkAllNotificationsAsRead(); }">
+                    Marcar todas como leídas
+                </button>
+            </div>
+            @foreach (var n in _wiki.GetNotifications())
+            {
+                <a class="notifications-dropdown__item @(n.IsRead ? "" : "is-unread")"
+                   href="@(n.Url ?? "#")" @onclick="() => MarkAsRead(n)">
+                    <Icon Name="@n.Icon" />
+                    <div>
+                        <strong>@n.Title</strong>
+                        <p>@n.Message</p>
+                    </div>
+                </a>
+            }
+        </div>
+    }
+</div>
+
+.topbar__notifications-wrap { position: relative; }
+.notifications-backdrop { position: fixed; inset: 0; z-index: 40; }
+.notifications-dropdown {
+    position: absolute; right: 0; top: calc(100% + 8px);
+    width: 320px; max-height: 400px; overflow-y: auto;
+    background: var(--surface, #1a1a2e); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.3); z-index: 41;
+}
+.notifications-dropdown__item.is-unread { background: rgba(196,18,48,.08); }
