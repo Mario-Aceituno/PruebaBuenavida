@@ -1,3 +1,124 @@
+@page "/login"
+@rendermode InteractiveServer
+
+<PageTitle>Iniciar sesión · DaviWiki</PageTitle>
+
+<div class="login-screen">
+
+    <div class="login-background" aria-hidden="true">
+        <div class="grid-pattern"></div>
+        <div class="blob blob--top"></div>
+        <div class="blob blob--bottom"></div>
+    </div>
+
+    <main class="login-card" role="main">
+
+        <div class="brand">
+            <div class="brand__mark" aria-hidden="true"></div>
+            <div class="brand__text">
+                <h1 class="brand__title">DaviWiki</h1>
+                <p class="brand__subtitle">Plataforma interna de conocimiento del Área de Tecnología</p>
+            </div>
+        </div>
+
+        <EditForm Model="@_model" OnValidSubmit="HandleLoginAsync" class="login-form">
+            <DataAnnotationsValidator />
+
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert--error" role="alert">
+                    <span class="icon icon-alert" aria-hidden="true"></span>
+                    <span>@ErrorMessage</span>
+                </div>
+            }
+
+            <div class="field">
+                <label for="username">
+                    <span class="icon icon-user" aria-hidden="true">
+                        <span class="icon-user__head"></span>
+                        <span class="icon-user__body"></span>
+                    </span>
+                    <span>Usuario</span>
+                </label>
+                <InputText id="username"
+                           @bind-Value="_model.Username"
+                           placeholder="Tu usuario corporativo"
+                           autocomplete="username"
+                           disabled="@IsLoading"
+                           class="@FieldClass()" />
+                <ValidationMessage For="@(() => _model.Username)" class="field__error" />
+            </div>
+
+            <div class="field">
+                <label for="password">
+                    <span class="icon icon-lock" aria-hidden="true">
+                        <span class="icon-lock__shackle"></span>
+                        <span class="icon-lock__body">
+                            <span class="icon-lock__hole"></span>
+                        </span>
+                    </span>
+                    <span>Contraseña</span>
+                </label>
+                <div class="field__control">
+                    <InputText id="password"
+                               @bind-Value="_model.Password"
+                               type="@(_showPassword ? "text" : "password")"
+                               placeholder="Tu contraseña"
+                               autocomplete="current-password"
+                               disabled="@IsLoading"
+                               class="@FieldClass()" />
+                    <button type="button"
+                            class="field__toggle"
+                            @onclick="TogglePasswordVisibility"
+                            disabled="@IsLoading"
+                            aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
+                        <span class="icon icon-eye @(_showPassword ? "icon-eye--off" : "")" aria-hidden="true">
+                            <span class="icon-eye__outer"></span>
+                            <span class="icon-eye__pupil"></span>
+                            <span class="icon-eye__slash"></span>
+                        </span>
+                    </button>
+                </div>
+                <ValidationMessage For="@(() => _model.Password)" class="field__error" />
+            </div>
+
+            <div class="field field--inline">
+                <label class="checkbox">
+                    <input type="checkbox" @bind="_model.RememberMe" disabled="@IsLoading" />
+                    <span class="checkbox__box" aria-hidden="true"></span>
+                    <span>Recordar sesión</span>
+                </label>
+            </div>
+
+            <button type="submit" class="btn-primary" disabled="@IsLoading">
+                @if (IsLoading)
+                {
+                    <span class="spinner" aria-hidden="true"></span>
+                    <span>Validando…</span>
+                }
+                else
+                {
+                    <span>Ingresar</span>
+                }
+            </button>
+        </EditForm>
+
+        <a href="#" class="help-link">¿Necesitás ayuda?</a>
+
+        <span class="secure-badge">
+            <span class="icon-shield" aria-hidden="true"></span>
+            <span>Conexión segura y cifrada</span>
+        </span>
+
+        <p class="footer-note">© Davivienda · Área de Tecnología</p>
+    </main>
+</div>
+
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
 :root {
     --davi-red: #C8102E;
     --davi-red-dark: #9E0C24;
@@ -21,6 +142,11 @@
     --transition-med: 300ms ease;
 }
 
+html, body {
+    background: var(--gray-50);
+    margin: 0;
+}
+
 /* ---------- Screen & background ---------- */
 
 .login-screen {
@@ -41,45 +167,45 @@
     inset: 0;
     z-index: 0;
     pointer-events: none;
+    background: var(--gray-50);
 }
 
+/* Grilla técnica sutil: detalle "de ingeniería" sin texto y sin peso visual */
+.grid-pattern {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(to right, rgba(35, 36, 42, 0.035) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(35, 36, 42, 0.035) 1px, transparent 1px);
+    background-size: 42px 42px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 0%, transparent 75%);
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 0%, transparent 75%);
+}
+
+/* Manchas de color muy livianas: blur reducido para evitar el flash negro
+   por composición GPU pesada en el primer render de Blazor Interactive Server */
 .blob {
     position: absolute;
     border-radius: 50%;
-    filter: blur(90px);
-    opacity: 0.5;
+    opacity: 0.7;
 }
 
 .blob--top {
-    width: 520px;
-    height: 520px;
-    top: -180px;
-    left: -160px;
-    background: radial-gradient(circle at 30% 30%, rgba(200, 16, 46, 0.16), rgba(200, 16, 46, 0) 70%);
+    width: 380px;
+    height: 380px;
+    top: -140px;
+    left: -120px;
+    background: radial-gradient(circle at 30% 30%, rgba(200, 16, 46, 0.12), rgba(200, 16, 46, 0) 70%);
+    filter: blur(40px);
 }
 
 .blob--bottom {
-    width: 620px;
-    height: 620px;
-    bottom: -220px;
-    right: -180px;
-    background: radial-gradient(circle at 70% 70%, rgba(156, 20, 87, 0.14), rgba(156, 20, 87, 0) 70%);
-}
-
-/* Signature "ribbon" — banda difusa de fondo (antes se veía como una línea fina) */
-.ribbon {
-    position: absolute;
-    width: 160%;
-    height: 140px;
-    left: -30%;
-    top: 50%;
-    background: linear-gradient(90deg,
-        rgba(200, 16, 46, 0) 0%,
-        rgba(200, 16, 46, 0.10) 35%,
-        rgba(156, 20, 87, 0.07) 65%,
-        rgba(156, 20, 87, 0) 100%);
-    transform: rotate(-5deg) translateY(-50%);
-    filter: blur(45px);
+    width: 440px;
+    height: 440px;
+    bottom: -160px;
+    right: -140px;
+    background: radial-gradient(circle at 70% 70%, rgba(156, 20, 87, 0.10), rgba(156, 20, 87, 0) 70%);
+    filter: blur(40px);
 }
 
 /* ---------- Card ---------- */
@@ -172,10 +298,19 @@
     gap: 8px;
 }
 
+/* Label con icono en línea, arriba del campo — el input queda limpio y parejo */
 .field label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
     font-size: 13px;
     font-weight: 600;
     color: var(--gray-700);
+}
+
+.field > label .icon {
+    color: var(--gray-500);
+    opacity: 0.85;
 }
 
 .field__control {
@@ -184,28 +319,9 @@
     align-items: center;
 }
 
-/* Ícono centrado verticalmente de forma explícita y con más aire respecto al borde */
-.field__icon {
-    position: absolute;
-    left: 18px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--gray-500);
-    opacity: 0.7;
-    pointer-events: none;
-    z-index: 1;
-    transition: color var(--transition-fast), opacity var(--transition-fast);
-}
-
-/* Detalle sutil: el ícono se tiñe de rojo cuando el campo tiene foco */
-.field__control:focus-within .field__icon {
-    color: var(--davi-red);
-    opacity: 1;
-}
-
 .field__toggle {
     position: absolute;
-    right: 12px;
+    right: 8px;
     top: 50%;
     transform: translateY(-50%);
     display: flex;
@@ -219,12 +335,17 @@
     cursor: pointer;
     color: var(--gray-500);
     opacity: 0.75;
-    transition: opacity var(--transition-fast), background var(--transition-fast);
+    transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
 }
 
 .field__toggle:hover {
     opacity: 1;
     background: var(--gray-100);
+}
+
+.field__toggle:focus-visible {
+    opacity: 1;
+    color: var(--davi-red);
 }
 
 .field__toggle:disabled {
@@ -238,6 +359,7 @@
 }
 
 /* ---------- Inputs ---------- */
+/* Mismo padding horizontal parejo en todos los campos: sin iconos adentro */
 
 .input {
     width: 100%;
@@ -245,7 +367,7 @@
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--gray-200);
     background: var(--gray-50);
-    padding: 0 16px 0 50px;
+    padding: 0 16px;
     font-size: 14.5px;
     color: var(--gray-900);
     outline: none;
@@ -419,7 +541,6 @@
 
 .help-link:hover { color: var(--davi-red); }
 
-/* Badge "Conexión segura" — detalle nuevo, mismo lenguaje visual que el resto */
 .secure-badge {
     display: inline-flex;
     align-items: center;
@@ -468,8 +589,8 @@
 }
 
 /* ============================================================
-   CSS-only icons (no SVG, no images) — built from spans/divs
-   using borders, border-radius and clip-path.
+   CSS-only icons — construidos con spans/divs usando bordes,
+   border-radius y clip-path. Sin SVG, sin imágenes.
    ============================================================ */
 
 .icon {
