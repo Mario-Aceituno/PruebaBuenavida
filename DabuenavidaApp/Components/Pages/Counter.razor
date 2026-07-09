@@ -1,170 +1,3 @@
-@page "/login"
-@rendermode InteractiveServer
-
-<PageTitle>Iniciar sesión · DaviWiki</PageTitle>
-
-<div class="login-screen">
-
-    <div class="login-background" aria-hidden="true">
-        <div class="blob blob--top"></div>
-        <div class="blob blob--bottom"></div>
-        <div class="ribbon"></div>
-    </div>
-
-    <main class="login-card" role="main">
-
-        <div class="brand">
-            <div class="brand__mark" aria-hidden="true"></div>
-            <div class="brand__text">
-                <h1 class="brand__title">DaviWiki</h1>
-                <p class="brand__subtitle">Plataforma interna de conocimiento del Área de Tecnología</p>
-            </div>
-        </div>
-
-        <EditForm Model="@_model" OnValidSubmit="HandleLoginAsync" class="login-form">
-            <DataAnnotationsValidator />
-
-            @if (!string.IsNullOrEmpty(ErrorMessage))
-            {
-                <div class="alert alert--error" role="alert">
-                    <span class="icon icon-alert" aria-hidden="true"></span>
-                    <span>@ErrorMessage</span>
-                </div>
-            }
-
-            <div class="field">
-                <label for="username">Usuario</label>
-                <div class="field__control">
-                    <span class="icon icon-user field__icon" aria-hidden="true">
-                        <span class="icon-user__head"></span>
-                        <span class="icon-user__body"></span>
-                    </span>
-                    <InputText id="username"
-                               @bind-Value="_model.Username"
-                               placeholder="Tu usuario corporativo"
-                               autocomplete="username"
-                               disabled="@IsLoading"
-                               class="@FieldClass()" />
-                </div>
-                <ValidationMessage For="@(() => _model.Username)" class="field__error" />
-            </div>
-
-            <div class="field">
-                <label for="password">Contraseña</label>
-                <div class="field__control">
-                    <span class="icon icon-lock field__icon" aria-hidden="true">
-                        <span class="icon-lock__shackle"></span>
-                        <span class="icon-lock__body">
-                            <span class="icon-lock__hole"></span>
-                        </span>
-                    </span>
-                    <InputText id="password"
-                               @bind-Value="_model.Password"
-                               type="@(_showPassword ? "text" : "password")"
-                               placeholder="Tu contraseña"
-                               autocomplete="current-password"
-                               disabled="@IsLoading"
-                               class="@FieldClass()" />
-                    <button type="button"
-                            class="field__toggle"
-                            @onclick="TogglePasswordVisibility"
-                            disabled="@IsLoading"
-                            aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
-                        <span class="icon icon-eye @(_showPassword ? "icon-eye--off" : "")" aria-hidden="true">
-                            <span class="icon-eye__outer"></span>
-                            <span class="icon-eye__pupil"></span>
-                            <span class="icon-eye__slash"></span>
-                        </span>
-                    </button>
-                </div>
-                <ValidationMessage For="@(() => _model.Password)" class="field__error" />
-            </div>
-
-            <div class="field field--inline">
-                <label class="checkbox">
-                    <input type="checkbox" @bind="_model.RememberMe" disabled="@IsLoading" />
-                    <span class="checkbox__box" aria-hidden="true"></span>
-                    <span>Recordar sesión</span>
-                </label>
-            </div>
-
-            <button type="submit" class="btn-primary" disabled="@IsLoading">
-                @if (IsLoading)
-                {
-                    <span class="spinner" aria-hidden="true"></span>
-                    <span>Validando…</span>
-                }
-                else
-                {
-                    <span>Ingresar</span>
-                }
-            </button>
-        </EditForm>
-
-        <a href="#" class="help-link">¿Necesitás ayuda?</a>
-
-        <p class="footer-note">© Davivienda · Área de Tecnología</p>
-
-    </main>
-</div>
-
-
-using Microsoft.AspNetCore.Components;
-using System.ComponentModel.DataAnnotations;
-
-namespace DaviWiki.Components.Pages.Login;
-
-public partial class Login : ComponentBase
-{
-    [Inject] private NavigationManager Navigation { get; set; } = default!;
-
-    private readonly LoginModel _model = new();
-    private bool _showPassword;
-
-    public bool IsLoading { get; private set; }
-    public string? ErrorMessage { get; private set; }
-
-    private const string TempUsername = "admin";
-    private const string TempPassword = "admin123";
-
-    private void TogglePasswordVisibility() => _showPassword = !_showPassword;
-
-    private string FieldClass() =>
-        string.IsNullOrEmpty(ErrorMessage) ? "input" : "input input--error";
-
-    private async Task HandleLoginAsync()
-    {
-        ErrorMessage = null;
-        IsLoading = true;
-        StateHasChanged();
-
-        await Task.Delay(700);
-
-        var isValid = _model.Username == TempUsername && _model.Password == TempPassword;
-
-        if (isValid)
-        {
-            Navigation.NavigateTo("/home");
-            return;
-        }
-
-        IsLoading = false;
-        ErrorMessage = "Usuario o contraseña incorrectos. Verificá tus datos e intentá nuevamente.";
-        StateHasChanged();
-    }
-
-    private sealed class LoginModel
-    {
-        [Required(ErrorMessage = "Ingresá tu usuario.")]
-        public string Username { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "Ingresá tu contraseña.")]
-        public string Password { get; set; } = string.Empty;
-
-        public bool RememberMe { get; set; }
-    }
-}
-
 :root {
     --davi-red: #C8102E;
     --davi-red-dark: #9E0C24;
@@ -233,20 +66,20 @@ public partial class Login : ComponentBase
     background: radial-gradient(circle at 70% 70%, rgba(156, 20, 87, 0.14), rgba(156, 20, 87, 0) 70%);
 }
 
-/* Signature "ribbon" — pure CSS gradient sweep, replaces the old SVG path */
+/* Signature "ribbon" — banda difusa de fondo (antes se veía como una línea fina) */
 .ribbon {
     position: absolute;
     width: 160%;
-    height: 2px;
+    height: 140px;
     left: -30%;
-    top: 58%;
+    top: 50%;
     background: linear-gradient(90deg,
         rgba(200, 16, 46, 0) 0%,
-        rgba(200, 16, 46, 0.30) 35%,
-        rgba(156, 20, 87, 0.18) 65%,
+        rgba(200, 16, 46, 0.10) 35%,
+        rgba(156, 20, 87, 0.07) 65%,
         rgba(156, 20, 87, 0) 100%);
-    transform: rotate(-5deg);
-    filter: blur(1.5px);
+    transform: rotate(-5deg) translateY(-50%);
+    filter: blur(45px);
 }
 
 /* ---------- Card ---------- */
@@ -283,7 +116,6 @@ public partial class Login : ComponentBase
     margin-bottom: 30px;
 }
 
-/* Logo mark — rounded square + CSS clip-path "open book" glyph, no SVG file needed */
 .brand__mark {
     width: 44px;
     height: 44px;
@@ -352,17 +184,30 @@ public partial class Login : ComponentBase
     align-items: center;
 }
 
+/* Ícono centrado verticalmente de forma explícita y con más aire respecto al borde */
 .field__icon {
     position: absolute;
-    left: 16px;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
     color: var(--gray-500);
     opacity: 0.7;
     pointer-events: none;
+    z-index: 1;
+    transition: color var(--transition-fast), opacity var(--transition-fast);
+}
+
+/* Detalle sutil: el ícono se tiñe de rojo cuando el campo tiene foco */
+.field__control:focus-within .field__icon {
+    color: var(--davi-red);
+    opacity: 1;
 }
 
 .field__toggle {
     position: absolute;
     right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -400,7 +245,7 @@ public partial class Login : ComponentBase
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--gray-200);
     background: var(--gray-50);
-    padding: 0 16px 0 46px;
+    padding: 0 16px 0 50px;
     font-size: 14.5px;
     color: var(--gray-900);
     outline: none;
@@ -574,8 +419,50 @@ public partial class Login : ComponentBase
 
 .help-link:hover { color: var(--davi-red); }
 
+/* Badge "Conexión segura" — detalle nuevo, mismo lenguaje visual que el resto */
+.secure-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 18px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--gray-500);
+}
+
+.secure-badge .icon-shield {
+    width: 13px;
+    height: 14px;
+    position: relative;
+    flex: none;
+    color: var(--gray-500);
+    opacity: 0.8;
+}
+
+.icon-shield::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border: 1.4px solid currentColor;
+    clip-path: polygon(50% 0%, 100% 18%, 100% 55%, 50% 100%, 0 55%, 0 18%);
+    border-radius: 2px;
+}
+
+.icon-shield::after {
+    content: "";
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    width: 3.5px;
+    height: 5.5px;
+    border: solid currentColor;
+    border-width: 0 1.3px 1.3px 0;
+    transform: translate(-50%, -60%) rotate(45deg);
+}
+
 .footer-note {
-    margin: 18px 0 0;
+    margin: 10px 0 0;
     font-size: 11.5px;
     color: var(--gray-300);
 }
@@ -593,7 +480,6 @@ public partial class Login : ComponentBase
     flex: none;
 }
 
-/* Usuario: cabeza + hombros */
 .icon-user__head {
     position: absolute;
     top: 0;
@@ -617,7 +503,6 @@ public partial class Login : ComponentBase
     border-radius: 8px 8px 0 0;
 }
 
-/* Candado: arco + cuerpo + ojo de cerradura */
 .icon-lock__shackle {
     position: absolute;
     top: 0;
@@ -652,7 +537,6 @@ public partial class Login : ComponentBase
     background: currentColor;
 }
 
-/* Ojo (mostrar/ocultar contraseña) */
 .icon-eye__outer {
     position: absolute;
     inset: 2px 0;
@@ -686,7 +570,6 @@ public partial class Login : ComponentBase
 .icon-eye--off .icon-eye__outer { opacity: 0.45; }
 .icon-eye--off .icon-eye__slash { display: block; }
 
-/* Alerta (círculo + exclamación) */
 .icon-alert {
     border-radius: 50%;
     border: 1.6px solid currentColor;
