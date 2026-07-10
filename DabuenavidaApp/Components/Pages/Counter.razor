@@ -1,52 +1,976 @@
-<div class="editor-toolbar">
-    <div class="editor-toolbar__group">
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Encabezado 1" @onclick='() => InsertSnippet("# Título")'>H1</button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Encabezado 2" @onclick='() => InsertSnippet("## Subtítulo")'>H2</button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Encabezado 3" @onclick='() => InsertSnippet("### Sección")'>H3</button>
-    </div>
-    <div class="editor-toolbar__group">
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" style="font-weight:800" title="Negrita" @onclick='() => InsertSnippet("**texto en negrita**")'>B</button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" style="font-style:italic" title="Cursiva" @onclick='() => InsertSnippet("*texto en cursiva*")'>I</button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" style="text-decoration:underline" title="Subrayado" @onclick='() => InsertSnippet("<u>texto subrayado</u>")'>U</button>
-    </div>
-    <div class="editor-toolbar__group">
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Lista numerada" @onclick='() => InsertSnippet("1. Elemento uno\n2. Elemento dos")'>1.</button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Lista con viñetas" @onclick='() => InsertSnippet("- Elemento\n- Elemento")'>•</button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Checklist" @onclick='() => InsertSnippet("- [ ] Tarea pendiente\n- [x] Tarea realizada")'>☑</button>
-    </div>
-    <div class="editor-toolbar__group">
-        <button type="button" class="editor-toolbar__btn" title="Tabla" @onclick='() => InsertSnippet("| Columna 1 | Columna 2 |\n|---|---|\n| Valor | Valor |")'><Icon Name="table" /></button>
-        <button type="button" class="editor-toolbar__btn" title="Bloque de código" @onclick='() => InsertSnippet("```\nvar x = 1;\n```")'><Icon Name="code" /></button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Cita" @onclick='() => InsertSnippet("> Cita textual")'>❝</button>
-        <button type="button" class="editor-toolbar__btn" title="Hipervínculo" @onclick='() => InsertSnippet("[texto del enlace](https://)")'><Icon Name="link" /></button>
-    </div>
-    <div class="editor-toolbar__group">
-        <button type="button" class="editor-toolbar__btn" title="Imagen" @onclick='() => InsertSnippet("
+namespace CorpWiki.Models;
 
-![descripción](url-de-imagen)
+public enum IncidentPriority { Baja, Media, Alta, Critica }
 
-")'><Icon Name="image" /></button>
-        <button type="button" class="editor-toolbar__btn" title="Separador" @onclick='() => InsertSnippet("---")'><Icon Name="minus" /></button>
-        <button type="button" class="editor-toolbar__btn" title="Expandible" @onclick='() => InsertSnippet("<details><summary>Ver más</summary>\nContenido oculto\n</details>")'><Icon Name="chevron-down" /></button>
+public enum IncidentStatus { Abierta, EnProgreso, Transferida, Resuelta, Cerrada }
+
+public enum IncidentEventType
+{
+    Creada,
+    Asignada,      // pasa a la cola de un equipo
+    TomaEnCurso,   // el equipo empieza a trabajarla (fin del tiempo muerto)
+    Comentario,
+    Transferida,   // se manda a otro equipo, arrastrando categoría/prioridad
+    Resuelta,
+    Reabierta,
+    Cerrada
+}
+
+public class IncidentEvent
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public IncidentEventType Type { get; set; }
+    public string Team { get; set; } = string.Empty;
+    public string? FromTeam { get; set; }
+    public string? ToTeam { get; set; }
+    public string Author { get; set; } = string.Empty;
+    public string Note { get; set; } = string.Empty;
+    public DateTime Timestamp { get; set; }
+}
+
+public class Incident
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Code { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public IncidentPriority Priority { get; set; }
+    public IncidentStatus Status { get; set; }
+    public string CreatedBy { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public string CurrentTeam { get; set; } = string.Empty;
+    public List<IncidentEvent> Timeline { get; set; } = new();
+}
+
+/// <summary>
+/// Tramo calculado: el paso de la incidencia por un equipo determinado,
+/// con el desglose entre tiempo muerto (esperando que alguien la tome)
+/// y tiempo activo (trabajándola).
+/// </summary>
+public class TeamLeg
+{
+    public string Team { get; set; } = string.Empty;
+    public DateTime AssignedAt { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? EndedAt { get; set; }
+    public string EndReason { get; set; } = string.Empty; // "Transferida" | "Resuelta" | "En curso"
+
+    public TimeSpan DeadTime => (StartedAt ?? DateTime.Now) - AssignedAt;
+    public TimeSpan? ActiveTime => StartedAt.HasValue
+        ? (EndedAt ?? DateTime.Now) - StartedAt.Value
+        : null;
+}
+
+using CorpWiki.Models;
+
+namespace CorpWiki.Services;
+
+public class IncidentDataService
+{
+    public List<string> Teams { get; } = new()
+    {
+        "Mesa de Ayuda", "Infraestructura", "Redes",
+        "Seguridad de la Información", "Desarrollo", "Base de Datos"
+    };
+
+    public List<string> Categories { get; } = new()
+    {
+        "Accesos y Credenciales", "Infraestructura", "Redes",
+        "Seguridad", "Aplicaciones Internas", "Base de Datos"
+    };
+
+    private readonly List<Incident> _incidents = new();
+    private int _seq = 1042;
+
+    public IncidentDataService()
+    {
+        Seed();
+    }
+
+    public IReadOnlyList<Incident> GetAll() =>
+        _incidents.OrderByDescending(i => i.CreatedAt).ToList();
+
+    public Incident? GetByCode(string code) =>
+        _incidents.FirstOrDefault(i => i.Code == code);
+
+    public Incident CreateIncident(string title, string description, string category,
+        IncidentPriority priority, string team, string createdBy)
+    {
+        var now = DateTime.Now;
+        var incident = new Incident
+        {
+            Code = $"INC-{_seq++:0000}",
+            Title = title,
+            Description = description,
+            Category = category,
+            Priority = priority,
+            Status = IncidentStatus.Abierta,
+            CreatedBy = createdBy,
+            CreatedAt = now,
+            CurrentTeam = team
+        };
+        incident.Timeline.Add(new IncidentEvent
+        {
+            Type = IncidentEventType.Creada,
+            Team = team,
+            Author = createdBy,
+            Note = $"Incidencia creada y asignada a {team}.",
+            Timestamp = now
+        });
+        incident.Timeline.Add(new IncidentEvent
+        {
+            Type = IncidentEventType.Asignada,
+            Team = team,
+            Author = createdBy,
+            Timestamp = now
+        });
+        _incidents.Insert(0, incident);
+        return incident;
+    }
+
+    public void StartProgress(string code, string author)
+    {
+        var inc = GetByCode(code);
+        if (inc is null || inc.Status is IncidentStatus.Resuelta or IncidentStatus.Cerrada) return;
+
+        inc.Status = IncidentStatus.EnProgreso;
+        inc.Timeline.Add(new IncidentEvent
+        {
+            Type = IncidentEventType.TomaEnCurso,
+            Team = inc.CurrentTeam,
+            Author = author,
+            Note = $"{inc.CurrentTeam} tomó la incidencia.",
+            Timestamp = DateTime.Now
+        });
+    }
+
+    public void Transfer(string code, string toTeam, string note, string author)
+    {
+        var inc = GetByCode(code);
+        if (inc is null) return;
+
+        var fromTeam = inc.CurrentTeam;
+        inc.Timeline.Add(new IncidentEvent
+        {
+            Type = IncidentEventType.Transferida,
+            Team = fromTeam,
+            FromTeam = fromTeam,
+            ToTeam = toTeam,
+            Author = author,
+            Note = note,
+            Timestamp = DateTime.Now
+        });
+
+        inc.CurrentTeam = toTeam;
+        inc.Status = IncidentStatus.Transferida;
+
+        // La categoría y prioridad viajan con la incidencia (no se resetean).
+        inc.Timeline.Add(new IncidentEvent
+        {
+            Type = IncidentEventType.Asignada,
+            Team = toTeam,
+            Author = author,
+            Note = $"Ingresa a la cola de {toTeam} · Categoría: {inc.Category} · Prioridad: {inc.Priority}",
+            Timestamp = DateTime.Now
+        });
+    }
+
+    public void AddComment(string code, string author, string note)
+    {
+        var inc = GetByCode(code);
+        if (inc is null || string.IsNullOrWhiteSpace(note)) return;
+
+        inc.Timeline.Add(new IncidentEvent
+        {
+            Type = IncidentEventType.Comentario,
+            Team = inc.CurrentTeam,
+            Author = author,
+            Note = note,
+            Timestamp = DateTime.Now
+        });
+    }
+
+    public void Resolve(string code, string author, string note)
+    {
+        var inc = GetByCode(code);
+        if (inc is null) return;
+
+        inc.Status = IncidentStatus.Resuelta;
+        inc.Timeline.Add(new IncidentEvent
+        {
+            Type = IncidentEventType.Resuelta,
+            Team = inc.CurrentTeam,
+            Author = author,
+            Note = string.IsNullOrWhiteSpace(note) ? "Incidencia resuelta." : note,
+            Timestamp = DateTime.Now
+        });
+    }
+
+    /// <summary>SLA de referencia en horas según prioridad, para comparar contra el tiempo muerto real.</summary>
+    public static double SlaHours(IncidentPriority p) => p switch
+    {
+        IncidentPriority.Critica => 1,
+        IncidentPriority.Alta => 4,
+        IncidentPriority.Media => 8,
+        _ => 24
+    };
+
+    /// <summary>Calcula los tramos por equipo (tiempo muerto + tiempo activo) a partir del timeline.</summary>
+    public static List<TeamLeg> ComputeLegs(Incident incident)
+    {
+        var legs = new List<TeamLeg>();
+        TeamLeg? current = null;
+
+        foreach (var ev in incident.Timeline.OrderBy(e => e.Timestamp))
+        {
+            switch (ev.Type)
+            {
+                case IncidentEventType.Asignada:
+                    current = new TeamLeg { Team = ev.Team, AssignedAt = ev.Timestamp };
+                    legs.Add(current);
+                    break;
+
+                case IncidentEventType.TomaEnCurso:
+                    if (current is not null && current.Team == ev.Team)
+                        current.StartedAt = ev.Timestamp;
+                    break;
+
+                case IncidentEventType.Transferida:
+                    if (current is not null && current.Team == ev.FromTeam)
+                    {
+                        current.EndedAt = ev.Timestamp;
+                        current.EndReason = "Transferida";
+                        if (current.StartedAt is null) current.StartedAt = ev.Timestamp;
+                    }
+                    break;
+
+                case IncidentEventType.Resuelta:
+                    if (current is not null)
+                    {
+                        current.EndedAt = ev.Timestamp;
+                        current.EndReason = "Resuelta";
+                        if (current.StartedAt is null) current.StartedAt = ev.Timestamp;
+                    }
+                    break;
+            }
+        }
+
+        if (current is not null && current.EndedAt is null)
+            current.EndReason = "En curso";
+
+        return legs;
+    }
+
+    private void Seed()
+    {
+        // ---- Incidencia 1: multi-equipo, con tiempo muerto marcado entre Redes -> Seguridad ----
+        var i1 = new Incident
+        {
+            Code = "INC-1001",
+            Title = "Caída intermitente de VPN corporativa en sucursales",
+            Description = "Usuarios de sucursales reportan desconexiones frecuentes de la VPN durante la mañana.",
+            Category = "Redes",
+            Priority = IncidentPriority.Alta,
+            Status = IncidentStatus.EnProgreso,
+            CreatedBy = "Mesa de Ayuda — Ana Torres",
+            CreatedAt = DateTime.Now.AddHours(-30),
+            CurrentTeam = "Seguridad de la Información"
+        };
+        var t = i1.CreatedAt;
+        i1.Timeline.Add(new(){ Type=IncidentEventType.Creada, Team="Mesa de Ayuda", Author="Ana Torres", Note="Incidencia creada desde reporte de usuarios.", Timestamp=t });
+        i1.Timeline.Add(new(){ Type=IncidentEventType.Asignada, Team="Mesa de Ayuda", Author="Ana Torres", Timestamp=t });
+        i1.Timeline.Add(new(){ Type=IncidentEventType.TomaEnCurso, Team="Mesa de Ayuda", Author="Ana Torres", Note="Se valida y escala a Redes.", Timestamp=t.AddMinutes(20) });
+        i1.Timeline.Add(new(){ Type=IncidentEventType.Transferida, Team="Mesa de Ayuda", FromTeam="Mesa de Ayuda", ToTeam="Redes", Author="Ana Torres", Note="Se descarta problema de usuario, es de infraestructura de red.", Timestamp=t.AddHours(1) });
+        i1.Timeline.Add(new(){ Type=IncidentEventType.Asignada, Team="Redes", Author="Ana Torres", Timestamp=t.AddHours(1) });
+        i1.Timeline.Add(new(){ Type=IncidentEventType.TomaEnCurso, Team="Redes", Author="Diego Salas", Note="Se revisan logs del concentrador VPN.", Timestamp=t.AddHours(3.5) }); // 2.5h de tiempo muerto
+        i1.Timeline.Add(new(){ Type=IncidentEventType.Transferida, Team="Redes", FromTeam="Redes", ToTeam="Seguridad de la Información", Author="Diego Salas", Note="Se detecta bloqueo de certificados, requiere revisión de Seguridad.", Timestamp=t.AddHours(6) });
+        i1.Timeline.Add(new(){ Type=IncidentEventType.Asignada, Team="Seguridad de la Información", Author="Diego Salas", Timestamp=t.AddHours(6) });
+        // Sin TomaEnCurso todavía -> tiempo muerto actual corriendo (demuestra el caso "en espera")
+        _incidents.Add(i1);
+
+        // ---- Incidencia 2: resuelta rápido, sin tiempos muertos relevantes ----
+        var i2 = new Incident
+        {
+            Code = "INC-1002",
+            Title = "Usuario bloqueado en Active Directory tras varios intentos fallidos",
+            Description = "El usuario jgomez no puede iniciar sesión, la cuenta figura bloqueada en AD.",
+            Category = "Accesos y Credenciales",
+            Priority = IncidentPriority.Media,
+            Status = IncidentStatus.Resuelta,
+            CreatedBy = "Mesa de Ayuda — Ana Torres",
+            CreatedAt = DateTime.Now.AddHours(-5),
+            CurrentTeam = "Infraestructura"
+        };
+        var t2 = i2.CreatedAt;
+        i2.Timeline.Add(new(){ Type=IncidentEventType.Creada, Team="Mesa de Ayuda", Author="Ana Torres", Timestamp=t2 });
+        i2.Timeline.Add(new(){ Type=IncidentEventType.Transferida, Team="Mesa de Ayuda", FromTeam="Mesa de Ayuda", ToTeam="Infraestructura", Author="Ana Torres", Note="Requiere desbloqueo directo en el controlador de dominio.", Timestamp=t2.AddMinutes(5) });
+        i2.Timeline.Add(new(){ Type=IncidentEventType.Asignada, Team="Infraestructura", Author="Ana Torres", Timestamp=t2.AddMinutes(5) });
+        i2.Timeline.Add(new(){ Type=IncidentEventType.TomaEnCurso, Team="Infraestructura", Author="Rocío Paz", Timestamp=t2.AddMinutes(12) });
+        i2.Timeline.Add(new(){ Type=IncidentEventType.Resuelta, Team="Infraestructura", Author="Rocío Paz", Note="Cuenta desbloqueada y contraseña restablecida.", Timestamp=t2.AddMinutes(28) });
+        _incidents.Add(i2);
+
+        // ---- Incidencia 3: crítica, con tiempo muerto grave (fuera de SLA) ----
+        var i3 = new Incident
+        {
+            Code = "INC-1003",
+            Title = "Caída del portal de Banca en Línea",
+            Description = "El portal de Banca en Línea no responde para clientes externos.",
+            Category = "Aplicaciones Internas",
+            Priority = IncidentPriority.Critica,
+            Status = IncidentStatus.EnProgreso,
+            CreatedBy = "Mesa de Ayuda — Julián Reyes",
+            CreatedAt = DateTime.Now.AddHours(-8),
+            CurrentTeam = "Desarrollo"
+        };
+        var t3 = i3.CreatedAt;
+        i3.Timeline.Add(new(){ Type=IncidentEventType.Creada, Team="Mesa de Ayuda", Author="Julián Reyes", Timestamp=t3 });
+        i3.Timeline.Add(new(){ Type=IncidentEventType.Asignada, Team="Mesa de Ayuda", Author="Julián Reyes", Timestamp=t3 });
+        i3.Timeline.Add(new(){ Type=IncidentEventType.TomaEnCurso, Team="Mesa de Ayuda", Author="Julián Reyes", Timestamp=t3.AddMinutes(5) });
+        i3.Timeline.Add(new(){ Type=IncidentEventType.Transferida, Team="Mesa de Ayuda", FromTeam="Mesa de Ayuda", ToTeam="Infraestructura", Author="Julián Reyes", Note="Escalada inmediata por caída total del servicio.", Timestamp=t3.AddMinutes(10) });
+        i3.Timeline.Add(new(){ Type=IncidentEventType.Asignada, Team="Infraestructura", Author="Julián Reyes", Timestamp=t3.AddMinutes(10) });
+        i3.Timeline.Add(new(){ Type=IncidentEventType.TomaEnCurso, Team="Infraestructura", Author="Rocío Paz", Timestamp=t3.AddMinutes(25) });
+        i3.Timeline.Add(new(){ Type=IncidentEventType.Transferida, Team="Infraestructura", FromTeam="Infraestructura", ToTeam="Desarrollo", Author="Rocío Paz", Note="El servidor está arriba, el error es de la aplicación (excepción 500).", Timestamp=t3.AddHours(1.5) });
+        i3.Timeline.Add(new(){ Type=IncidentEventType.Asignada, Team="Desarrollo", Author="Rocío Paz", Timestamp=t3.AddHours(1.5) });
+        i3.Timeline.Add(new(){ Type=IncidentEventType.TomaEnCurso, Team="Desarrollo", Author="Martín Ibarra", Note="Se identifica el deploy que rompió el servicio.", Timestamp=t3.AddHours(5) }); // 3.5h muerto sobre SLA de 1h (crítica)
+        _incidents.Add(i3);
+
+        // ---- Incidencia 4: baja prioridad, cerrada ----
+        var i4 = new Incident
+        {
+            Code = "INC-1004",
+            Title = "Solicitud de permisos en biblioteca de SharePoint",
+            Description = "El equipo de Riesgos solicita acceso de edición a la biblioteca 'Normativas 2026'.",
+            Category = "Infraestructura",
+            Priority = IncidentPriority.Baja,
+            Status = IncidentStatus.Cerrada,
+            CreatedBy = "Mesa de Ayuda — Ana Torres",
+            CreatedAt = DateTime.Now.AddDays(-2),
+            CurrentTeam = "Infraestructura"
+        };
+        var t4 = i4.CreatedAt;
+        i4.Timeline.Add(new(){ Type=IncidentEventType.Creada, Team="Mesa de Ayuda", Author="Ana Torres", Timestamp=t4 });
+        i4.Timeline.Add(new(){ Type=IncidentEventType.Transferida, Team="Mesa de Ayuda", FromTeam="Mesa de Ayuda", ToTeam="Infraestructura", Author="Ana Torres", Timestamp=t4.AddHours(2) });
+        i4.Timeline.Add(new(){ Type=IncidentEventType.Asignada, Team="Infraestructura", Author="Ana Torres", Timestamp=t4.AddHours(2) });
+        i4.Timeline.Add(new(){ Type=IncidentEventType.TomaEnCurso, Team="Infraestructura", Author="Rocío Paz", Timestamp=t4.AddHours(20) });
+        i4.Timeline.Add(new(){ Type=IncidentEventType.Resuelta, Team="Infraestructura", Author="Rocío Paz", Note="Permisos otorgados.", Timestamp=t4.AddHours(21) });
+        i4.Timeline.Add(new(){ Type=IncidentEventType.Cerrada, Team="Infraestructura", Author="Ana Torres", Note="Confirmado por el solicitante.", Timestamp=t4.AddHours(26) });
+        _incidents.Add(i4);
+
+        _seq = 1005;
+    }
+}
+
+builder.Services.AddSingleton<IncidentDataService>();
+
+@page "/incidencias"
+@inject IncidentDataService IncidentData
+@using CorpWiki.Models
+
+<PageTitle>CorpWiki — Incidencias</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1>Gestión de Incidencias</h1>
+        <p>Seguimiento de incidencias por equipo, con trazabilidad de tiempos muertos y tiempos activos.</p>
     </div>
-    <div class="editor-toolbar__group">
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Nota" @onclick='() => InsertSnippet(":::note\nEsto es una nota.\n:::")'>📝</button>
-        <button type="button" class="editor-toolbar__btn" title="Advertencia" @onclick='() => InsertSnippet(":::warning\nEsto es una advertencia.\n:::")'><Icon Name="alert-triangle" /></button>
-        <button type="button" class="editor-toolbar__btn" title="Información" @onclick='() => InsertSnippet(":::info\nEsto es información adicional.\n:::")'><Icon Name="info" /></button>
+    <a class="btn btn--primary" href="/incidencias/nueva"><Icon Name="plus" /> Nueva incidencia</a>
+</div>
+
+<div class="admin-stat-grid incident-stat-grid">
+    <div class="card stat-card">
+        <span class="stat-card__value">@_all.Count(i => i.Status is IncidentStatus.Abierta or IncidentStatus.EnProgreso or IncidentStatus.Transferida)</span>
+        <span class="stat-card__label">Incidencias activas</span>
     </div>
-    <div class="editor-toolbar__group">
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Color de texto" @onclick='() => InsertSnippet("{color:#C41230}texto en color{/color}")'>A</button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Resaltar" @onclick='() => InsertSnippet("==texto resaltado==")'>▤</button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Alinear" @onclick='() => InsertSnippet(":::center\ntexto centrado\n:::")'>≡</button>
+    <div class="card stat-card">
+        <span class="stat-card__value">@_all.Count(i => i.Status == IncidentStatus.Resuelta)</span>
+        <span class="stat-card__label">Resueltas</span>
     </div>
-    <div class="editor-toolbar__group">
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Deshacer" @onclick="Undo" disabled="@(_undoStack.Count == 0)">↺</button>
-        <button type="button" class="editor-toolbar__btn editor-toolbar__btn--text" title="Rehacer" @onclick="Redo" disabled="@(_redoStack.Count == 0)">↻</button>
+    <div class="card stat-card">
+        <span class="stat-card__value stat-card__value--danger">@_all.Count(i => i.Priority == IncidentPriority.Critica && i.Status != IncidentStatus.Cerrada)</span>
+        <span class="stat-card__label">Críticas abiertas</span>
+    </div>
+    <div class="card stat-card">
+        <span class="stat-card__value">@FormatSpan(AvgDeadTime())</span>
+        <span class="stat-card__label">Tiempo muerto promedio</span>
     </div>
 </div>
 
-.editor-toolbar__btn--text {
-    font-size: 12px;
+<div class="widget card filter-bar">
+    <div class="form-group" style="margin:0">
+        <label class="form-label">Equipo</label>
+        <select class="input" @bind="_filterTeam">
+            <option value="">Todos</option>
+            @foreach (var team in IncidentData.Teams)
+            {
+                <option value="@team">@team</option>
+            }
+        </select>
+    </div>
+    <div class="form-group" style="margin:0">
+        <label class="form-label">Categoría</label>
+        <select class="input" @bind="_filterCategory">
+            <option value="">Todas</option>
+            @foreach (var cat in IncidentData.Categories)
+            {
+                <option value="@cat">@cat</option>
+            }
+        </select>
+    </div>
+    <div class="form-group" style="margin:0">
+        <label class="form-label">Prioridad</label>
+        <select class="input" @bind="_filterPriority">
+            <option value="">Todas</option>
+            @foreach (var p in Enum.GetValues<IncidentPriority>())
+            {
+                <option value="@p">@p</option>
+            }
+        </select>
+    </div>
+</div>
+
+<div class="kanban">
+    @foreach (var status in new[] { IncidentStatus.Abierta, IncidentStatus.EnProgreso, IncidentStatus.Transferida, IncidentStatus.Resuelta, IncidentStatus.Cerrada })
+    {
+        var items = Filtered().Where(i => i.Status == status).ToList();
+        <div class="kanban__column">
+            <div class="kanban__column-header">
+                <span>@StatusLabel(status)</span>
+                <span class="kanban__count">@items.Count</span>
+            </div>
+            <div class="kanban__cards">
+                @foreach (var inc in items)
+                {
+                    <a class="card incident-card" href="@($"/incidencia/{inc.Code}")">
+                        <div class="incident-card__top">
+                            <span class="incident-card__code">@inc.Code</span>
+                            <span class="@PriorityBadgeClass(inc.Priority)">@inc.Priority</span>
+                        </div>
+                        <p class="incident-card__title">@inc.Title</p>
+                        <div class="incident-card__meta">
+                            <span><Icon Name="folder" /> @inc.Category</span>
+                            <span><Icon Name="users" /> @inc.CurrentTeam</span>
+                        </div>
+                        <div class="incident-card__footer">
+                            <span class="incident-card__elapsed"><Icon Name="clock" /> @FormatSpan(DateTime.Now - inc.CreatedAt)</span>
+                            @{ var deadNow = CurrentDeadTime(inc); }
+                            @if (deadNow is not null)
+                            {
+                                <span class="incident-card__dead @(IsOverSla(inc) ? "incident-card__dead--over" : "")">
+                                    <Icon Name="alert-triangle" /> @FormatSpan(deadNow.Value) muerto
+                                </span>
+                            }
+                        </div>
+                    </a>
+                }
+                @if (items.Count == 0)
+                {
+                    <p class="kanban__empty">Sin incidencias</p>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Incident> _all = new();
+    private string _filterTeam = "";
+    private string _filterCategory = "";
+    private string _filterPriority = "";
+
+    protected override void OnInitialized()
+    {
+        _all = IncidentData.GetAll().ToList();
+    }
+
+    private List<Incident> Filtered() => _all.Where(i =>
+        (string.IsNullOrEmpty(_filterTeam) || i.CurrentTeam == _filterTeam) &&
+        (string.IsNullOrEmpty(_filterCategory) || i.Category == _filterCategory) &&
+        (string.IsNullOrEmpty(_filterPriority) || i.Priority.ToString() == _filterPriority)
+    ).ToList();
+
+    private static string StatusLabel(IncidentStatus s) => s switch
+    {
+        IncidentStatus.Abierta => "Abiertas",
+        IncidentStatus.EnProgreso => "En progreso",
+        IncidentStatus.Transferida => "Transferidas",
+        IncidentStatus.Resuelta => "Resueltas",
+        _ => "Cerradas"
+    };
+
+    private static string PriorityBadgeClass(IncidentPriority p) => p switch
+    {
+        IncidentPriority.Critica => "badge badge--priority badge--priority-critica",
+        IncidentPriority.Alta => "badge badge--priority badge--priority-alta",
+        IncidentPriority.Media => "badge badge--priority badge--priority-media",
+        _ => "badge badge--priority badge--priority-baja"
+    };
+
+    /// Tiempo muerto vigente: si el tramo actual todavía no fue "tomado" por el equipo.
+    private static TimeSpan? CurrentDeadTime(Incident inc)
+    {
+        var legs = IncidentDataService.ComputeLegs(inc);
+        var last = legs.LastOrDefault();
+        if (last is null || last.StartedAt is not null) return null;
+        return DateTime.Now - last.AssignedAt;
+    }
+
+    private static bool IsOverSla(Incident inc)
+    {
+        var dead = CurrentDeadTime(inc);
+        return dead is not null && dead.Value.TotalHours > IncidentDataService.SlaHours(inc.Priority);
+    }
+
+    private TimeSpan AvgDeadTime()
+    {
+        var allDead = _all
+            .SelectMany(i => IncidentDataService.ComputeLegs(i))
+            .Where(l => l.StartedAt is not null)
+            .Select(l => l.DeadTime)
+            .ToList();
+        if (allDead.Count == 0) return TimeSpan.Zero;
+        return TimeSpan.FromMinutes(allDead.Average(d => d.TotalMinutes));
+    }
+
+    private static string FormatSpan(TimeSpan span)
+    {
+        if (span.TotalHours >= 1) return $"{(int)span.TotalHours}h {span.Minutes}m";
+        return $"{(int)span.TotalMinutes}m";
+    }
+}
+
+@page "/incidencia/{Codigo}"
+@inject IncidentDataService IncidentData
+@using CorpWiki.Models
+
+<PageTitle>CorpWiki — @Codigo</PageTitle>
+
+@if (_incident is null)
+{
+    <div class="card empty-state">
+        <Icon Name="alert-triangle" Class="empty-state__icon" />
+        <p>No se encontró la incidencia @Codigo.</p>
+        <a class="btn btn--secondary" href="/incidencias">Volver a incidencias</a>
+    </div>
+}
+else
+{
+    <Breadcrumb Items="_breadcrumb" />
+
+    <div class="page-header">
+        <div>
+            <div class="incident-detail__title-row">
+                <h1>@_incident.Code</h1>
+                <span class="@PriorityBadgeClass(_incident.Priority)">@_incident.Priority</span>
+                <span class="badge badge--brand">@StatusLabel(_incident.Status)</span>
+            </div>
+            <p>@_incident.Title</p>
+        </div>
+    </div>
+
+    <div class="article-layout">
+        <div class="article-main">
+            <div class="card article-form">
+                <h3 class="form-section-title"><Icon Name="file-text" /> Detalle</h3>
+                <p class="article-body__paragraph">@_incident.Description</p>
+
+                <div class="field-grid field-grid--3" style="margin-top:var(--space-4)">
+                    <div class="meta-block">
+                        <span class="meta-block__label">Categoría</span>
+                        <span class="meta-block__value">@_incident.Category</span>
+                    </div>
+                    <div class="meta-block">
+                        <span class="meta-block__label">Equipo actual</span>
+                        <span class="meta-block__value">@_incident.CurrentTeam</span>
+                    </div>
+                    <div class="meta-block">
+                        <span class="meta-block__label">Creada por</span>
+                        <span class="meta-block__value">@_incident.CreatedBy</span>
+                    </div>
+                    <div class="meta-block">
+                        <span class="meta-block__label">Fecha de creación</span>
+                        <span class="meta-block__value">@_incident.CreatedAt.ToString("d MMM yyyy, HH:mm")</span>
+                    </div>
+                    <div class="meta-block">
+                        <span class="meta-block__label">SLA de referencia</span>
+                        <span class="meta-block__value">@IncidentDataService.SlaHours(_incident.Priority)h</span>
+                    </div>
+                    <div class="meta-block">
+                        <span class="meta-block__label">Tiempo muerto total</span>
+                        <span class="meta-block__value meta-block__value--danger">@FormatSpan(TotalDeadTime())</span>
+                    </div>
+                </div>
+            </div>
+
+            @* ---- Tramos por equipo: tiempo muerto vs tiempo activo ---- *@
+            <div class="card article-form">
+                <h3 class="form-section-title"><Icon Name="activity" /> Tiempos por equipo</h3>
+                <div class="team-legs">
+                    @foreach (var leg in _legs)
+                    {
+                        var overSla = leg.DeadTime.TotalHours > IncidentDataService.SlaHours(_incident.Priority);
+                        <div class="team-leg">
+                            <div class="team-leg__head">
+                                <span class="team-leg__team"><Icon Name="users" /> @leg.Team</span>
+                                <span class="team-leg__status">@(string.IsNullOrEmpty(leg.EndReason) ? "En curso" : leg.EndReason)</span>
+                            </div>
+                            <div class="team-leg__bars">
+                                <div class="team-leg__bar-row">
+                                    <span class="team-leg__bar-label">Tiempo muerto</span>
+                                    <div class="team-leg__bar">
+                                        <div class="team-leg__bar-fill team-leg__bar-fill--dead @(overSla ? "team-leg__bar-fill--over" : "")"
+                                             style="width:@(BarWidth(leg.DeadTime))%"></div>
+                                    </div>
+                                    <span class="team-leg__bar-value @(overSla ? "team-leg__bar-value--over" : "")">@FormatSpan(leg.DeadTime)</span>
+                                </div>
+                                @if (leg.ActiveTime is not null)
+                                {
+                                    <div class="team-leg__bar-row">
+                                        <span class="team-leg__bar-label">Tiempo activo</span>
+                                        <div class="team-leg__bar">
+                                            <div class="team-leg__bar-fill team-leg__bar-fill--active" style="width:@(BarWidth(leg.ActiveTime.Value))%"></div>
+                                        </div>
+                                        <span class="team-leg__bar-value">@FormatSpan(leg.ActiveTime.Value)</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ---- Timeline detallado ---- *@
+            <div class="card article-form">
+                <h3 class="form-section-title"><Icon Name="history" /> Historial detallado</h3>
+                <div class="version-timeline">
+                    @foreach (var ev in _incident.Timeline.OrderByDescending(e => e.Timestamp))
+                    {
+                        <div class="version-row">
+                            <span class="version-row__dot version-row__dot--@EventDotClass(ev.Type)"></span>
+                            <div>
+                                <p class="version-row__label">@EventLabel(ev) — @ev.Author</p>
+                                @if (!string.IsNullOrEmpty(ev.Note))
+                                {
+                                    <p class="version-row__summary">@ev.Note</p>
+                                }
+                                <p class="version-row__date">@ev.Timestamp.ToString("d MMM yyyy, HH:mm")</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <aside class="article-sidebar">
+            @if (_incident.Status is not (IncidentStatus.Resuelta or IncidentStatus.Cerrada))
+            {
+                <div class="widget card">
+                    <h4 class="widget__title"><Icon Name="check-circle" /> Acciones</h4>
+
+                    @if (_incident.Timeline.LastOrDefault()?.Type != IncidentEventType.TomaEnCurso || _incident.Status == IncidentStatus.Transferida)
+                    {
+                        <button class="btn btn--secondary" style="width:100%; margin-bottom:var(--space-3)" @onclick="TakeIncident">
+                            <Icon Name="check" /> Tomar incidencia
+                        </button>
+                    }
+
+                    <div class="form-group">
+                        <label class="form-label">Transferir a equipo</label>
+                        <select class="input" @bind="_transferTeam">
+                            <option value="">Seleccioná</option>
+                            @foreach (var team in IncidentData.Teams.Where(t => t != _incident.CurrentTeam))
+                            {
+                                <option value="@team">@team</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <textarea class="input" rows="2" @bind="_transferNote" placeholder="Motivo de la transferencia"></textarea>
+                    </div>
+                    <button class="btn btn--primary" style="width:100%; margin-bottom:var(--space-3)" @onclick="TransferIncident">
+                        <Icon Name="send" /> Transferir
+                    </button>
+
+                    <button class="btn btn--secondary" style="width:100%" @onclick="ResolveIncident">
+                        <Icon Name="check-circle" /> Marcar como resuelta
+                    </button>
+                </div>
+            }
+
+            <div class="widget card">
+                <h4 class="widget__title"><Icon Name="lightbulb" /> Comentario interno</h4>
+                <textarea class="input" rows="3" @bind="_commentNote" placeholder="Agregar una nota al historial..."></textarea>
+                <button class="btn btn--secondary" style="width:100%; margin-top:var(--space-3)" @onclick="AddComment">
+                    <Icon Name="plus" /> Agregar comentario
+                </button>
+            </div>
+        </aside>
+    </div>
+}
+
+@code {
+    [Parameter] public string Codigo { get; set; } = string.Empty;
+
+    private Incident? _incident;
+    private List<TeamLeg> _legs = new();
+    private List<BreadcrumbItem> _breadcrumb = new();
+
+    private string _transferTeam = "";
+    private string _transferNote = "";
+    private string _commentNote = "";
+    private const string CurrentUser = "Hiavert Maldonado";
+
+    protected override void OnParametersSet()
+    {
+        Load();
+    }
+
+    private void Load()
+    {
+        _incident = IncidentData.GetByCode(Codigo);
+        if (_incident is null) return;
+
+        _legs = IncidentDataService.ComputeLegs(_incident);
+        _breadcrumb = new()
+        {
+            new("Inicio", "/"),
+            new("Incidencias", "/incidencias"),
+            new(_incident.Code, null)
+        };
+    }
+
+    private void TakeIncident()
+    {
+        IncidentData.StartProgress(Codigo, CurrentUser);
+        Load();
+    }
+
+    private void TransferIncident()
+    {
+        if (string.IsNullOrEmpty(_transferTeam)) return;
+        IncidentData.Transfer(Codigo, _transferTeam, _transferNote, CurrentUser);
+        _transferTeam = ""; _transferNote = "";
+        Load();
+    }
+
+    private void ResolveIncident()
+    {
+        IncidentData.Resolve(Codigo, CurrentUser, "");
+        Load();
+    }
+
+    private void AddComment()
+    {
+        if (string.IsNullOrWhiteSpace(_commentNote)) return;
+        IncidentData.AddComment(Codigo, CurrentUser, _commentNote);
+        _commentNote = "";
+        Load();
+    }
+
+    private TimeSpan TotalDeadTime() =>
+        _legs.Aggregate(TimeSpan.Zero, (acc, l) => acc + l.DeadTime);
+
+    private double BarWidth(TimeSpan span)
+    {
+        var maxMinutes = Math.Max(1, _legs.SelectMany(l => new[] { l.DeadTime.TotalMinutes, l.ActiveTime?.TotalMinutes ?? 0 }).Max());
+        return Math.Min(100, span.TotalMinutes / maxMinutes * 100);
+    }
+
+    private static string StatusLabel(IncidentStatus s) => s switch
+    {
+        IncidentStatus.Abierta => "Abierta",
+        IncidentStatus.EnProgreso => "En progreso",
+        IncidentStatus.Transferida => "Transferida",
+        IncidentStatus.Resuelta => "Resuelta",
+        _ => "Cerrada"
+    };
+
+    private static string PriorityBadgeClass(IncidentPriority p) => p switch
+    {
+        IncidentPriority.Critica => "badge badge--priority badge--priority-critica",
+        IncidentPriority.Alta => "badge badge--priority badge--priority-alta",
+        IncidentPriority.Media => "badge badge--priority badge--priority-media",
+        _ => "badge badge--priority badge--priority-baja"
+    };
+
+    private static string EventDotClass(IncidentEventType type) => type switch
+    {
+        IncidentEventType.Creada => "created",
+        IncidentEventType.Transferida => "transfer",
+        IncidentEventType.TomaEnCurso => "progress",
+        IncidentEventType.Resuelta or IncidentEventType.Cerrada => "done",
+        _ => "default"
+    };
+
+    private static string EventLabel(IncidentEvent ev) => ev.Type switch
+    {
+        IncidentEventType.Creada => "Incidencia creada",
+        IncidentEventType.Asignada => $"Ingresó a la cola de {ev.Team}",
+        IncidentEventType.TomaEnCurso => $"{ev.Team} tomó la incidencia",
+        IncidentEventType.Transferida => $"Transferida de {ev.FromTeam} a {ev.ToTeam}",
+        IncidentEventType.Comentario => "Comentario",
+        IncidentEventType.Resuelta => "Incidencia resuelta",
+        IncidentEventType.Reabierta => "Incidencia reabierta",
+        IncidentEventType.Cerrada => "Incidencia cerrada",
+        _ => ev.Type.ToString()
+    };
+
+    private static string FormatSpan(TimeSpan span)
+    {
+        if (span.TotalHours >= 1) return $"{(int)span.TotalHours}h {span.Minutes}m";
+        return $"{(int)span.TotalMinutes}m";
+    }
+}
+
+/* =========================================================================
+   CorpWiki — Módulo de Incidencias
+   ========================================================================= */
+
+/* ---------- Stat cards ---------- */
+.incident-stat-grid { grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-6); }
+.stat-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: var(--space-5);
+}
+.stat-card__value { font-size: var(--fs-xl); font-weight: 800; color: var(--text-primary); }
+.stat-card__value--danger { color: var(--brand-500); }
+.stat-card__label { font-size: var(--fs-xs); color: var(--text-tertiary); }
+
+/* ---------- Filter bar ---------- */
+.filter-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+    padding: var(--space-5);
+    margin-bottom: var(--space-6);
+}
+
+/* ---------- Priority badges ---------- */
+.badge--priority { font-size: var(--fs-xs); font-weight: 700; padding: 3px 10px; border-radius: var(--radius-full); border: 1px solid transparent; }
+.badge--priority-critica { background: rgba(218,31,61,0.12); color: var(--brand-500); border-color: rgba(218,31,61,0.3); }
+.badge--priority-alta   { background: rgba(245,158,11,0.14); color: #b45309; border-color: rgba(245,158,11,0.35); }
+.badge--priority-media  { background: rgba(14,165,233,0.12); color: #0ea5e9; border-color: rgba(14,165,233,0.3); }
+.badge--priority-baja   { background: rgba(16,185,129,0.12); color: #10b981; border-color: rgba(16,185,129,0.3); }
+
+/* ---------- Kanban ---------- */
+.kanban {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(240px, 1fr));
+    gap: var(--space-4);
+    overflow-x: auto;
+    padding-bottom: var(--space-2);
+}
+.kanban__column {
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3);
+    min-width: 240px;
+}
+.kanban__column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--fs-sm);
     font-weight: 700;
-    font-family: var(--font-mono, monospace);
+    color: var(--text-primary);
+    padding: var(--space-2) var(--space-1) var(--space-3);
+}
+.kanban__count {
+    background: var(--bg-surface-3);
+    color: var(--text-tertiary);
+    font-size: var(--fs-xs);
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+}
+.kanban__cards { display: flex; flex-direction: column; gap: var(--space-3); }
+.kanban__empty { font-size: var(--fs-xs); color: var(--text-tertiary); text-align: center; padding: var(--space-4) 0; }
+
+.incident-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border: 1px solid var(--border-subtle);
+    transition: box-shadow var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
+.incident-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+
+.incident-card__top { display: flex; align-items: center; justify-content: space-between; }
+.incident-card__code { font-size: var(--fs-xs); font-weight: 700; color: var(--text-tertiary); font-family: var(--font-mono); }
+.incident-card__title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-primary); line-height: 1.4; }
+
+.incident-card__meta { display: flex; flex-direction: column; gap: 2px; }
+.incident-card__meta span { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-tertiary); }
+.incident-card__meta .icon { width: 12px; height: 12px; }
+
+.incident-card__footer {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+}
+.incident-card__elapsed, .incident-card__dead {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+}
+.incident-card__dead { color: #b45309; font-weight: 600; }
+.incident-card__dead--over { color: var(--brand-500); }
+.incident-card__elapsed .icon, .incident-card__dead .icon { width: 12px; height: 12px; }
+
+/* ---------- Detail header ---------- */
+.incident-detail__title-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+
+/* ---------- Meta blocks ---------- */
+.meta-block { display: flex; flex-direction: column; gap: 2px; }
+.meta-block__label { font-size: var(--fs-xs); color: var(--text-tertiary); }
+.meta-block__value { font-size: var(--fs-sm); font-weight: 700; color: var(--text-primary); }
+.meta-block__value--danger { color: var(--brand-500); }
+
+/* ---------- Team legs (tiempo muerto vs activo) ---------- */
+.team-legs { display: flex; flex-direction: column; gap: var(--space-5); }
+.team-leg { padding-bottom: var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.team-leg:last-child { border-bottom: none; padding-bottom: 0; }
+
+.team-leg__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+.team-leg__team { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 700; color: var(--text-primary); }
+.team-leg__team .icon { width: 14px; height: 14px; color: var(--brand-500); }
+.team-leg__status { font-size: var(--fs-xs); color: var(--text-tertiary); }
+
+.team-leg__bars { display: flex; flex-direction: column; gap: var(--space-2); }
+.team-leg__bar-row { display: grid; grid-template-columns: 90px 1fr 70px; align-items: center; gap: var(--space-3); }
+.team-leg__bar-label { font-size: var(--fs-xs); color: var(--text-tertiary); }
+.team-leg__bar { height: 8px; border-radius: var(--radius-full); background: var(--bg-surface-3); overflow: hidden; }
+.team-leg__bar-fill { height: 100%; border-radius: var(--radius-full); transition: width 0.3s ease; }
+.team-leg__bar-fill--dead { background: linear-gradient(90deg, var(--accent-amber), #f97316); }
+.team-leg__bar-fill--dead.team-leg__bar-fill--over { background: linear-gradient(90deg, var(--brand-500), #8B0E25); }
+.team-leg__bar-fill--active { background: linear-gradient(90deg, #10b981, #0ea5e9); }
+.team-leg__bar-value { font-size: var(--fs-xs); font-weight: 700; color: var(--text-secondary); text-align: right; }
+.team-leg__bar-value--over { color: var(--brand-500); }
+
+/* ---------- Timeline dot variants ---------- */
+.version-row__dot--created { background: #0ea5e9; }
+.version-row__dot--transfer { background: var(--accent-amber); }
+.version-row__dot--progress { background: var(--brand-500); }
+.version-row__dot--done { background: #10b981; }
+.version-row__dot--default { background: var(--border-strong); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1200px) {
+    .kanban { grid-template-columns: repeat(3, minmax(240px,1fr)); }
+}
+@media (max-width: 900px) {
+    .filter-bar, .incident-stat-grid { grid-template-columns: 1fr 1fr; }
+    .kanban { grid-template-columns: repeat(2, minmax(220px,1fr)); }
+}
+@media (max-width: 640px) {
+    .kanban { grid-template-columns: 1fr; }
+    .filter-bar, .incident-stat-grid { grid-template-columns: 1fr; }
+    .team-leg__bar-row { grid-template-columns: 70px 1fr 55px; }
 }
