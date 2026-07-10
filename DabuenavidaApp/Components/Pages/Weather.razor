@@ -1,84 +1,24 @@
-/* =========================================================================
-   BLOQUE 1: REEMPLAZAR / AMPLIAR EN LAS SECCIONES DE TEMA (design-tokens.css)
-   Busca tus bloques [data-theme] existentes e introduce estas variables abajo.
-   ========================================================================= */
-
-/* Dentro de tu bloque [data-theme="dark"] existente */
-[data-theme="dark"] {
-    /* ... tus otras variables del modo oscuro ... */
-
-    /* [NUEVO] Configuración para iconos con colores dinámicos */
-    --dynamic-badge-opacity: 0.18;   
-    --dynamic-badge-filter: saturate(1.5) brightness(1.3); 
-}
-
-/* Dentro de tu bloque [data-theme="light"] existente */
-[data-theme="light"] {
-    /* ... tus otras variables del modo claro ... */
-
-    /* [NUEVO] Configuración para iconos con colores dinámicos */
-    --dynamic-badge-opacity: 0.10;   
-    --dynamic-badge-filter: none;       
-}
-
-
-/* =========================================================================
-   BLOQUE 2: AGREGAR AL FINAL DE TU ARCHIVO GENERAL (design-tokens.css)
-   Pega todo este fragmento en la última línea de tu archivo de estilos.
-   ========================================================================= */
-
-/* --- CATEGORÍAS DINÁMICAS (Cambio anterior) --- */
-.category-card__icon-dynamic {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background-color: rgb(from var(--user-cat-color) r g b / var(--dynamic-badge-opacity));
-    color: var(--user-cat-color);
-    filter: var(--dynamic-badge-filter);
-    transition: background-color var(--transition-base), color var(--transition-base), filter var(--transition-base);
-}
-
-.category-card__icon-dynamic svg {
-    fill: currentColor;
-    stroke: currentColor;
-}
-
-/* --- ANIMACIÓN DE BARRIDO CIRCULAR (Cambio nuevo) --- */
-::view-transition-old(root),
-::view-transition-new(root) {
-    animation: none;
-    mix-blend-mode: normal;
-}
-
-[data-theme-changing] ::view-transition-new(root) {
-    animation: none; 
-}
-
-::view-transition-image-group(root) {
-    isolation: auto;
-}
-
-@keyframes clip-to-corner {
-    from {
-        clip-path: circle(0px at var(--transition-x) var(--transition-y));
+// Aplica el tema guardado lo antes posible para evitar "flash" de tema incorrecto.
+(function () {
+    const saved = localStorage.getItem("corpwiki-theme");
+    if (saved === "dark" || saved === "light") {
+        document.documentElement.setAttribute("data-theme", saved);
     }
-    to {
-        clip-path: circle(var(--transition-r) at var(--transition-x) var(--transition-y));
+})();
+
+window.corpWikiTheme = {
+    save: function (theme) {
+        localStorage.setItem("corpwiki-theme", theme);
+        document.documentElement.setAttribute("data-theme", theme);
+    },
+    get: function () {
+        return localStorage.getItem("corpwiki-theme") || "dark";
     }
-}
+};
 
-::view-transition-new(root) {
-    animation: 450ms cubic-bezier(0.4, 0, 0.2, 1) both clip-to-corner;
-}
-
-
-
-
-
-
-
-export function toggleTheme() {
-    const currentTheme = localStorage.getItem('theme') || getPreferredTheme();
+function toggleTheme() {
+    // Sincronizado con tu clave correcta de localStorage
+    const currentTheme = localStorage.getItem('corpwiki-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
     // 1. Si el navegador no soporta la animación, cambia el tema en seco
@@ -98,7 +38,7 @@ export function toggleTheme() {
         y = rect.top + rect.height / 2;
     }
 
-    // 3. Pasar coordenadas al CSS
+    // 3. Pasar coordenadas al CSS usando backticks (comillas invertidas ` `) obligatoriamente
     const root = document.documentElement;
     root.style.setProperty('--transition-x', `${x}px`);
     root.style.setProperty('--transition-y', `${y}px`);
@@ -116,17 +56,16 @@ export function toggleTheme() {
     });
 }
 
-// Función interna auxiliar que usa tus métodos existentes
+// Función interna auxiliar corregida con tu clave 'corpwiki-theme'
 function executeThemeChange(nextTheme) {
-    localStorage.setItem('theme', nextTheme);
-    setTheme(nextTheme);
-    setThemeOnHtml(nextTheme);
+    localStorage.setItem('corpwiki-theme', nextTheme);
+    
+    // Mapea a tus funciones globales si existen, o actualiza el atributo del HTML directamente
+    if (typeof setTheme === "function") setTheme(nextTheme);
+    if (typeof setThemeOnHtml === "function") setThemeOnHtml(nextTheme);
+    
+    document.documentElement.setAttribute("data-theme", nextTheme);
 }
 
-
-
-
-
-<div class="category-card__icon style-init category-card__icon-dynamic" style="--user-cat-color: @Category.Color; border-radius: var(--radius-sm); padding: var(--space-2);">
-    <Icon Name="@Category.Icon" />
-</div>
+// Exponer la función globalmente para que Blazor o tus componentes puedan invocarla
+window.toggleTheme = toggleTheme;
