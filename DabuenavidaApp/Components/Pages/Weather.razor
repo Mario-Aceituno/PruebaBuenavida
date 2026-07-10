@@ -1,68 +1,23 @@
-/* =========================================================================
-   SECCIÓN A: EFECTO DE BARRIDO CIRCULAR (Añadir al final de design-tokens.css)
-   Este CSS desactiva la animación por defecto del navegador y configura
-   el clip-path circular animado.
-   ========================================================================= */
-
-/* 1. Desactivar la animación de desvanecimiento por defecto que trae ViewTransition */
-::view-transition-old(root),
-::view-transition-new(root) {
-    animation: none;
-    mix-blend-mode: normal;
-}
-
-/* 2. Configurar el estado final del modo nuevo (el que entra) */
-[data-theme-changing] ::view-transition-new(root) {
-    /* Mantiene el renderizado correcto del tema entrante */
-    animation: none; 
-}
-
-/* 3. Definir la animación del círculo expandiéndose en la vista vieja (el tema que se va) */
-::view-transition-image-group(root) {
-    isolation: auto;
-}
-
-/* Animación personalizada usando las variables dinámicas de JS */
-@keyframes clip-to-corner {
-    from {
-        clip-path: circle(0px at var(--transition-x) var(--transition-y));
-    }
-    to {
-        clip-path: circle(var(--transition-r) at var(--transition-x) var(--transition-y));
-    }
-}
-
-/* Aplicar la animación al nuevo frame que va a cubrir la pantalla */
-::view-transition-new(root) {
-    animation: 450ms cubic-bezier(0.4, 0, 0.2, 1) both clip-to-corner;
-}
-
-
-
-
-
-
-
-
-
 // =========================================================================
-// SECCIÓN B: FUNCIÓN JAVASCRIPT DE CONTROL (Añadir en tu archivo .js principal)
-// Esta función calcula las coordenadas del clic y ejecuta la transición nativa.
+// SECCIÓN A: REEMPLAZAR LA FUNCIÓN toggleTheme EN TU ARCHIVO theme.js
+// Busca la función toggleTheme original y cámbiala por esta versión adaptada
 // =========================================================================
 
-window.toggleThemeWithTransition = (dotNetHelper, isDarkMode) => {
-    // 1. Si el navegador no soporta View Transitions de forma nativa, cambia el tema normalmente
+export function toggleTheme() {
+    const currentTheme = localStorage.getItem('theme') || getPreferredTheme();
+    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+    // 1. Si el navegador NO soporta View Transitions (como navegadores viejos o Firefox estable), cambia el tema sin animación
     if (!document.startViewTransition) {
-        dotNetHelper.invokeMethodAsync('ChangeThemeState');
+        executeThemeChange(nextTheme);
         return;
     }
 
-    // 2. Intentar capturar la posición del botón de tema (arriba a la derecha)
-    // Cambia '#theme-toggle-btn' por el ID o clase real de tu botón si es necesario
+    // 2. Intentar capturar la posición del botón que disparó el evento para usarlo como centro del círculo
     const button = document.querySelector('.topbar-theme-toggle') || document.querySelector('#theme-toggle-btn');
     
-    let x = window.innerWidth - 40; // Coordenada X por defecto (cerca de la esquina superior derecha)
-    let y = 40;                      // Coordenada Y por defecto (cerca del top)
+    let x = window.innerWidth - 40; // Coordenada X de respaldo (cerca de la esquina superior derecha)
+    let y = 40;                      // Coordenada Y de respaldo
 
     if (button) {
         const rect = button.getBoundingClientRect();
@@ -70,29 +25,39 @@ window.toggleThemeWithTransition = (dotNetHelper, isDarkMode) => {
         y = rect.top + rect.height / 2;
     }
 
-    // 3. Calcular el radio máximo necesario para que el círculo cubra la esquina opuesta (inferior izquierda)
+    // 3. Calcular el radio máximo exacto para que la onda circular cubra la esquina opuesta de la pantalla
     const endRadius = Math.hypot(
         Math.max(x, window.innerWidth - x),
         Math.max(y, window.innerHeight - y)
     );
 
-    // 4. Pasar las coordenadas y el radio al CSS como variables personalizadas del :root
+    // 4. Pasar las coordenadas espaciales al CSS usando variables personalizadas (:root)
     const root = document.documentElement;
     root.style.setProperty('--transition-x', `${x}px`);
     root.style.setProperty('--transition-y', `${y}px`);
     root.style.setProperty('--transition-r', `${endRadius}px`);
     
-    // Añadimos un atributo temporal para control en CSS
+    // Atributo auxiliar para el control de renderizado en CSS
     root.setAttribute('data-theme-changing', 'true');
 
-    // 5. Iniciar la transición visual
-    const transition = document.startViewTransition(async () => {
-        // Llamamos al método de C# (Blazor) que muta el [data-theme="dark/light"] en el HTML
-        await dotNetHelper.invokeMethodAsync('ChangeThemeState');
+    // 5. Ejecutar la View Transition nativa
+    const transition = document.startViewTransition(() => {
+        executeThemeChange(nextTheme);
     });
 
-    // Limpiar el atributo temporal cuando termine la animación
+    // Limpiar el atributo de control cuando la animación termine por completo
     transition.finished.then(() => {
         root.removeAttribute('data-theme-changing');
     });
-};
+}
+
+// Función auxiliar interna para centralizar la mutación del estado (basada en tu propio código)
+function executeThemeChange(nextTheme) {
+    localStorage.setItem('theme', nextTheme);
+    setTheme(nextTheme);
+    setThemeOnHtml(nextTheme);
+    
+    // Disparar evento personalizado por si tienes otros componentes Blazor escuchando
+    const event = new CustomEvent('themeChanged', { detail: nextTheme });
+    window.dispatchEvent(event);
+}
