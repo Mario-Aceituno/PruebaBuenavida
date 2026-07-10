@@ -87,7 +87,7 @@
                     </div>
                 }
 
-                <div class="field">
+                <div class="field field--1">
                     <label for="username">
                         <span class="icon icon-user" aria-hidden="true">
                             <span class="icon-user__head"></span>
@@ -95,22 +95,16 @@
                         </span>
                         <span>Usuario</span>
                     </label>
-                    <div class="field__frame">
-                        <span class="corner corner--nw"></span>
-                        <span class="corner corner--ne"></span>
-                        <span class="corner corner--sw"></span>
-                        <span class="corner corner--se"></span>
-                        <InputText id="username"
-                                   @bind-Value="_model.Username"
-                                   placeholder="Tu usuario corporativo"
-                                   autocomplete="username"
-                                   disabled="@IsLoading"
-                                   class="@FieldClass()" />
-                    </div>
+                    <InputText id="username"
+                               @bind-Value="_model.Username"
+                               placeholder="Tu usuario corporativo"
+                               autocomplete="username"
+                               disabled="@IsLoading"
+                               class="@FieldClass()" />
                     <ValidationMessage For="@(() => _model.Username)" class="field__error" />
                 </div>
 
-                <div class="field">
+                <div class="field field--2">
                     <label for="password">
                         <span class="icon icon-lock" aria-hidden="true">
                             <span class="icon-lock__shackle"></span>
@@ -120,36 +114,30 @@
                         </span>
                         <span>Contraseña</span>
                     </label>
-                    <div class="field__frame">
-                        <span class="corner corner--nw"></span>
-                        <span class="corner corner--ne"></span>
-                        <span class="corner corner--sw"></span>
-                        <span class="corner corner--se"></span>
-                        <div class="field__control">
-                            <InputText id="password"
-                                       @bind-Value="_model.Password"
-                                       type="@(_showPassword ? "text" : "password")"
-                                       placeholder="Tu contraseña"
-                                       autocomplete="current-password"
-                                       disabled="@IsLoading"
-                                       class="@FieldClass()" />
-                            <button type="button"
-                                    class="field__toggle"
-                                    @onclick="TogglePasswordVisibility"
-                                    disabled="@IsLoading"
-                                    aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
-                                <span class="icon icon-eye @(_showPassword ? "icon-eye--off" : "")" aria-hidden="true">
-                                    <span class="icon-eye__outer"></span>
-                                    <span class="icon-eye__pupil"></span>
-                                    <span class="icon-eye__slash"></span>
-                                </span>
-                            </button>
-                        </div>
+                    <div class="field__control">
+                        <InputText id="password"
+                                   @bind-Value="_model.Password"
+                                   type="@(_showPassword ? "text" : "password")"
+                                   placeholder="Tu contraseña"
+                                   autocomplete="current-password"
+                                   disabled="@IsLoading"
+                                   class="@FieldClass()" />
+                        <button type="button"
+                                class="field__toggle"
+                                @onclick="TogglePasswordVisibility"
+                                disabled="@IsLoading"
+                                aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
+                            <span class="icon icon-eye @(_showPassword ? "icon-eye--off" : "")" aria-hidden="true">
+                                <span class="icon-eye__outer"></span>
+                                <span class="icon-eye__pupil"></span>
+                                <span class="icon-eye__slash"></span>
+                            </span>
+                        </button>
                     </div>
                     <ValidationMessage For="@(() => _model.Password)" class="field__error" />
                 </div>
 
-                <div class="field field--inline">
+                <div class="field field--inline field--3">
                     <label class="checkbox">
                         <input type="checkbox" @bind="_model.RememberMe" disabled="@IsLoading" />
                         <span class="checkbox__box" aria-hidden="true"></span>
@@ -157,7 +145,7 @@
                     </label>
                 </div>
 
-                <button type="submit" class="btn-primary" disabled="@IsLoading">
+                <button type="submit" class="btn-primary field--4" disabled="@IsLoading">
                     @if (IsLoading)
                     {
                         <span class="spinner" aria-hidden="true"></span>
@@ -185,6 +173,7 @@
 
 
 
+
 *, *::before, *::after {
     box-sizing: border-box;
 }
@@ -203,7 +192,7 @@
     --gray-900: #23242A;
 
     --radius-lg: 22px;
-    --radius-sm: 5px;
+    --radius-sm: 6px;
 
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
@@ -331,7 +320,6 @@ html, body {
     50% { opacity: 0.9; }
 }
 
-/* Marca fantasma: el glifo del logo, enorme y translúcido, como textura de fondo */
 .visual-panel__ghost-mark {
     position: absolute;
     right: -40px;
@@ -361,6 +349,12 @@ html, body {
 .visual-panel__mark {
     position: relative;
     z-index: 2;
+    animation: mark-in 600ms 150ms ease both;
+}
+
+@keyframes mark-in {
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 .brand__mark {
@@ -389,7 +383,6 @@ html, body {
     clip-path: polygon(50% 6%, 100% 20%, 100% 94%, 50% 100%, 0 94%, 0 20%);
 }
 
-/* Sello de revisión, como el historial de versiones de una página wiki */
 .visual-panel__rev {
     position: absolute;
     left: 24px;
@@ -419,6 +412,7 @@ html, body {
     align-items: center;
     gap: 6px;
     margin-bottom: 26px;
+    animation: field-in 450ms ease both;
 }
 
 .brand__title {
@@ -443,15 +437,27 @@ html, body {
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: 20px;
     text-align: left;
+}
+
+/* Animación de entrada escalonada: cada campo aparece un poco después que el anterior */
+@keyframes field-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .field {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
+    animation: field-in 420ms ease both;
 }
+
+.field--1 { animation-delay: 80ms; }
+.field--2 { animation-delay: 150ms; }
+.field--3 { animation-delay: 220ms; }
+.btn-primary.field--4 { animation: field-in 420ms 290ms ease both; }
 
 .field label {
     display: flex;
@@ -465,31 +471,6 @@ html, body {
 .field > label .icon {
     color: var(--gray-500);
     opacity: 0.85;
-}
-
-/* ---------- "Visor" frame: reemplaza el marco redondeado por marcas en L ---------- */
-
-.field__frame {
-    position: relative;
-    margin: 5px 6px;
-}
-
-.corner {
-    position: absolute;
-    width: 9px;
-    height: 9px;
-    pointer-events: none;
-    border-color: var(--gray-300);
-    transition: border-color var(--transition-fast);
-}
-
-.corner--nw { top: -5px; left: -6px; border-top: 1.5px solid; border-left: 1.5px solid; }
-.corner--ne { top: -5px; right: -6px; border-top: 1.5px solid; border-right: 1.5px solid; }
-.corner--sw { bottom: -5px; left: -6px; border-bottom: 1.5px solid; border-left: 1.5px solid; }
-.corner--se { bottom: -5px; right: -6px; border-bottom: 1.5px solid; border-right: 1.5px solid; }
-
-.field__frame:focus-within .corner {
-    border-color: var(--davi-red);
 }
 
 .field__control {
@@ -537,9 +518,10 @@ html, body {
     color: var(--davi-red-dark);
 }
 
-/* ---------- Inputs: esquinas casi rectas ---------- */
+/* ---------- Inputs: limpios, con acento lateral al enfocar ---------- */
 
 .input {
+    position: relative;
     width: 100%;
     height: 52px;
     border-radius: var(--radius-sm);
@@ -562,7 +544,7 @@ html, body {
 .input:focus {
     border-color: var(--davi-red);
     background: #FFFFFF;
-    box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.08);
+    box-shadow: -3px 0 0 0 var(--davi-red), 0 0 0 3px rgba(200, 16, 46, 0.08);
 }
 
 .input:disabled {
@@ -930,7 +912,8 @@ html, body {
 /* ---------- Reduced motion ---------- */
 
 @media (prefers-reduced-motion: reduce) {
-    .login-card, .alert, .btn-primary, .spinner, .node, .graph-lines line {
+    .login-card, .alert, .btn-primary, .spinner, .node, .graph-lines line,
+    .field, .brand, .visual-panel__mark {
         animation: none !important;
         transition: none !important;
     }
