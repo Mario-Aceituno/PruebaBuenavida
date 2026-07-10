@@ -47,11 +47,26 @@
                     <circle class="node node--j" cx="130" cy="340" r="4" />
                     <circle class="node node--k" cx="50" cy="330" r="3" />
                 </g>
+                <g class="graph-citations" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+                    <line x1="230" y1="90" x2="252" y2="76" stroke="rgba(255,255,255,0.35)" stroke-width="1" />
+                    <text x="255" y="79" font-size="10" fill="rgba(255,255,255,0.75)">[1]</text>
+
+                    <line x1="190" y1="150" x2="212" y2="136" stroke="rgba(255,255,255,0.35)" stroke-width="1" />
+                    <text x="215" y="139" font-size="10" fill="rgba(255,255,255,0.75)">[2]</text>
+
+                    <line x1="160" y1="260" x2="184" y2="248" stroke="rgba(255,255,255,0.35)" stroke-width="1" />
+                    <text x="187" y="251" font-size="10" fill="rgba(255,255,255,0.75)">[3]</text>
+
+                    <line x1="130" y1="340" x2="152" y2="352" stroke="rgba(255,255,255,0.35)" stroke-width="1" />
+                    <text x="155" y="356" font-size="10" fill="rgba(255,255,255,0.75)">[4]</text>
+                </g>
             </svg>
 
             <div class="visual-panel__mark">
                 <div class="brand__mark" aria-hidden="true"></div>
             </div>
+
+            <span class="visual-panel__rev">rev. 2026.07</span>
         </section>
 
         <section class="form-panel">
@@ -80,12 +95,18 @@
                         </span>
                         <span>Usuario</span>
                     </label>
-                    <InputText id="username"
-                               @bind-Value="_model.Username"
-                               placeholder="Tu usuario corporativo"
-                               autocomplete="username"
-                               disabled="@IsLoading"
-                               class="@FieldClass()" />
+                    <div class="field__frame">
+                        <span class="corner corner--nw"></span>
+                        <span class="corner corner--ne"></span>
+                        <span class="corner corner--sw"></span>
+                        <span class="corner corner--se"></span>
+                        <InputText id="username"
+                                   @bind-Value="_model.Username"
+                                   placeholder="Tu usuario corporativo"
+                                   autocomplete="username"
+                                   disabled="@IsLoading"
+                                   class="@FieldClass()" />
+                    </div>
                     <ValidationMessage For="@(() => _model.Username)" class="field__error" />
                 </div>
 
@@ -99,25 +120,31 @@
                         </span>
                         <span>Contraseña</span>
                     </label>
-                    <div class="field__control">
-                        <InputText id="password"
-                                   @bind-Value="_model.Password"
-                                   type="@(_showPassword ? "text" : "password")"
-                                   placeholder="Tu contraseña"
-                                   autocomplete="current-password"
-                                   disabled="@IsLoading"
-                                   class="@FieldClass()" />
-                        <button type="button"
-                                class="field__toggle"
-                                @onclick="TogglePasswordVisibility"
-                                disabled="@IsLoading"
-                                aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
-                            <span class="icon icon-eye @(_showPassword ? "icon-eye--off" : "")" aria-hidden="true">
-                                <span class="icon-eye__outer"></span>
-                                <span class="icon-eye__pupil"></span>
-                                <span class="icon-eye__slash"></span>
-                            </span>
-                        </button>
+                    <div class="field__frame">
+                        <span class="corner corner--nw"></span>
+                        <span class="corner corner--ne"></span>
+                        <span class="corner corner--sw"></span>
+                        <span class="corner corner--se"></span>
+                        <div class="field__control">
+                            <InputText id="password"
+                                       @bind-Value="_model.Password"
+                                       type="@(_showPassword ? "text" : "password")"
+                                       placeholder="Tu contraseña"
+                                       autocomplete="current-password"
+                                       disabled="@IsLoading"
+                                       class="@FieldClass()" />
+                            <button type="button"
+                                    class="field__toggle"
+                                    @onclick="TogglePasswordVisibility"
+                                    disabled="@IsLoading"
+                                    aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
+                                <span class="icon icon-eye @(_showPassword ? "icon-eye--off" : "")" aria-hidden="true">
+                                    <span class="icon-eye__outer"></span>
+                                    <span class="icon-eye__pupil"></span>
+                                    <span class="icon-eye__slash"></span>
+                                </span>
+                            </button>
+                        </div>
                     </div>
                     <ValidationMessage For="@(() => _model.Password)" class="field__error" />
                 </div>
@@ -157,6 +184,7 @@
 
 
 
+
 *, *::before, *::after {
     box-sizing: border-box;
 }
@@ -174,8 +202,10 @@
     --gray-700: #4B4C55;
     --gray-900: #23242A;
 
-    --radius-lg: 28px;
-    --radius-sm: 14px;
+    --radius-lg: 22px;
+    --radius-sm: 5px;
+
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
     --shadow-card: 0 40px 90px -35px rgba(24, 24, 40, 0.28), 0 2px 8px rgba(24, 24, 40, 0.05);
     --shadow-btn: 0 12px 24px -10px rgba(200, 16, 46, 0.45);
@@ -275,6 +305,10 @@ html, body {
     animation: node-pulse 3.6s ease-in-out infinite;
 }
 
+.graph-citations text {
+    letter-spacing: 0.02em;
+}
+
 .node--a { animation-delay: 0s; }
 .node--b { animation-delay: 0.3s; }
 .node--c { animation-delay: 0.6s; }
@@ -332,7 +366,7 @@ html, body {
 .brand__mark {
     width: 56px;
     height: 56px;
-    border-radius: 16px;
+    border-radius: 14px;
     background: rgba(255, 255, 255, 0.14);
     border: 1px solid rgba(255, 255, 255, 0.35);
     backdrop-filter: blur(2px);
@@ -353,6 +387,18 @@ html, body {
         rgba(255, 255, 255, 0.6) 50%,
         rgba(255, 255, 255, 0.6) 100%);
     clip-path: polygon(50% 6%, 100% 20%, 100% 94%, 50% 100%, 0 94%, 0 20%);
+}
+
+/* Sello de revisión, como el historial de versiones de una página wiki */
+.visual-panel__rev {
+    position: absolute;
+    left: 24px;
+    bottom: 20px;
+    z-index: 2;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    color: rgba(255, 255, 255, 0.55);
 }
 
 /* ---------- Form panel ---------- */
@@ -397,14 +443,14 @@ html, body {
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 22px;
     text-align: left;
 }
 
 .field {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .field label {
@@ -419,6 +465,31 @@ html, body {
 .field > label .icon {
     color: var(--gray-500);
     opacity: 0.85;
+}
+
+/* ---------- "Visor" frame: reemplaza el marco redondeado por marcas en L ---------- */
+
+.field__frame {
+    position: relative;
+    margin: 5px 6px;
+}
+
+.corner {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    pointer-events: none;
+    border-color: var(--gray-300);
+    transition: border-color var(--transition-fast);
+}
+
+.corner--nw { top: -5px; left: -6px; border-top: 1.5px solid; border-left: 1.5px solid; }
+.corner--ne { top: -5px; right: -6px; border-top: 1.5px solid; border-right: 1.5px solid; }
+.corner--sw { bottom: -5px; left: -6px; border-bottom: 1.5px solid; border-left: 1.5px solid; }
+.corner--se { bottom: -5px; right: -6px; border-bottom: 1.5px solid; border-right: 1.5px solid; }
+
+.field__frame:focus-within .corner {
+    border-color: var(--davi-red);
 }
 
 .field__control {
@@ -466,7 +537,7 @@ html, body {
     color: var(--davi-red-dark);
 }
 
-/* ---------- Inputs ---------- */
+/* ---------- Inputs: esquinas casi rectas ---------- */
 
 .input {
     width: 100%;
@@ -491,7 +562,7 @@ html, body {
 .input:focus {
     border-color: var(--davi-red);
     background: #FFFFFF;
-    box-shadow: 0 0 0 4px rgba(200, 16, 46, 0.10);
+    box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.08);
 }
 
 .input:disabled {
@@ -534,7 +605,7 @@ html, body {
 .checkbox__box {
     width: 18px;
     height: 18px;
-    border-radius: 5px;
+    border-radius: 4px;
     border: 1.5px solid var(--gray-300);
     background: #fff;
     display: inline-flex;
@@ -838,12 +909,17 @@ html, body {
 
     .visual-panel {
         flex: none;
-        min-height: 140px;
+        min-height: 150px;
     }
 
     .visual-panel__ghost-mark {
         width: 200px;
         height: 200px;
+    }
+
+    .visual-panel__rev {
+        left: 20px;
+        bottom: 14px;
     }
 
     .form-panel {
