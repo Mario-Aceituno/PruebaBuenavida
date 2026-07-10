@@ -69,3 +69,78 @@ function executeThemeChange(nextTheme) {
 
 // Exponer la función globalmente para que Blazor o tus componentes puedan invocarla
 window.toggleTheme = toggleTheme;
+
+
+
+// Aplica el tema guardado lo antes posible para evitar "flash" de tema incorrecto.
+(function () {
+    const saved = localStorage.getItem("corpwiki-theme");
+    if (saved === "dark" || saved === "light") {
+        document.documentElement.setAttribute("data-theme", saved);
+    }
+})();
+
+window.corpWikiTheme = {
+    save: function (theme) {
+        localStorage.setItem("corpwiki-theme", theme);
+        document.documentElement.setAttribute("data-theme", theme);
+    },
+    get: function () {
+        return localStorage.getItem("corpwiki-theme") || "dark";
+    }
+};
+
+function toggleTheme() {
+    // Sincronizado con tu clave correcta de localStorage
+    const currentTheme = localStorage.getItem('corpwiki-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+    // 1. Si el navegador no soporta la animación, cambia el tema en seco
+    if (!document.startViewTransition) {
+        executeThemeChange(nextTheme);
+        return;
+    }
+
+    // 2. Intentar buscar el botón de la barra superior para centrar el círculo
+    const button = document.querySelector('.topbar-theme-toggle') || document.querySelector('#theme-toggle-btn');
+    let x = window.innerWidth - 40; 
+    let y = 40;                      
+
+    if (button) {
+        const rect = button.getBoundingClientRect();
+        x = rect.left + rect.width / 2;
+        y = rect.top + rect.height / 2;
+    }
+
+    // 3. Pasar coordenadas al CSS usando backticks (comillas invertidas ` `) obligatoriamente
+    const root = document.documentElement;
+    root.style.setProperty('--transition-x', `${x}px`);
+    root.style.setProperty('--transition-y', `${y}px`);
+    root.style.setProperty('--transition-r', `${Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))}px`);
+    
+    root.setAttribute('data-theme-changing', 'true');
+
+    // 4. Lanzar barrido circular animado
+    const transition = document.startViewTransition(() => {
+        executeThemeChange(nextTheme);
+    });
+
+    transition.finished.then(() => {
+        root.removeAttribute('data-theme-changing');
+    });
+}
+
+// Función interna auxiliar corregida con tu clave 'corpwiki-theme'
+function executeThemeChange(nextTheme) {
+    localStorage.setItem('corpwiki-theme', nextTheme);
+    
+    // Mapea a tus funciones globales si existen, o actualiza el atributo del HTML directamente
+    if (typeof setTheme === "function") setTheme(nextTheme);
+    if (typeof setThemeOnHtml === "function") setThemeOnHtml(nextTheme);
+    
+    document.documentElement.setAttribute("data-theme", nextTheme);
+}
+
+// Exponer la función globalmente para que Blazor o tus componentes puedan invocarla
+window.toggleTheme = toggleTheme;
+
