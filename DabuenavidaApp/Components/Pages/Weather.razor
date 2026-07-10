@@ -1,23 +1,96 @@
-// =========================================================================
-// SECCIÓN A: REEMPLAZAR LA FUNCIÓN toggleTheme EN TU ARCHIVO theme.js
-// Busca la función toggleTheme original y cámbiala por esta versión adaptada
-// =========================================================================
+/* =========================================================================
+   BLOQUE 1: REEMPLAZAR / AMPLIAR EN LAS SECCIONES DE TEMA (design-tokens.css)
+   Busca tus bloques [data-theme] existentes e introduce estas variables abajo.
+   ========================================================================= */
+
+/* Dentro de tu bloque [data-theme="dark"] existente */
+[data-theme="dark"] {
+    /* ... tus otras variables del modo oscuro ... */
+
+    /* [NUEVO] Configuración para iconos con colores dinámicos */
+    --dynamic-badge-opacity: 0.18;   
+    --dynamic-badge-filter: saturate(1.5) brightness(1.3); 
+}
+
+/* Dentro de tu bloque [data-theme="light"] existente */
+[data-theme="light"] {
+    /* ... tus otras variables del modo claro ... */
+
+    /* [NUEVO] Configuración para iconos con colores dinámicos */
+    --dynamic-badge-opacity: 0.10;   
+    --dynamic-badge-filter: none;       
+}
+
+
+/* =========================================================================
+   BLOQUE 2: AGREGAR AL FINAL DE TU ARCHIVO GENERAL (design-tokens.css)
+   Pega todo este fragmento en la última línea de tu archivo de estilos.
+   ========================================================================= */
+
+/* --- CATEGORÍAS DINÁMICAS (Cambio anterior) --- */
+.category-card__icon-dynamic {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgb(from var(--user-cat-color) r g b / var(--dynamic-badge-opacity));
+    color: var(--user-cat-color);
+    filter: var(--dynamic-badge-filter);
+    transition: background-color var(--transition-base), color var(--transition-base), filter var(--transition-base);
+}
+
+.category-card__icon-dynamic svg {
+    fill: currentColor;
+    stroke: currentColor;
+}
+
+/* --- ANIMACIÓN DE BARRIDO CIRCULAR (Cambio nuevo) --- */
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+
+[data-theme-changing] ::view-transition-new(root) {
+    animation: none; 
+}
+
+::view-transition-image-group(root) {
+    isolation: auto;
+}
+
+@keyframes clip-to-corner {
+    from {
+        clip-path: circle(0px at var(--transition-x) var(--transition-y));
+    }
+    to {
+        clip-path: circle(var(--transition-r) at var(--transition-x) var(--transition-y));
+    }
+}
+
+::view-transition-new(root) {
+    animation: 450ms cubic-bezier(0.4, 0, 0.2, 1) both clip-to-corner;
+}
+
+
+
+
+
+
 
 export function toggleTheme() {
     const currentTheme = localStorage.getItem('theme') || getPreferredTheme();
     const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
-    // 1. Si el navegador NO soporta View Transitions (como navegadores viejos o Firefox estable), cambia el tema sin animación
+    // 1. Si el navegador no soporta la animación, cambia el tema en seco
     if (!document.startViewTransition) {
         executeThemeChange(nextTheme);
         return;
     }
 
-    // 2. Intentar capturar la posición del botón que disparó el evento para usarlo como centro del círculo
+    // 2. Intentar buscar el botón de la barra superior para centrar el círculo
     const button = document.querySelector('.topbar-theme-toggle') || document.querySelector('#theme-toggle-btn');
-    
-    let x = window.innerWidth - 40; // Coordenada X de respaldo (cerca de la esquina superior derecha)
-    let y = 40;                      // Coordenada Y de respaldo
+    let x = window.innerWidth - 40; 
+    let y = 40;                      
 
     if (button) {
         const rect = button.getBoundingClientRect();
@@ -25,39 +98,27 @@ export function toggleTheme() {
         y = rect.top + rect.height / 2;
     }
 
-    // 3. Calcular el radio máximo exacto para que la onda circular cubra la esquina opuesta de la pantalla
-    const endRadius = Math.hypot(
-        Math.max(x, window.innerWidth - x),
-        Math.max(y, window.innerHeight - y)
-    );
-
-    // 4. Pasar las coordenadas espaciales al CSS usando variables personalizadas (:root)
+    // 3. Pasar coordenadas al CSS
     const root = document.documentElement;
     root.style.setProperty('--transition-x', `${x}px`);
     root.style.setProperty('--transition-y', `${y}px`);
-    root.style.setProperty('--transition-r', `${endRadius}px`);
+    root.style.setProperty('--transition-r', `${Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))}px`);
     
-    // Atributo auxiliar para el control de renderizado en CSS
     root.setAttribute('data-theme-changing', 'true');
 
-    // 5. Ejecutar la View Transition nativa
+    // 4. Lanzar barrido circular animado
     const transition = document.startViewTransition(() => {
         executeThemeChange(nextTheme);
     });
 
-    // Limpiar el atributo de control cuando la animación termine por completo
     transition.finished.then(() => {
         root.removeAttribute('data-theme-changing');
     });
 }
 
-// Función auxiliar interna para centralizar la mutación del estado (basada en tu propio código)
+// Función interna auxiliar que usa tus métodos existentes
 function executeThemeChange(nextTheme) {
     localStorage.setItem('theme', nextTheme);
     setTheme(nextTheme);
     setThemeOnHtml(nextTheme);
-    
-    // Disparar evento personalizado por si tienes otros componentes Blazor escuchando
-    const event = new CustomEvent('themeChanged', { detail: nextTheme });
-    window.dispatchEvent(event);
 }
