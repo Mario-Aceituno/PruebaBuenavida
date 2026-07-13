@@ -499,12 +499,12 @@
     private bool _showPreview = false;
     private string _previewHtml = string.Empty;
 
-    // ---- Hardcoded demo data ----
-    private List<HistoryEntry> _history = new();
-    private List<Reviewer> _reviewers = new();
-    private List<ApprovalStep> _approvalSteps = new();
-    private List<RelatedDoc> _relatedDocs = new();
-    private List<RelatedArticle> _relatedArticles = new();
+    // ---- Datos de demo (se sobreescriben en OnInitialized, por eso no se inicializan acá) ----
+    private List<HistoryEntry> _history;
+    private List<Reviewer> _reviewers;
+    private List<ApprovalStep> _approvalSteps;
+    private List<RelatedDoc> _relatedDocs;
+    private List<RelatedArticle> _relatedArticles;
 
     protected override void OnInitialized()
     {
@@ -609,11 +609,8 @@
     private void InsertCodeBlock() => InsertSnippet("```csharp\nvar x = 1;\n```");
     private void InsertQuote() => InsertSnippet("> Cita textual");
     private void InsertLink() => InsertSnippet("[texto del enlace](https://)");
-    private void InsertImage() => InsertSnippet("
-
-![descripcion](url-de-imagen)
-
-");
+    // FIX: el string original tenía saltos de línea reales dentro de comillas normales -> error de compilación.
+    private void InsertImage() => InsertSnippet("\n\n![descripcion](url-de-imagen)\n\n");
     private void InsertDivider() => InsertSnippet("---");
     private void InsertDetails() => InsertSnippet("<details><summary>Ver más</summary>\nContenido oculto\n</details>");
     private void InsertNote() => InsertSnippet(":::note\nEsto es una nota.\n:::");
@@ -719,13 +716,18 @@
         var categoryId = Guid.Parse(_model.CategoryId);
         var authorId = Guid.Parse(_model.AuthorId);
 
+        // FIX: antes se pasaba string.Empty en lugar del contenido real del artículo,
+        // por lo que el cuerpo escrito por el usuario nunca se guardaba.
+        // TODO: revisar la firma de IWikiDataService.CreateArticle — actualmente no se
+        // envían Tags, SistemasRelacionados, NivelAcceso, Referencias ni ObservacionesInternas.
+        // Si el servicio soporta esos parámetros, agregarlos acá.
         var created = Data.CreateArticle(
             _model.Title,
             _model.Summary,
             categoryId,
             authorId,
             new List<Guid>(),
-            string.Empty,
+            _model.Content,
             false,
             status);
 
