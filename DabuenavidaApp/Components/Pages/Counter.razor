@@ -1,3 +1,456 @@
+@page "/articulos/nuevo"
+@inject IWikiDataService Data
+@inject NavigationManager Nav
+@using CorpWiki.Services
+
+<PageTitle>CorpWiki — Nuevo Artículo</PageTitle>
+
+<Breadcrumb Items="_breadcrumb" />
+
+<div class="page-header">
+    <div>
+        <h1>Nuevo Artículo</h1>
+        <p>Documentación técnica para el área de Tecnología. Completá los metadatos, escribí el contenido y enviá a revisión.</p>
+    </div>
+    <span class="badge badge--amber">@_model.Estado</span>
+</div>
+
+<div class="article-layout">
+    <div class="article-main article-main--form">
+
+        @* ============================= METADATOS ============================= *@
+        <div class="card article-form">
+            <h3 class="form-section-title"><Icon Name="file-text" /> Información general</h3>
+
+            <div class="form-group">
+                <label class="form-label" for="art-title">Título <span class="form-required">*</span></label>
+                <input id="art-title" class="input" type="text" @bind="_model.Title" placeholder="Ej: Cómo solicitar acceso a la VPN corporativa" />
+                @if (!string.IsNullOrEmpty(_error) && string.IsNullOrWhiteSpace(_model.Title))
+                {
+                    <p class="form-hint form-hint--error">El título es obligatorio.</p>
+                }
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="art-summary">Resumen <span class="form-required">*</span></label>
+                <textarea id="art-summary" class="input" rows="3" @bind="_model.Summary"
+                          placeholder="Resumen breve que aparece en las tarjetas y en resultados de búsqueda"></textarea>
+            </div>
+
+            <div class="field-grid field-grid--3">
+                <div class="form-group">
+                    <label class="form-label">Categoría <span class="form-required">*</span></label>
+                    <select class="input" @bind="_model.CategoryId">
+                        <option value="">Seleccioná</option>
+                        @foreach (var category in _categories)
+                        {
+                            <option value="@category.Id">@category.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Subcategoría</label>
+                    <select class="input" @bind="_model.Subcategory">
+                        <option value="">Seleccioná</option>
+                        @foreach (var sub in _subcategories)
+                        {
+                            <option value="@sub">@sub</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Área responsable</label>
+                    <select class="input" @bind="_model.AreaResponsable">
+                        <option value="">Seleccioná</option>
+                        @foreach (var area in _areas)
+                        {
+                            <option value="@area">@area</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="field-grid field-grid--3">
+                <div class="form-group">
+                    <label class="form-label">Autor <span class="form-required">*</span></label>
+                    <select class="input" @bind="_model.AuthorId">
+                        <option value="">Seleccioná</option>
+                        @foreach (var author in _authors)
+                        {
+                            <option value="@author.Id">@author.FullName</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nivel de acceso</label>
+                    <select class="input" @bind="_model.NivelAcceso">
+                        @foreach (var nivel in _nivelesAcceso)
+                        {
+                            <option value="@nivel">@nivel</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Prioridad</label>
+                    <select class="input" @bind="_model.Prioridad">
+                        @foreach (var p in _prioridades)
+                        {
+                            <option value="@p">@p</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="field-grid field-grid--3">
+                <div class="form-group">
+                    <label class="form-label">Fecha de creación</label>
+                    <input type="date" class="input" @bind="_model.FechaCreacion" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fecha de actualización</label>
+                    <input type="date" class="input" @bind="_model.FechaActualizacion" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Versión del documento</label>
+                    <input type="text" class="input" @bind="_model.Version" placeholder="v1.0" />
+                </div>
+            </div>
+
+            <div class="field-grid field-grid--2">
+                <div class="form-group">
+                    <label class="form-label">Estado</label>
+                    <select class="input" @bind="_model.Estado">
+                        <option value="Borrador">Borrador</option>
+                        <option value="En revisión">En revisión</option>
+                        <option value="Publicado">Publicado</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tiempo estimado de lectura</label>
+                    <input type="text" class="input readonly-field" value="@(_readingTime + " min")" readonly />
+                    <p class="form-hint">Calculado automáticamente en base al contenido del cuerpo del artículo.</p>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Sistemas relacionados</label>
+                <div class="tag-cloud">
+                    @foreach (var sistema in _sistemasDisponibles)
+                    {
+                        var active = _model.SistemasRelacionados.Contains(sistema);
+                        <button type="button" class="chip @(active ? "chip--active" : "")" @onclick="() => ToggleSistema(sistema)">
+                            @sistema
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Palabras clave (tags)</label>
+                <div class="tag-input-row">
+                    <input class="input" @bind="_newTag" @bind:event="oninput" @onkeydown="OnTagKeyDown" placeholder="Escribí una palabra clave y presioná Enter" />
+                    <button type="button" class="btn btn--secondary btn--sm" @onclick="AddTag"><Icon Name="plus" /> Agregar</button>
+                </div>
+                @if (_model.Tags.Count > 0)
+                {
+                    <div class="tag-cloud">
+                        @foreach (var tag in _model.Tags)
+                        {
+                            <span class="chip chip--active">
+                                @tag
+                                <button type="button" class="chip__remove" @onclick="() => _model.Tags.Remove(tag)">×</button>
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* ============================= ADJUNTOS ============================= *@
+        <div class="card article-form">
+            <h3 class="form-section-title"><Icon Name="paperclip" /> Adjuntos y referencias</h3>
+
+            <div class="field-grid field-grid--2">
+                <div class="form-group">
+                    <label class="form-label">Archivos adjuntos</label>
+                    <div class="attachment-list">
+                        @foreach (var file in _model.ArchivosAdjuntos)
+                        {
+                            <div class="file-row">
+                                <span class="file-row__icon"><Icon Name="file" /></span>
+                                <div class="file-row__info">
+                                    <span class="file-row__name">@file</span>
+                                    <span class="file-row__meta">Adjunto</span>
+                                </div>
+                                <button type="button" class="icon-btn icon-btn--danger" @onclick="() => _model.ArchivosAdjuntos.Remove(file)">
+                                    <Icon Name="x" />
+                                </button>
+                            </div>
+                        }
+                    </div>
+                    <button type="button" class="btn btn--secondary btn--sm" @onclick="AddFakeAttachment">
+                        <Icon Name="upload" /> Subir archivo
+                    </button>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Imágenes</label>
+                    <div class="attachment-list">
+                        @foreach (var img in _model.Imagenes)
+                        {
+                            <div class="file-row">
+                                <span class="file-row__icon"><Icon Name="image" /></span>
+                                <div class="file-row__info">
+                                    <span class="file-row__name">@img</span>
+                                    <span class="file-row__meta">Imagen</span>
+                                </div>
+                                <button type="button" class="icon-btn icon-btn--danger" @onclick="() => _model.Imagenes.Remove(img)">
+                                    <Icon Name="x" />
+                                </button>
+                            </div>
+                        }
+                    </div>
+                    <button type="button" class="btn btn--secondary btn--sm" @onclick="AddFakeImage">
+                        <Icon Name="upload" /> Subir imagen
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Enlaces relacionados</label>
+                <div class="link-row">
+                    <input class="input" @bind="_newLinkLabel" placeholder="Texto del enlace" />
+                    <input class="input" @bind="_newLinkUrl" placeholder="https://..." />
+                    <button type="button" class="btn btn--secondary btn--sm" @onclick="AddLink"><Icon Name="plus" /></button>
+                </div>
+                @foreach (var link in _model.EnlacesRelacionados)
+                {
+                    <div class="external-link-row">
+                        <Icon Name="link" />
+                        <span style="flex:1">@link.Label</span>
+                        <button type="button" class="icon-btn icon-btn--danger" @onclick="() => _model.EnlacesRelacionados.Remove(link)">
+                            <Icon Name="x" />
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Referencias</label>
+                <textarea class="input" rows="3" @bind="_model.Referencias" placeholder="Manuales, normativas o documentos fuente utilizados"></textarea>
+            </div>
+        </div>
+
+        @* ============================= EDITOR ============================= *@
+        <div class="card article-form">
+            <h3 class="form-section-title"><Icon Name="edit-3" /> Cuerpo del artículo</h3>
+
+            <div class="editor-tabs">
+                <button type="button" class="editor-tabs__btn @(!_showPreview ? "editor-tabs__btn--active" : "")" @onclick="() => _showPreview = false">
+                    <Icon Name="pencil" /> Editar
+                </button>
+                <button type="button" class="editor-tabs__btn @(_showPreview ? "editor-tabs__btn--active" : "")" @onclick="() => _showPreview = true">
+                    <Icon Name="eye" /> Vista previa
+                </button>
+            </div>
+
+            @if (!_showPreview)
+            {
+                <div class="editor-toolbar">
+                    <div class="editor-toolbar__group">
+                        <button type="button" class="editor-toolbar__btn" title="Encabezado 1" @onclick="InsertH1"><Icon Name="heading-1" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Encabezado 2" @onclick="InsertH2"><Icon Name="heading-2" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Encabezado 3" @onclick="InsertH3"><Icon Name="heading-3" /></button>
+                    </div>
+                    <div class="editor-toolbar__group">
+                        <button type="button" class="editor-toolbar__btn" title="Negrita" @onclick="InsertBold"><Icon Name="bold" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Cursiva" @onclick="InsertItalic"><Icon Name="italic" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Subrayado" @onclick="InsertUnderline"><Icon Name="underline" /></button>
+                    </div>
+                    <div class="editor-toolbar__group">
+                        <button type="button" class="editor-toolbar__btn" title="Lista numerada" @onclick="InsertOrderedList"><Icon Name="list-ordered" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Lista con viñetas" @onclick="InsertBulletList"><Icon Name="list" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Checklist" @onclick="InsertChecklist"><Icon Name="check-square" /></button>
+                    </div>
+                    <div class="editor-toolbar__group">
+                        <button type="button" class="editor-toolbar__btn" title="Tabla" @onclick="InsertTable"><Icon Name="table" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Bloque de código" @onclick="InsertCodeBlock"><Icon Name="code" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Cita" @onclick="InsertQuote"><Icon Name="quote" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Hipervínculo" @onclick="InsertLink"><Icon Name="link" /></button>
+                    </div>
+                    <div class="editor-toolbar__group">
+                        <button type="button" class="editor-toolbar__btn" title="Imagen" @onclick="InsertImage"><Icon Name="image" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Separador" @onclick="InsertDivider"><Icon Name="minus" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Expandible" @onclick="InsertDetails"><Icon Name="chevron-down" /></button>
+                    </div>
+                    <div class="editor-toolbar__group">
+                        <button type="button" class="editor-toolbar__btn" title="Nota" @onclick="InsertNote"><Icon Name="sticky-note" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Advertencia" @onclick="InsertWarning"><Icon Name="alert-triangle" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Información" @onclick="InsertInfoBlock"><Icon Name="info" /></button>
+                    </div>
+                    <div class="editor-toolbar__group">
+                        <button type="button" class="editor-toolbar__btn" title="Color de texto" @onclick="InsertColor"><Icon Name="palette" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Resaltar" @onclick="InsertHighlight"><Icon Name="highlighter" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Alinear al centro" @onclick="InsertCenter"><Icon Name="align-center" /></button>
+                    </div>
+                    <div class="editor-toolbar__group">
+                        <button type="button" class="editor-toolbar__btn" title="Deshacer" @onclick="Undo" disabled="@(_undoStack.Count == 0)"><Icon Name="undo-2" /></button>
+                        <button type="button" class="editor-toolbar__btn" title="Rehacer" @onclick="Redo" disabled="@(_redoStack.Count == 0)"><Icon Name="redo-2" /></button>
+                    </div>
+                </div>
+
+                <textarea class="editor-canvas" rows="18"
+                          placeholder="Escribí la documentación técnica acá. Usá la barra de herramientas para insertar bloques de formato."
+                          @bind="_model.Content" @bind:event="oninput" @bind:after="RecomputeDerived"></textarea>
+                <p class="form-hint">El índice lateral y la vista previa se generan automáticamente a partir de lo que escribas.</p>
+            }
+            else
+            {
+                <div class="editor-preview">
+                    @((MarkupString)_previewHtml)
+                </div>
+            }
+        </div>
+
+        @* ============================= HISTORIAL ============================= *@
+        <div class="card article-form">
+            <h3 class="form-section-title"><Icon Name="history" /> Historial de cambios</h3>
+            <div class="version-timeline">
+                @foreach (var v in _history)
+                {
+                    <div class="version-row">
+                        <span class="version-row__dot"></span>
+                        <div>
+                            <p class="version-row__label">@v.Label — @v.Author</p>
+                            <p class="version-row__summary">@v.Summary</p>
+                            <p class="version-row__date">@v.Date.ToString("d MMM yyyy, HH:mm")</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* ============================= REVISORES ============================= *@
+        <div class="card article-form">
+            <h3 class="form-section-title"><Icon Name="users" /> Revisores</h3>
+            @foreach (var r in _reviewers)
+            {
+                <div class="reviewer-row">
+                    <span class="avatar avatar--sm">@r.Initials</span>
+                    <div class="reviewer-row__info">
+                        <span class="reviewer-row__name">@r.Name</span>
+                        <span class="reviewer-row__role">@r.Role</span>
+                    </div>
+                    <span class="@(r.StatusClass)">@r.Status</span>
+                </div>
+            }
+        </div>
+
+        @* ============================= APROBACIONES ============================= *@
+        <div class="card article-form">
+            <h3 class="form-section-title"><Icon Name="check-circle" /> Aprobaciones</h3>
+            <div class="approval-steps">
+                @foreach (var step in _approvalSteps)
+                {
+                    <div class="approval-step approval-step--@step.State">
+                        <span class="approval-step__icon">
+                            <Icon Name="@(step.State == "done" ? "check" : step.State == "current" ? "clock" : "circle")" />
+                        </span>
+                        <span class="approval-step__label">@step.Label</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* ============================= RELACIONADOS ============================= *@
+        <div class="card article-form">
+            <h3 class="form-section-title"><Icon Name="folder-open" /> Documentación relacionada</h3>
+            @foreach (var doc in _relatedDocs)
+            {
+                <div class="file-row">
+                    <span class="file-row__icon"><Icon Name="file-text" /></span>
+                    <div class="file-row__info">
+                        <span class="file-row__name">@doc.Title</span>
+                        <span class="file-row__meta">@doc.Category</span>
+                    </div>
+                    <Icon Name="chevron-right" Class="file-row__download" />
+                </div>
+            }
+        </div>
+
+        <div class="card article-form">
+            <h3 class="form-section-title"><Icon Name="link-2" /> Artículos relacionados</h3>
+            @foreach (var art in _relatedArticles)
+            {
+                <div class="file-row">
+                    <span class="file-row__icon"><Icon Name="file-text" /></span>
+                    <div class="file-row__info">
+                        <span class="file-row__name">@art.Title</span>
+                        <span class="file-row__meta">@art.Views vistas · @art.ReadingTime min</span>
+                    </div>
+                    <Icon Name="chevron-right" Class="file-row__download" />
+                </div>
+            }
+        </div>
+
+        @* ============================= OBSERVACIONES ============================= *@
+        <div class="card article-form">
+            <h3 class="form-section-title"><Icon Name="lock" /> Observaciones internas</h3>
+            <p class="form-hint" style="margin-bottom:var(--space-2)">Visibles solo para el equipo editorial. No se muestran en la vista pública del artículo.</p>
+            <textarea class="input" rows="3" @bind="_model.ObservacionesInternas" placeholder="Notas para revisores, pendientes o contexto adicional..."></textarea>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="callout callout--danger">
+                <Icon Name="alert-triangle" />
+                <p>@_error</p>
+            </div>
+        }
+
+        <div class="form-actions form-actions--triple">
+            <button type="button" class="btn btn--secondary" @onclick="SaveAsDraft"><Icon Name="save" /> Guardar como borrador</button>
+            <button type="button" class="btn btn--secondary" @onclick="SendToReview"><Icon Name="send" /> Enviar a revisión</button>
+            <button type="button" class="btn btn--primary" @onclick="Publish"><Icon Name="check" /> Publicar</button>
+        </div>
+    </div>
+
+    @* ============================= SIDEBAR ============================= *@
+    <aside class="article-sidebar">
+        <div class="toc">
+            <p class="toc__title"><Icon Name="list" /> Índice del artículo</p>
+            @if (_toc.Count == 0)
+            {
+                <p class="form-hint">Agregá encabezados en el cuerpo del artículo para generar el índice.</p>
+            }
+            else
+            {
+                @foreach (var item in _toc)
+                {
+                    <a class="toc__link toc__link--lvl@(item.Level)">@item.Text</a>
+                }
+            }
+        </div>
+
+        <div class="widget card">
+            <h4 class="widget__title"><Icon Name="lightbulb" /> Consejos</h4>
+            <p class="form-hint">Un buen título es específico y usa el mismo vocabulario que la gente busca ("Cómo..." o "Guía de...").</p>
+            <p class="form-hint">Usá encabezados H2/H3 para dividir procedimientos largos en pasos claros.</p>
+            <p class="form-hint">Marcá el nivel de acceso correcto antes de publicar información sensible.</p>
+        </div>
+
+        <div class="widget card">
+            <h4 class="widget__title"><Icon Name="info" /> Resumen de metadatos</h4>
+            <div class="meta-quickview">
+                <span>Estado</span><strong>@_model.Estado</strong>
+                <span>Versión</span><strong>@_model.Version</strong>
+                <span>Prioridad</span><strong>@_model.Prioridad</strong>
+                <span>Lectura</span><strong>@_readingTime min</strong>
+            </div>
+        </div>
+    </aside>
+</div>
+
 @code {
     private List<Category> _categories = new();
     private List<Author> _authors = new();
@@ -71,9 +524,9 @@
 
         _reviewers = new()
         {
-            new("Lucía Fernández", "Referente Técnica - Redes", "LF", "Aprobado", "badge--success"),
-            new("Martín Ibarra", "Seguridad de la Información", "MI", "Pendiente", "badge--amber"),
-            new("Sofía Ramos", "Responsable de Documentación", "SR", "En revisión", "badge--brand"),
+            new("Lucía Fernández", "Referente Técnica - Redes", "LF", "Aprobado", "badge badge--success"),
+            new("Martín Ibarra", "Seguridad de la Información", "MI", "Pendiente", "badge badge--amber"),
+            new("Sofía Ramos", "Responsable de Documentación", "SR", "En revisión", "badge badge--brand"),
         };
 
         _approvalSteps = new()
@@ -130,6 +583,16 @@
             _newLinkLabel = string.Empty;
             _newLinkUrl = string.Empty;
         }
+    }
+
+    private void AddFakeAttachment()
+    {
+        _model.ArchivosAdjuntos.Add($"documento-{_model.ArchivosAdjuntos.Count + 1}.pdf");
+    }
+
+    private void AddFakeImage()
+    {
+        _model.Imagenes.Add($"imagen-{_model.Imagenes.Count + 1}.png");
     }
 
     // ---- Botones de la barra de herramientas del editor ----
