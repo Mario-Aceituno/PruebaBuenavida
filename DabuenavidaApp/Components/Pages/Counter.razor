@@ -1,78 +1,138 @@
-@* ============================= EDITOR ============================= *@
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="edit-3" /> Cuerpo del artículo</h3>
+@code {
+    private List<Category> _categories = new();
+    private List<Author> _authors = new();
+    private List<BreadcrumbItem> _breadcrumb = new()
+    {
+        new("Inicio", "/"),
+        new("Articulos", "/articulos"),
+        new("Nuevo", null)
+    };
 
-            <div class="editor-tabs">
-                <button type="button" class="editor-tabs__btn @(!_showPreview ? "editor-tabs__btn--active" : "")" @onclick="() => _showPreview = false">
-                    <Icon Name="pencil" /> Editar
-                </button>
-                <button type="button" class="editor-tabs__btn @(_showPreview ? "editor-tabs__btn--active" : "")" @onclick="() => _showPreview = true">
-                    <Icon Name="eye" /> Vista previa
-                </button>
-            </div>
+    private readonly List<string> _subcategories = new()
+    {
+        "Accesos y Credenciales", "Infraestructura", "Aplicaciones Internas",
+        "Seguridad", "Redes", "Bases de Datos", "Soporte al Usuario"
+    };
 
-            @if (!_showPreview)
-            {
-                <div class="editor-toolbar">
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Encabezado 1" @onclick="InsertH1"><Icon Name="heading-1" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Encabezado 2" @onclick="InsertH2"><Icon Name="heading-2" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Encabezado 3" @onclick="InsertH3"><Icon Name="heading-3" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Negrita" @onclick="InsertBold"><Icon Name="bold" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Cursiva" @onclick="InsertItalic"><Icon Name="italic" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Subrayado" @onclick="InsertUnderline"><Icon Name="underline" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Lista numerada" @onclick="InsertOrderedList"><Icon Name="list-ordered" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Lista con viñetas" @onclick="InsertBulletList"><Icon Name="list" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Checklist" @onclick="InsertChecklist"><Icon Name="check-square" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Tabla" @onclick="InsertTable"><Icon Name="table" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Bloque de código" @onclick="InsertCodeBlock"><Icon Name="code" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Cita" @onclick="InsertQuote"><Icon Name="quote" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Hipervínculo" @onclick="InsertLink"><Icon Name="link" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Imagen" @onclick="InsertImage"><Icon Name="image" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Separador" @onclick="InsertDivider"><Icon Name="minus" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Expandible" @onclick="InsertDetails"><Icon Name="chevron-down" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Nota" @onclick="InsertNote"><Icon Name="sticky-note" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Advertencia" @onclick="InsertWarning"><Icon Name="alert-triangle" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Información" @onclick="InsertInfoBlock"><Icon Name="info" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Color de texto" @onclick="InsertColor"><Icon Name="palette" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Resaltar" @onclick="InsertHighlight"><Icon Name="highlighter" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Alinear al centro" @onclick="InsertCenter"><Icon Name="align-center" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Deshacer" @onclick="Undo" disabled="@(_undoStack.Count == 0)"><Icon Name="undo-2" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Rehacer" @onclick="Redo" disabled="@(_redoStack.Count == 0)"><Icon Name="redo-2" /></button>
-                    </div>
-                </div>
+    private readonly List<string> _areas = new()
+    {
+        "Infraestructura", "Seguridad de la Información", "Soporte Técnico",
+        "Desarrollo", "Redes", "Operaciones TI"
+    };
 
-                <textarea class="editor-canvas" rows="18"
-                          placeholder="Escribí la documentación técnica acá. Usá la barra de herramientas para insertar bloques de formato."
-                          @bind="_model.Content" @bind:event="oninput" @bind:after="RecomputeDerived"></textarea>
-                <p class="form-hint">El índice lateral y la vista previa se generan automáticamente a partir de lo que escribas.</p>
-            }
-            else
-            {
-                <div class="editor-preview">
-                    @((MarkupString)_previewHtml)
-                </div>
-            }
-        </div>
+    private readonly List<string> _nivelesAcceso = new()
+    {
+        "Público interno", "Confidencial", "Restringido", "Alta confidencialidad"
+    };
 
+    private readonly List<string> _prioridades = new() { "Baja", "Media", "Alta", "Critica" };
 
-private bool _showPreview = false;
+    private readonly List<string> _sistemasDisponibles = new()
+    {
+        "Active Directory", "SharePoint", "VPN Corporativa", "Core Bancario", "ServiceNow", "Office 365"
+    };
+
+    private readonly ArticleFormModel _model = new();
+    private string? _error;
+    private string _newTag = string.Empty;
+    private string _newLinkLabel = string.Empty;
+    private string _newLinkUrl = string.Empty;
+    private int _readingTime = 1;
+    private List<TocItem> _toc = new();
+
+    private readonly Stack<string> _undoStack = new();
+    private readonly Stack<string> _redoStack = new();
+
+    private bool _showPreview = false;
     private string _previewHtml = string.Empty;
 
+    // ---- Hardcoded demo data ----
+    private List<HistoryEntry> _history = new();
+    private List<Reviewer> _reviewers = new();
+    private List<ApprovalStep> _approvalSteps = new();
+    private List<RelatedDoc> _relatedDocs = new();
+    private List<RelatedArticle> _relatedArticles = new();
+
+    protected override void OnInitialized()
+    {
+        _categories = Data.GetCategories().OrderBy(c => c.Name).ToList();
+        _authors = Data.GetAuthors().OrderBy(a => a.FullName).ToList();
+
+        _model.FechaCreacion = DateTime.Today;
+        _model.FechaActualizacion = DateTime.Today;
+        _model.Version = "v1.0";
+
+        _history = new()
+        {
+            new("Creación del documento", "Hiavert Maldonado", "Se creó la estructura inicial del artículo.", DateTime.Now.AddDays(-3)),
+            new("Revisión de contenido", "Lucía Fernández", "Se corrigieron los pasos de configuración de red.", DateTime.Now.AddDays(-2)),
+            new("Actualización menor", "Hiavert Maldonado", "Se agregaron capturas de pantalla y referencias.", DateTime.Now.AddDays(-1)),
+        };
+
+        _reviewers = new()
+        {
+            new("Lucía Fernández", "Referente Técnica - Redes", "LF", "Aprobado", "badge--success"),
+            new("Martín Ibarra", "Seguridad de la Información", "MI", "Pendiente", "badge--amber"),
+            new("Sofía Ramos", "Responsable de Documentación", "SR", "En revisión", "badge--brand"),
+        };
+
+        _approvalSteps = new()
+        {
+            new("Autor", "done"),
+            new("Revisión técnica", "current"),
+            new("Responsable de área", "pending"),
+            new("Publicación", "pending"),
+        };
+
+        _relatedDocs = new()
+        {
+            new("Política de Seguridad de la Información v3", "Seguridad"),
+            new("Manual de Onboarding de Tecnología", "Recursos Humanos / TI"),
+            new("Estándares de Nomenclatura de Servidores", "Infraestructura"),
+        };
+
+        _relatedArticles = new()
+        {
+            new("Cómo restablecer tu contraseña de dominio", 1240, 4),
+            new("Buenas prácticas de seguridad para equipos remotos", 860, 6),
+            new("Checklist de alta de usuario nuevo", 530, 3),
+        };
+
+        RecomputeDerived();
+    }
+
+    private void ToggleSistema(string sistema)
+    {
+        if (!_model.SistemasRelacionados.Remove(sistema))
+            _model.SistemasRelacionados.Add(sistema);
+    }
+
+    private void AddTag()
+    {
+        var value = _newTag.Trim();
+        if (!string.IsNullOrEmpty(value) && !_model.Tags.Contains(value))
+        {
+            _model.Tags.Add(value);
+        }
+        _newTag = string.Empty;
+    }
+
+    private void OnTagKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AddTag();
+    }
+
+    private void AddLink()
+    {
+        if (!string.IsNullOrWhiteSpace(_newLinkLabel) && !string.IsNullOrWhiteSpace(_newLinkUrl))
+        {
+            _model.EnlacesRelacionados.Add(new RelatedLink(_newLinkLabel, _newLinkUrl));
+            _newLinkLabel = string.Empty;
+            _newLinkUrl = string.Empty;
+        }
+    }
+
+    // ---- Botones de la barra de herramientas del editor ----
     private void InsertH1() => InsertSnippet("# Título");
     private void InsertH2() => InsertSnippet("## Subtítulo");
     private void InsertH3() => InsertSnippet("### Sección");
@@ -148,3 +208,97 @@ private bool _showPreview = false;
 
         _previewHtml = MarkdownRenderer.Render(_model.Content);
     }
+
+    private bool ValidateBasics()
+    {
+        if (string.IsNullOrWhiteSpace(_model.Title) || string.IsNullOrWhiteSpace(_model.Summary))
+        {
+            _error = "El título y el resumen son obligatorios.";
+            return false;
+        }
+        if (!Guid.TryParse(_model.CategoryId, out _))
+        {
+            _error = "Seleccioná una categoría.";
+            return false;
+        }
+        if (!Guid.TryParse(_model.AuthorId, out _))
+        {
+            _error = "Seleccioná un autor.";
+            return false;
+        }
+        _error = null;
+        return true;
+    }
+
+    private void SaveAsDraft()
+    {
+        if (!ValidateBasics()) return;
+        _model.Estado = "Borrador";
+        Persist(ArticleStatus.Draft);
+    }
+
+    private void SendToReview()
+    {
+        if (!ValidateBasics()) return;
+        _model.Estado = "En revisión";
+        Persist(ArticleStatus.InReview);
+    }
+
+    private void Publish()
+    {
+        if (!ValidateBasics()) return;
+        _model.Estado = "Publicado";
+        Persist(ArticleStatus.Published);
+    }
+
+    private void Persist(ArticleStatus status)
+    {
+        var categoryId = Guid.Parse(_model.CategoryId);
+        var authorId = Guid.Parse(_model.AuthorId);
+
+        var created = Data.CreateArticle(
+            _model.Title,
+            _model.Summary,
+            categoryId,
+            authorId,
+            new List<Guid>(),
+            string.Empty,
+            false,
+            status);
+
+        Nav.NavigateTo($"/articulo/{created.Slug}");
+    }
+
+    private class ArticleFormModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        public string Title { get; set; } = string.Empty;
+        public string Summary { get; set; } = string.Empty;
+        public string CategoryId { get; set; } = string.Empty;
+        public string Subcategory { get; set; } = string.Empty;
+        public string AreaResponsable { get; set; } = string.Empty;
+        public string NivelAcceso { get; set; } = "Público interno";
+        public string AuthorId { get; set; } = string.Empty;
+        public DateTime FechaCreacion { get; set; }
+        public DateTime FechaActualizacion { get; set; }
+        public string Version { get; set; } = "v1.0";
+        public string Estado { get; set; } = "Borrador";
+        public string Prioridad { get; set; } = "Media";
+        public string Referencias { get; set; } = string.Empty;
+        public string ObservacionesInternas { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public List<string> Tags { get; set; } = new();
+        public List<string> SistemasRelacionados { get; set; } = new();
+        public List<string> ArchivosAdjuntos { get; set; } = new();
+        public List<string> Imagenes { get; set; } = new();
+        public List<RelatedLink> EnlacesRelacionados { get; set; } = new();
+    }
+
+    private record RelatedLink(string Label, string Url);
+    private record TocItem(int Level, string Text);
+    private record HistoryEntry(string Label, string Author, string Summary, DateTime Date);
+    private record Reviewer(string Name, string Role, string Initials, string Status, string StatusClass);
+    private record ApprovalStep(string Label, string State);
+    private record RelatedDoc(string Title, string Category);
+    private record RelatedArticle(string Title, int Views, int ReadingTime);
+}
