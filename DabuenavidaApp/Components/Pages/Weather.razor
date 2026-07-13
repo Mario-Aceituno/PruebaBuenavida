@@ -1,146 +1,641 @@
-// Aplica el tema guardado lo antes posible para evitar "flash" de tema incorrecto.
-(function () {
-    const saved = localStorage.getItem("corpwiki-theme");
-    if (saved === "dark" || saved === "light") {
-        document.documentElement.setAttribute("data-theme", saved);
-    }
-})();
+RESPALDO PARA CAMBIO DE TEMA V4 
 
+-----------------------------------------------
+App.razor
+-----------------------------------------------
+@using Microsoft.AspNetCore.Components.Web
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Wiki — Base de Conocimiento Técnica</title>
+    <base href="/" />
+        
+    <script>
+        (function () {
+            var saved = localStorage.getItem("corpwiki-theme");
+            document.documentElement.setAttribute("data-theme", saved === "light" ? "light" : "dark");
+        })();
+    </script>
+
+    <!-- Sin CDN. Fuentes del sistema operativo. Sin dependencias externas. -->
+    <link rel="stylesheet" href="css/design-tokens.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/layout.css" />
+    <link rel="stylesheet" href="css/components.css" />
+    <link rel="stylesheet" href="css/forms.css" />
+    <link rel="stylesheet" href="css/home.css" />
+    <link rel="stylesheet" href="css/explore.css" />
+    <link rel="stylesheet" href="css/article.css" />
+    <link rel="stylesheet" href="css/search.css" />
+    <link rel="stylesheet" href="css/multimedia.css" />
+    <link rel="stylesheet" href="css/people.css" />
+    <link rel="stylesheet" href="css/stats.css" />
+    <link rel="stylesheet" href="css/help.css" />
+
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <HeadOutlet />
+</head>
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <script src="js/theme.js"></script>
+    <script src="js/clipboard.js"></script>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>
+
+-----------------------------------------------
+Theme.js
+-----------------------------------------------
 window.corpWikiTheme = {
-    save: function (theme) {
-        localStorage.setItem("corpwiki-theme", theme);
-        document.documentElement.setAttribute("data-theme", theme);
+    toggle: function (evt) {
+        const root = document.documentElement;
+        const current = root.getAttribute("data-theme") === "light" ? "light" : "dark";
+        const next = current === "dark" ? "light" : "dark";
+
+        const x = evt && typeof evt.clientX === "number" ? evt.clientX : Math.round(window.innerWidth / 2);
+        const y = evt && typeof evt.clientY === "number" ? evt.clientY : Math.round(window.innerHeight / 2);
+
+        this.setWithTransition(next, x, y);
     },
-    get: function () {
-        return localStorage.getItem("corpwiki-theme") || "dark";
+
+    setWithTransition: function (theme, x, y) {
+        const root = document.documentElement;
+        const apply = () => {
+            root.setAttribute("data-theme", theme);
+            localStorage.setItem("corpwiki-theme", theme);
+        };
+
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        if (!document.startViewTransition || prefersReducedMotion) {
+            apply();
+            return;
+        }
+
+        const endRadius = Math.hypot(
+            Math.max(x, window.innerWidth - x),
+            Math.max(y, window.innerHeight - y)
+        );
+
+        root.style.setProperty("--theme-x", `${x}px`);
+        root.style.setProperty("--theme-y", `${y}px`);
+        root.style.setProperty("--theme-radius", `${endRadius}px`);
+
+        document.startViewTransition(apply);
     }
 };
 
-function toggleTheme() {
-    // Sincronizado con tu clave correcta de localStorage
-    const currentTheme = localStorage.getItem('corpwiki-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
-    // 1. Si el navegador no soporta la animación, cambia el tema en seco
-    if (!document.startViewTransition) {
-        executeThemeChange(nextTheme);
-        return;
-    }
+-----------------------------------------------
+TopBar.razor
+-----------------------------------------------
+@implements IDisposable
 
-    // 2. Intentar buscar el botón de la barra superior para centrar el círculo
-    const button = document.querySelector('.topbar-theme-toggle') || document.querySelector('#theme-toggle-btn');
-    let x = window.innerWidth - 40; 
-    let y = 40;                      
+<header class="topbar">
+    <div class="topbar__left">
+        <button class="icon-btn icon-btn--ghost topbar__menu-btn" @onclick="_ui.ToggleSidebar" title="Abrir menú">
+            <Icon Name="panel-left" />
+        </button>
 
-    if (button) {
-        const rect = button.getBoundingClientRect();
-        x = rect.left + rect.width / 2;
-        y = rect.top + rect.height / 2;
-    }
+        <button class="topbar__quick-search" @onclick="_ui.OpenCommandPalette">
+            <Icon Name="search" />
+            <span>Buscar documentación...</span>
+            <kbd class="sidebar__kbd">Ctrl K</kbd>
+        </button>
+    </div>
 
-    // 3. Pasar coordenadas al CSS usando backticks (comillas invertidas ` `) obligatoriamente
-    const root = document.documentElement;
-    root.style.setProperty('--transition-x', `${x}px`);
-    root.style.setProperty('--transition-y', `${y}px`);
-    root.style.setProperty('--transition-r', `${Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))}px`);
-    
-    root.setAttribute('data-theme-changing', 'true');
+    <div class="topbar__right">
+        <a class="btn btn--primary btn--sm topbar__new-btn" href="/articulos/nuevo">
+            <Icon Name="plus" /> <span>Nuevo artículo</span>
+        </a>
 
-    // 4. Lanzar barrido circular animado
-    const transition = document.startViewTransition(() => {
-        executeThemeChange(nextTheme);
-    });
+        <button class="icon-btn icon-btn--ghost theme-toggle" onclick="corpWikiTheme.toggle(event)" title="Cambiar tema">
+            <Icon Name="sun" Class="theme-toggle__icon theme-toggle__icon--sun" />
+            <Icon Name="moon" Class="theme-toggle__icon theme-toggle__icon--moon" />
+        </button>
 
-    transition.finished.then(() => {
-        root.removeAttribute('data-theme-changing');
-    });
+        <button class="icon-btn icon-btn--ghost" title="Notificaciones">
+            <Icon Name="bell" />
+            <span class="icon-btn__dot"></span>
+        </button>
+
+        <a class="avatar avatar--sm topbar__avatar" href="/perfil"
+           style="background:linear-gradient(135deg,#C41230,#8B0E25)" title="Mi perfil">HM</a>
+    </div>
+</header>
+
+@code {
+    [Inject] private UiStateService _ui { get; set; } = default!;
+
+    protected override void OnInitialized() => _ui.OnChange += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => _ui.OnChange -= Refresh;
 }
 
-// Función interna auxiliar corregida con tu clave 'corpwiki-theme'
-function executeThemeChange(nextTheme) {
-    localStorage.setItem('corpwiki-theme', nextTheme);
-    
-    // Mapea a tus funciones globales si existen, o actualiza el atributo del HTML directamente
-    if (typeof setTheme === "function") setTheme(nextTheme);
-    if (typeof setThemeOnHtml === "function") setThemeOnHtml(nextTheme);
-    
-    document.documentElement.setAttribute("data-theme", nextTheme);
+-----------------------------------------------
+MainLayout.razor
+-----------------------------------------------
+@inherits LayoutComponentBase
+@implements IDisposable
+
+<div class="app-shell @(_ui.IsSidebarCollapsed ? "app-shell--collapsed" : "")">
+
+    <SidebarNav />
+
+    <div class="app-shell__main">
+        <TopBar />
+
+        <main class="app-shell__content">
+            @Body
+        </main>
+    </div>
+
+    <CommandPalette />
+</div>
+
+@code {
+    [Inject] private UiStateService _ui { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        _ui.OnChange += HandleChange;
+    }
+
+    private void HandleChange() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        _ui.OnChange -= HandleChange;
+    }
 }
 
-// Exponer la función globalmente para que Blazor o tus componentes puedan invocarla
-window.toggleTheme = toggleTheme;
+-----------------------------------------------
+UiStateService
+-----------------------------------------------
+namespace CorpWiki.Web.State;
 
+public class UiStateService
+{
+    public event Action? OnChange;
 
+    public bool IsSidebarCollapsed { get; private set; }
+    public bool IsCommandPaletteOpen { get; private set; }
 
-// Aplica el tema guardado lo antes posible para evitar "flash" de tema incorrecto.
-(function () {
-    const saved = localStorage.getItem("corpwiki-theme");
-    if (saved === "dark" || saved === "light") {
-        document.documentElement.setAttribute("data-theme", saved);
-    }
-})();
-
-window.corpWikiTheme = {
-    save: function (theme) {
-        localStorage.setItem("corpwiki-theme", theme);
-        document.documentElement.setAttribute("data-theme", theme);
-    },
-    get: function () {
-        return localStorage.getItem("corpwiki-theme") || "dark";
-    }
-};
-
-function toggleTheme() {
-    // Sincronizado con tu clave correcta de localStorage
-    const currentTheme = localStorage.getItem('corpwiki-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-
-    // 1. Si el navegador no soporta la animación, cambia el tema en seco
-    if (!document.startViewTransition) {
-        executeThemeChange(nextTheme);
-        return;
+    public void ToggleSidebar()
+    {
+        IsSidebarCollapsed = !IsSidebarCollapsed;
+        NotifyChange();
     }
 
-    // 2. Intentar buscar el botón de la barra superior para centrar el círculo
-    const button = document.querySelector('.topbar-theme-toggle') || document.querySelector('#theme-toggle-btn');
-    let x = window.innerWidth - 40; 
-    let y = 40;                      
-
-    if (button) {
-        const rect = button.getBoundingClientRect();
-        x = rect.left + rect.width / 2;
-        y = rect.top + rect.height / 2;
+    public void OpenCommandPalette()
+    {
+        IsCommandPaletteOpen = true;
+        NotifyChange();
     }
 
-    // 3. Pasar coordenadas al CSS usando backticks (comillas invertidas ` `) obligatoriamente
-    const root = document.documentElement;
-    root.style.setProperty('--transition-x', `${x}px`);
-    root.style.setProperty('--transition-y', `${y}px`);
-    root.style.setProperty('--transition-r', `${Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))}px`);
-    
-    root.setAttribute('data-theme-changing', 'true');
+    public void CloseCommandPalette()
+    {
+        IsCommandPaletteOpen = false;
+        NotifyChange();
+    }
 
-    // 4. Lanzar barrido circular animado
-    const transition = document.startViewTransition(() => {
-        executeThemeChange(nextTheme);
-    });
-
-    transition.finished.then(() => {
-        root.removeAttribute('data-theme-changing');
-    });
+    private void NotifyChange() => OnChange?.Invoke();
 }
 
-// Función interna auxiliar corregida con tu clave 'corpwiki-theme'
-function executeThemeChange(nextTheme) {
-    localStorage.setItem('corpwiki-theme', nextTheme);
-    
-    // Mapea a tus funciones globales si existen, o actualiza el atributo del HTML directamente
-    if (typeof setTheme === "function") setTheme(nextTheme);
-    if (typeof setThemeOnHtml === "function") setThemeOnHtml(nextTheme);
-    
-    document.documentElement.setAttribute("data-theme", nextTheme);
+-----------------------------------------------
+Components.css
+-----------------------------------------------
+/* =========================================================================
+   Wiki — Componentes v2 (Davivienda Style)
+   ========================================================================= */
+
+/* ─── Botones ──────────────────────────────────────────────────────────── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: 9px var(--space-5);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    transition:
+        filter var(--transition-fast),
+        transform var(--transition-fast),
+        box-shadow var(--transition-fast),
+        background var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+}
+.btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+    border-radius: inherit;
+}
+.btn:active { transform: scale(0.97); }
+.btn:active::after { opacity: 0.08; }
+
+.btn--primary {
+    background: var(--gradient-brand);
+    color: white;
+    box-shadow: var(--shadow-brand);
+}
+.btn--primary:hover {
+    filter: brightness(1.08);
+    box-shadow: var(--shadow-glow);
 }
 
-// Exponer la función globalmente para que Blazor o tus componentes puedan invocarla
-window.toggleTheme = toggleTheme;
+.btn--secondary {
+    background: var(--bg-surface-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+}
+.btn--secondary:hover {
+    background: var(--bg-surface-3);
+    border-color: var(--border-strong);
+}
+
+.btn--ghost {
+    background: transparent;
+    color: var(--text-secondary);
+}
+.btn--ghost:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn--danger {
+    background: linear-gradient(135deg, #B8122D 0%, #8F0A20 100%);
+    color: white;
+}
+
+.btn--sm { padding: 6px var(--space-3); font-size: var(--fs-xs); border-radius: var(--radius-sm); }
+.btn--lg { padding: 12px var(--space-6); font-size: var(--fs-base); border-radius: var(--radius-lg); }
+
+.btn .icon { width: 15px; height: 15px; }
+.btn--sm .icon { width: 13px; height: 13px; }
+
+/* ─── Icon Button ──────────────────────────────────────────────────────── */
+.icon-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    transition:
+        background var(--transition-fast),
+        color var(--transition-fast),
+        transform var(--transition-fast);
+}
+.icon-btn:active { transform: scale(0.92); }
+.icon-btn--ghost:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.icon-btn--active {
+    background: var(--bg-active);
+    color: var(--brand-500);
+}
+.icon-btn__dot {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--brand-500);
+    border: 2px solid var(--bg-sidebar);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+/* ─── Theme toggle (sol/luna resueltos por CSS, no por Blazor) ──────────── */
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.theme-toggle__icon { display: none; }
+[data-theme="dark"] .theme-toggle__icon--sun { display: inline-flex; }
+[data-theme="light"] .theme-toggle__icon--moon { display: inline-flex; }
+
+@keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(218,31,61,0.4); }
+    50%       { box-shadow: 0 0 0 4px rgba(218,31,61,0); }
+}
+
+/* ─── Avatar ───────────────────────────────────────────────────────────── */
+.avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    background: var(--gradient-brand);
+    color: white;
+    font-weight: 700;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+    user-select: none;
+}
+.avatar--sm  { width: 32px; height: 32px; font-size: var(--fs-xs); }
+.avatar--md  { width: 42px; height: 42px; font-size: var(--fs-sm); }
+.avatar--lg  { width: 64px; height: 64px; font-size: var(--fs-lg); }
+.avatar--xl  { width: 96px; height: 96px; font-size: var(--fs-2xl); font-weight: 800; }
+
+/* ─── Badge / Chip ─────────────────────────────────────────────────────── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    background: var(--bg-surface-3);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.badge--sm { padding: 1px var(--space-1); font-size: 0.65rem; }
+.badge--brand {
+    background: rgba(218,31,61,0.12);
+    color: var(--brand-500);
+}
+[data-theme="dark"] .badge--brand {
+    background: rgba(218,31,61,0.18);
+    color: #F06070;
+}
+.badge .icon { width: 11px; height: 11px; }
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px var(--space-3);
+    border-radius: var(--radius-full);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+        background var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        transform var(--transition-fast);
+}
+.chip:hover {
+    background: var(--bg-surface-3);
+    border-color: var(--border-default);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+.chip--active {
+    background: var(--brand-500);
+    border-color: var(--brand-500);
+    color: white;
+}
+.chip--active:hover { filter: brightness(1.08); }
+
+/* ─── Card ─────────────────────────────────────────────────────────────── */
+.card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition:
+        box-shadow var(--transition-base),
+        border-color var(--transition-base),
+        transform var(--transition-base);
+}
+.card--interactive {
+    cursor: pointer;
+}
+.card--interactive:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-default);
+    transform: translateY(-3px);
+}
+.card--interactive:active {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+.card--glass {
+    background: var(--bg-glass);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+.card--red-top {
+    border-top: 3px solid var(--brand-500);
+}
+
+/* ─── Input ─────────────────────────────────────────────────────────────── */
+.input {
+    width: 100%;
+    padding: 9px var(--space-3);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--fs-sm);
+    transition:
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        background var(--transition-fast);
+}
+.input:focus {
+    border-color: var(--brand-500);
+    box-shadow: 0 0 0 3px rgba(218,31,61,0.12);
+    background: var(--bg-surface);
+}
+.input::placeholder { color: var(--text-tertiary); }
+
+select.input {
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    padding-right: var(--space-8);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+}
+
+/* ─── SectionHeader ─────────────────────────────────────────────────────── */
+.section-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: var(--space-5);
+    gap: var(--space-4);
+}
+.section-header h3 {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+}
+.section-header__subtitle {
+    color: var(--text-tertiary);
+    font-size: var(--fs-sm);
+    margin-top: 3px;
+}
+.section-header__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--brand-500);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    transition: color var(--transition-fast);
+}
+.section-header__link:hover { color: var(--brand-accent); }
+.section-header__link .icon { width: 14px; height: 14px; }
+
+/* ─── Grids ─────────────────────────────────────────────────────────────── */
+.article-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-5);
+}
+.two-col-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--space-6);
+    align-items: start;
+}
+
+@media (max-width: 1200px) {
+    .article-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 900px) {
+    .two-col-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+    .article-grid { grid-template-columns: 1fr; }
+}
+
+/* ─── ArticleListItem ───────────────────────────────────────────────────── */
+.article-list-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: opacity var(--transition-fast), padding-left var(--transition-fast);
+}
+.article-list-item:last-child { border-bottom: none; }
+.article-list-item:hover {
+    opacity: 0.85;
+    padding-left: 4px;
+}
+.article-list-item__icon {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    background: var(--bg-surface-2);
+    color: var(--brand-500);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.article-list-item__icon .icon { width: 15px; height: 15px; }
+.article-list-item__info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.article-list-item__title {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.article-list-item__meta {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+}
+.article-list-item__chevron {
+    width: 14px;
+    height: 14px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+/* ─── Activity row ──────────────────────────────────────────────────────── */
+.activity-row {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-subtle);
+    align-items: flex-start;
+}
+.activity-row:last-child { border-bottom: none; }
+.activity-row__avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-full);
+    background: var(--gradient-brand);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.activity-row__text {
+    font-size: var(--fs-sm);
+    color: var(--text-primary);
+    line-height: 1.45;
+}
+.activity-row__time {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    margin-top: 2px;
+}
+
+/* ─── Category / Nav rows ───────────────────────────────────────────────── */
+.category-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: padding-left var(--transition-fast);
+}
+.category-row:last-child { border-bottom: none; }
+.category-row:hover { padding-left: 4px; }
+.category-row__icon {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.category-row__icon .icon { width: 14px; height: 14px; }
+.category-row__name {
+    flex: 1;
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
 
