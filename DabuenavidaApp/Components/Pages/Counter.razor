@@ -1,769 +1,2960 @@
-@page "/articulos/nuevo"
-@inject IWikiDataService Data
-@inject NavigationManager Nav
-@using CorpWiki.Services
+[14/7, 11:10 a. m.] Hiavert Maldonado: tokens.css
 
-<PageTitle>CorpWiki — Nuevo Artículo</PageTitle>
+/* =========================================================================
+   Incidents Design System — Design Tokens
+   Sistema de diseño autocontenido, prefijo --inc- para evitar colisiones.
+   ========================================================================= */
 
-<Breadcrumb Items="_breadcrumb" />
+:root {
+    /* ---------- Neutral scale ---------- */
+    --inc-n-0: #ffffff;
+    --inc-n-25: #fbfbfc;
+    --inc-n-50: #f6f7f9;
+    --inc-n-100: #eef0f3;
+    --inc-n-150: #e4e7ec;
+    --inc-n-200: #d8dce3;
+    --inc-n-300: #b9bfca;
+    --inc-n-400: #8b93a3;
+    --inc-n-500: #666f80;
+    --inc-n-600: #4b5261;
+    --inc-n-700: #363c48;
+    --inc-n-800: #22262f;
+    --inc-n-900: #14161b;
 
-<div class="page-header">
-    <div>
-        <h1>Nuevo Artículo</h1>
-        <p>Documentación técnica para el área de Tecnología. Completá los metadatos, escribí el contenido y enviá a revisión.</p>
+    /* ---------- Accent: graphite + banking red ---------- */
+    --inc-accent-50: #fdf1f2;
+    --inc-accent-100: #fbdfe2;
+    --inc-accent-300: #e88a95;
+    --inc-accent-500: #c41230;
+    --inc-accent-600: #a80f29;
+    --inc-accent-700: #8b0e25;
+
+    /* ---------- Semantic ---------- */
+    --inc-success-50: #eafbf3;
+    --inc-success-500: #16a672;
+    --inc-success-600: #0f8f61;
+
+    --inc-warning-50: #fff8ea;
+    --inc-warning-500: #d99a17;
+    --inc-warning-600: #b8810e;
+
+    --inc-danger-50: #fdf1f1;
+    --inc-danger-500: #d8324a;
+    --inc-danger-600: #b8253b;
+
+    --inc-info-50: #eef6ff;
+    --inc-info-500: #2f7fe0;
+    --inc-info-600: #2568bd;
+
+    --inc-violet-50: #f4f1fe;
+    --inc-violet-500: #6c4fd6;
+    --inc-violet-600: #5a3fc0;
+
+    /* ---------- Surfaces ---------- */
+    --inc-surface: var(--inc-n-0);
+    --inc-surface-canvas: #f7f8fa;
+    --inc-surface-raised: var(--inc-n-0);
+    --inc-surface-sunken: var(--inc-n-50);
+    --inc-border: var(--inc-n-150);
+    --inc-border-strong: var(--inc-n-200);
+
+    /* ---------- Text ---------- */
+    --inc-text-primary: var(--inc-n-900);
+    --inc-text-secondary: var(--inc-n-600);
+    --inc-text-tertiary: var(--inc-n-400);
+    --inc-text-inverse: var(--inc-n-0);
+
+    /* ---------- Typography ---------- */
+    --inc-font: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+    --inc-font-mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+
+    --inc-fs-2xs: 11px;
+    --inc-fs-xs: 12.5px;
+    --inc-fs-sm: 13.5px;
+    --inc-fs-base: 14.5px;
+    --inc-fs-md: 16px;
+    --inc-fs-lg: 19px;
+    --inc-fs-xl: 24px;
+    --inc-fs-2xl: 32px;
+    --inc-fs-3xl: 40px;
+
+    /* ---------- Spacing (4px scale) ---------- */
+    --inc-s-1: 4px;
+    --inc-s-2: 8px;
+    --inc-s-3: 12px;
+    --inc-s-4: 16px;
+    --inc-s-5: 20px;
+    --inc-s-6: 24px;
+    --inc-s-8: 32px;
+    --inc-s-10: 40px;
+    --inc-s-12: 48px;
+    --inc-s-16: 64px;
+
+    /* ---------- Radius ---------- */
+    --inc-r-sm: 6px;
+    --inc-r-md: 10px;
+    --inc-r-lg: 14px;
+    --inc-r-xl: 20px;
+    --inc-r-full: 999px;
+
+    /* ---------- Shadows (muy sutiles) ---------- */
+    --inc-shadow-xs: 0 1px 2px rgba(20, 22, 27, 0.04);
+    --inc-shadow-sm: 0 2px 6px rgba(20, 22, 27, 0.05), 0 1px 2px rgba(20, 22, 27, 0.04);
+    --inc-shadow-md: 0 8px 24px rgba(20, 22, 27, 0.07), 0 2px 6px rgba(20, 22, 27, 0.05);
+    --inc-shadow-lg: 0 16px 48px rgba(20, 22, 27, 0.12), 0 4px 12px rgba(20, 22, 27, 0.06);
+    --inc-shadow-focus: 0 0 0 3px rgba(196, 18, 48, 0.14);
+
+    /* ---------- Motion ---------- */
+    --inc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --inc-fast: 120ms;
+    --inc-normal: 200ms;
+    --inc-slow: 340ms;
+}
+
+[data-theme="dark"] {
+    --inc-surface: #1b1e24;
+    --inc-surface-canvas: #14161a;
+    --inc-surface-raised: #21252c;
+    --inc-surface-sunken: #191c22;
+    --inc-border: #2c313b;
+    --inc-border-strong: #3a4049;
+    --inc-text-primary: #f2f3f5;
+    --inc-text-secondary: #a6adba;
+    --inc-text-tertiary: #6b7280;
+}
+
+base.css
+
+/* =========================================================================
+   Incidents — Base / Shell / Layout utilities
+   ========================================================================= */
+
+.inc-shell {
+    font-family: var(--inc-font);
+    color: var(--inc-text-primary);
+    background: var(--inc-surface-canvas);
+    -webkit-font-smoothing: antialiased;
+}
+
+.inc-shell * { box-sizing: border-box; }
+
+.inc-container {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: var(--inc-s-8) var(--inc-s-8) var(--inc-s-16);
+}
+
+@media (max-width: 900px) {
+    .inc-container { padding: var(--inc-s-5) var(--inc-s-4) var(--inc-s-12); }
+}
+
+/* ---------- Page head ---------- */
+.inc-pagehead {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--inc-s-6);
+    margin-bottom: var(--inc-s-8);
+    flex-wrap: wrap;
+}
+
+.inc-pagehead__eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--inc-fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--inc-accent-500);
+    margin-bottom: var(--inc-s-2);
+}
+
+.inc-pagehead h1 {
+    font-size: var(--inc-fs-2xl);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    color: var(--inc-text-primary);
+}
+
+.inc-pagehead p {
+    font-size: var(--inc-fs-base);
+    color: var(--inc-text-secondary);
+    margin: 0;
+    max-width: 640px;
+}
+
+.inc-pagehead__actions { display: flex; gap: var(--inc-s-3); align-items: center; }
+
+/* ---------- Card base ---------- */
+.inc-card {
+    background: var(--inc-surface-raised);
+    border: 1px solid var(--inc-border);
+    border-radius: var(--inc-r-lg);
+    box-shadow: var(--inc-shadow-xs);
+    transition: box-shadow var(--inc-normal) var(--inc-ease), border-color var(--inc-normal) var(--inc-ease), transform var(--inc-normal) var(--inc-ease);
+}
+.inc-card--hover:hover {
+    box-shadow: var(--inc-shadow-md);
+    border-color: var(--inc-border-strong);
+    transform: translateY(-2px);
+}
+.inc-card--pad-sm { padding: var(--inc-s-4); }
+.inc-card--pad-md { padding: var(--inc-s-6); }
+.inc-card--pad-lg { padding: var(--inc-s-8); }
+
+/* ---------- Buttons ---------- */
+.inc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 38px;
+    padding: 0 var(--inc-s-4);
+    border-radius: var(--inc-r-md);
+    font-size: var(--inc-fs-sm);
+    font-weight: 600;
+    font-family: var(--inc-font);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all var(--inc-fast) var(--inc-ease);
+    white-space: nowrap;
+    line-height: 1;
+}
+.inc-btn .icon { width: 15px; height: 15px; }
+.inc-btn:active { transform: scale(0.97); }
+
+.inc-btn--primary {
+    background: linear-gradient(180deg, var(--inc-accent-500), var(--inc-accent-600));
+    color: white;
+    box-shadow: 0 1px 2px rgba(196,18,48,0.25), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.inc-btn--primary:hover { background: linear-gradient(180deg, var(--inc-accent-600), var(--inc-accent-700)); box-shadow: 0 4px 12px rgba(196,18,48,0.28); }
+
+.inc-btn--secondary {
+    background: var(--inc-surface);
+    color: var(--inc-text-primary);
+    border-color: var(--inc-border-strong);
+}
+.inc-btn--secondary:hover { background: var(--inc-n-50); border-color: var(--inc-n-300); }
+
+.inc-btn--ghost { background: transparent; color: var(--inc-text-secondary); }
+.inc-btn--ghost:hover { background: var(--inc-n-100); color: var(--inc-text-primary); }
+
+.inc-btn--danger-ghost { background: transparent; color: var(--inc-danger-500); }
+.inc-btn--danger-ghost:hover { background: var(--inc-danger-50); }
+
+.inc-btn--sm { height: 32px; padding: 0 var(--inc-s-3); font-size: var(--inc-fs-xs); }
+.inc-btn--lg { height: 44px; padding: 0 var(--inc-s-6); font-size: var(--inc-fs-base); }
+.inc-btn--icon { width: 38px; padding: 0; }
+.inc-btn--full { width: 100%; }
+.inc-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---------- Inputs ---------- */
+.inc-input, .inc-select, .inc-textarea {
+    width: 100%;
+    height: 40px;
+    padding: 0 var(--inc-s-4);
+    border-radius: var(--inc-r-md);
+    border: 1px solid var(--inc-border-strong);
+    background: var(--inc-surface);
+    font-family: var(--inc-font);
+    font-size: var(--inc-fs-sm);
+    color: var(--inc-text-primary);
+    transition: border-color var(--inc-fast), box-shadow var(--inc-fast);
+}
+.inc-textarea { height: auto; padding: var(--inc-s-3) var(--inc-s-4); resize: vertical; line-height: 1.6; }
+.inc-input:focus, .inc-select:focus, .inc-textarea:focus {
+    outline: none;
+    border-color: var(--inc-accent-500);
+    box-shadow: var(--inc-shadow-focus);
+}
+.inc-input::placeholder, .inc-textarea::placeholder { color: var(--inc-text-tertiary); }
+
+.inc-label {
+    display: block;
+    font-size: var(--inc-fs-xs);
+    font-weight: 700;
+    color: var(--inc-text-secondary);
+    margin-bottom: 7px;
+    letter-spacing: 0.01em;
+}
+
+/* ---------- Utility ---------- */
+.inc-scroll-fade { position: relative; }
+.inc-divider { height: 1px; background: var(--inc-border); border: none; margin: var(--inc-s-6) 0; }
+.inc-muted { color: var(--inc-text-tertiary); }
+.inc-flex { display: flex; align-items: center; }
+.inc-flex-between { display: flex; align-items: center; justify-content: space-between; }
+.inc-gap-2 { gap: var(--inc-s-2); }
+.inc-gap-3 { gap: var(--inc-s-3); }
+.inc-gap-4 { gap: var(--inc-s-4); }
+
+/* ---------- Animations ---------- */
+@keyframes incFadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes incFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes incScaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+}
+@keyframes incPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+.inc-anim-fade-up { animation: incFadeUp var(--inc-slow) var(--inc-ease) both; }
+.inc-anim-fade-in { animation: incFadeIn var(--inc-normal) var(--inc-ease) both; }
+.inc-anim-scale-in { animation: incScaleIn var(--inc-normal) var(--inc-ease) both; }
+
+/* ---------- Scrollbar ---------- */
+.inc-shell ::-webkit-scrollbar { width: 8px; height: 8px; }
+.inc-shell ::-webkit-scrollbar-thumb { background: var(--inc-n-300); border-radius: var(--inc-r-full); }
+.inc-shell ::-webkit-scrollbar-track { background: transparent; }
+
+components.css
+
+/* =========================================================================
+   Incidents — Componentes reutilizables:
+   Badges, Avatar, MetricCard, StatCard, SectionHeader, SearchBar, FilterBar,
+   IncidentCard, ArticleSuggestionCard, ActionToolbar, QuickActions
+   ========================================================================= */
+
+/* ---------- Status Badge ---------- */
+.inc-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 11px;
+    border-radius: var(--inc-r-full);
+    font-size: var(--inc-fs-2xs);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+.inc-badge .inc-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+.inc-badge--open        { background: var(--inc-info-50);    color: var(--inc-info-600); }
+.inc-badge--open .inc-dot        { background: var(--inc-info-500); }
+.inc-badge--progress     { background: var(--inc-warning-50); color: var(--inc-warning-600); }
+.inc-badge--progress .inc-dot    { background: var(--inc-warning-500); animation: incPulse 1.8s ease-in-out infinite; }
+.inc-badge--transferred  { background: var(--inc-violet-50);  color: var(--inc-violet-600); }
+.inc-badge--transferred .inc-dot { background: var(--inc-violet-500); }
+.inc-badge--resolved     { background: var(--inc-success-50); color: var(--inc-success-600); }
+.inc-badge--resolved .inc-dot    { background: var(--inc-success-500); }
+.inc-badge--closed       { background: var(--inc-n-100);      color: var(--inc-n-500); }
+.inc-badge--closed .inc-dot      { background: var(--inc-n-400); }
+
+/* ---------- Priority Badge ---------- */
+.inc-priority {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: var(--inc-r-sm);
+    font-size: var(--inc-fs-2xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.inc-priority--critica { background: var(--inc-danger-50); color: var(--inc-danger-600); }
+.inc-priority--alta    { background: var(--inc-warning-50); color: var(--inc-warning-600); }
+.inc-priority--media    { background: var(--inc-info-50); color: var(--inc-info-600); }
+.inc-priority--baja     { background: var(--inc-success-50); color: var(--inc-success-600); }
+.inc-priority__bars { display: flex; align-items: flex-end; gap: 1.5px; height: 10px; }
+.inc-priority__bars span { width: 2.5px; border-radius: 1px; background: currentColor; opacity: 0.35; }
+.inc-priority__bars span:nth-child(1) { height: 40%; }
+.inc-priority__bars span:nth-child(2) { height: 65%; }
+.inc-priority__bars span:nth-child(3) { height: 100%; }
+.inc-priority--critica .inc-priority__bars span,
+.inc-priority--alta .inc-priority__bars span:nth-child(-n+2) { opacity: 1; }
+.inc-priority--media .inc-priority__bars span:nth-child(-n+1) { opacity: 1; }
+
+/* ---------- Area Badge ---------- */
+.inc-area {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--inc-fs-xs);
+    font-weight: 600;
+    color: var(--inc-text-secondary);
+    padding: 4px 10px 4px 4px;
+    border-radius: var(--inc-r-full);
+    background: var(--inc-surface-sunken);
+    border: 1px solid var(--inc-border);
+}
+.inc-area__icon {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--inc-n-800);
+    color: white;
+    flex-shrink: 0;
+}
+.inc-area__icon .icon { width: 11px; height: 11px; }
+
+/* ---------- User Avatar ---------- */
+.inc-avatar {
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: white;
+    flex-shrink: 0;
+    font-family: var(--inc-font);
+    letter-spacing: -0.02em;
+}
+.inc-avatar--xs { width: 22px; height: 22px; font-size: 9px; }
+.inc-avatar--sm { width: 28px; height: 28px; font-size: 10.5px; }
+.inc-avatar--md { width: 36px; height: 36px; font-size: 13px; }
+.inc-avatar--lg { width: 48px; height: 48px; font-size: 16px; }
+.inc-avatar--xl { width: 64px; height: 64px; font-size: 22px; }
+.inc-avatar-group { display: flex; }
+.inc-avatar-group .inc-avatar { border: 2px solid var(--inc-surface); margin-left: -8px; }
+.inc-avatar-group .inc-avatar:first-child { margin-left: 0; }
+
+/* ---------- Metric Card (dashboard KPI) ---------- */
+.inc-metric {
+    padding: var(--inc-s-6);
+    position: relative;
+    overflow: hidden;
+}
+.inc-metric__top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--inc-s-4); }
+.inc-metric__icon {
+    width: 40px; height: 40px;
+    border-radius: var(--inc-r-md);
+    display: flex; align-items: center; justify-content: center;
+}
+.inc-metric__icon .icon { width: 19px; height: 19px; }
+.inc-metric__trend {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: var(--inc-fs-2xs); font-weight: 700;
+    padding: 3px 8px; border-radius: var(--inc-r-full);
+}
+.inc-metric__trend--up { background: var(--inc-success-50); color: var(--inc-success-600); }
+.inc-metric__trend--down { background: var(--inc-danger-50); color: var(--inc-danger-600); }
+.inc-metric__trend .icon { width: 11px; height: 11px; }
+.inc-metric__value { font-size: var(--inc-fs-2xl); font-weight: 800; letter-spacing: -0.03em; color: var(--inc-text-primary); line-height: 1; margin-bottom: 6px; }
+.inc-metric__label { font-size: var(--inc-fs-sm); color: var(--inc-text-secondary); font-weight: 600; }
+.inc-metric__sub { font-size: var(--inc-fs-xs); color: var(--inc-text-tertiary); margin-top: 4px; }
+
+/* ---------- Stat Card (small, compact) ---------- */
+.inc-stat {
+    display: flex;
+    align-items: center;
+    gap: var(--inc-s-4);
+    padding: var(--inc-s-5);
+}
+.inc-stat__icon {
+    width: 44px; height: 44px; flex-shrink: 0;
+    border-radius: var(--inc-r-md);
+    display: flex; align-items: center; justify-content: center;
+}
+.inc-stat__icon .icon { width: 20px; height: 20px; }
+.inc-stat__value { font-size: var(--inc-fs-lg); font-weight: 800; color: var(--inc-text-primary); line-height: 1.1; }
+.inc-stat__label { font-size: var(--inc-fs-xs); color: var(--inc-text-tertiary); font-weight: 600; margin-top: 2px; }
+
+/* ---------- Section Header ---------- */
+.inc-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--inc-s-4);
+}
+.inc-section-head__title {
+    display: flex; align-items: center; gap: 9px;
+    font-size: var(--inc-fs-md);
+    font-weight: 700;
+    color: var(--inc-text-primary);
+    letter-spacing: -0.01em;
+}
+.inc-section-head__title .icon { width: 17px; height: 17px; color: var(--inc-accent-500); }
+.inc-section-head__sub { font-size: var(--inc-fs-xs); color: var(--inc-text-tertiary); margin-top: 3px; font-weight: 500; }
+.inc-section-head__link {
+    font-size: var(--inc-fs-xs);
+    font-weight: 700;
+    color: var(--inc-accent-500);
+    display: inline-flex; align-items: center; gap: 4px;
+}
+.inc-section-head__link .icon { width: 13px; height: 13px; transition: transform var(--inc-fast); }
+.inc-section-head__link:hover .icon { transform: translateX(2px); }
+
+/* ---------- Search Bar ---------- */
+.inc-searchbar {
+    position: relative;
+    flex: 1;
+    min-width: 240px;
+}
+.inc-searchbar .icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; color: var(--inc-text-tertiary);
+    pointer-events: none;
+}
+.inc-searchbar input {
+    width: 100%; height: 42px;
+    padding: 0 var(--inc-s-4) 0 40px;
+    border-radius: var(--inc-r-md);
+    border: 1px solid var(--inc-border-strong);
+    background: var(--inc-surface);
+    font-size: var(--inc-fs-sm);
+    font-family: var(--inc-font);
+    transition: all var(--inc-fast);
+}
+.inc-searchbar input:focus { outline: none; border-color: var(--inc-accent-500); box-shadow: var(--inc-shadow-focus); }
+.inc-searchbar__kbd {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 10px; font-weight: 700; color: var(--inc-text-tertiary);
+    background: var(--inc-n-100); border: 1px solid var(--inc-border);
+    padding: 2px 6px; border-radius: 4px;
+}
+
+/* ---------- Filter Bar ---------- */
+.inc-filterbar {
+    display: flex;
+    align-items: center;
+    gap: var(--inc-s-3);
+    flex-wrap: wrap;
+    padding: var(--inc-s-4);
+    margin-bottom: var(--inc-s-5);
+}
+.inc-filter-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 var(--inc-s-3);
+    border-radius: var(--inc-r-md);
+    border: 1px solid var(--inc-border-strong);
+    background: var(--inc-surface);
+    font-size: var(--inc-fs-xs); font-weight: 600;
+    color: var(--inc-text-secondary);
+    cursor: pointer;
+    transition: all var(--inc-fast);
+}
+.inc-filter-chip .icon { width: 13px; height: 13px; }
+.inc-filter-chip:hover { border-color: var(--inc-n-300); color: var(--inc-text-primary); }
+.inc-filter-chip--active { background: var(--inc-n-900); border-color: var(--inc-n-900); color: white; }
+.inc-filter-chip__count {
+    background: rgba(255,255,255,0.2);
+    border-radius: var(--inc-r-full);
+    font-size: 10px;
+    padding: 1px 6px;
+}
+.inc-filter-chip--active .inc-filter-chip__count { background: rgba(255,255,255,0.25); }
+.inc-filterbar__spacer { flex: 1; }
+.inc-view-toggle { display: flex; border: 1px solid var(--inc-border-strong); border-radius: var(--inc-r-md); overflow: hidden; }
+.inc-view-toggle button {
+    width: 36px; height: 34px; display: flex; align-items: center; justify-content: center;
+    background: var(--inc-surface); color: var(--inc-text-tertiary); border: none; cursor: pointer;
+    transition: all var(--inc-fast);
+}
+.inc-view-toggle button + button { border-left: 1px solid var(--inc-border-strong); }
+.inc-view-toggle button.active { background: var(--inc-n-900); color: white; }
+.inc-view-toggle .icon { width: 15px; height: 15px; }
+
+/* ---------- Incident Card ---------- */
+.inc-incident-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--inc-s-3);
+    padding: var(--inc-s-5);
+    cursor: pointer;
+    position: relative;
+}
+.inc-incident-card::before {
+    content: "";
+    position: absolute; left: 0; top: var(--inc-s-3); bottom: var(--inc-s-3);
+    width: 3px; border-radius: var(--inc-r-full);
+    background: var(--inc-border);
+    transition: background var(--inc-fast);
+}
+.inc-incident-card--critica::before { background: var(--inc-danger-500); }
+.inc-incident-card--alta::before { background: var(--inc-warning-500); }
+.inc-incident-card--media::before { background: var(--inc-info-500); }
+.inc-incident-card--baja::before { background: var(--inc-success-500); }
+
+.inc-incident-card__top { display: flex; align-items: center; justify-content: space-between; gap: var(--inc-s-3); }
+.inc-incident-card__id { font-family: var(--inc-font-mono); font-size: var(--inc-fs-xs); font-weight: 700; color: var(--inc-text-tertiary); }
+.inc-incident-card__title { font-size: var(--inc-fs-base); font-weight: 700; color: var(--inc-text-primary); line-height: 1.4; margin: 0; }
+.inc-incident-card__desc { font-size: var(--inc-fs-xs); color: var(--inc-text-secondary); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.inc-incident-card__badges { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.inc-incident-card__footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: var(--inc-s-3); margin-top: var(--inc-s-1);
+    border-top: 1px solid var(--inc-border);
+}
+.inc-incident-card__meta { display: flex; align-items: center; gap: var(--inc-s-3); }
+.inc-incident-card__meta-item { display: flex; align-items: center; gap: 5px; font-size: var(--inc-fs-2xs); font-weight: 600; color: var(--inc-text-tertiary); }
+.inc-incident-card__meta-item .icon { width: 12px; height: 12px; }
+.inc-incident-card__sla { display: flex; align-items: center; gap: 5px; font-size: var(--inc-fs-2xs); font-weight: 700; }
+.inc-incident-card__sla--ok { color: var(--inc-success-600); }
+.inc-incident-card__sla--warn { color: var(--inc-warning-600); }
+.inc-incident-card__sla--over { color: var(--inc-danger-600); }
+.inc-incident-card__sla .icon { width: 12px; height: 12px; }
+
+/* ---------- Article Suggestion Card ---------- */
+.inc-article-suggestion {
+    display: flex;
+    gap: var(--inc-s-3);
+    padding: var(--inc-s-3);
+    border-radius: var(--inc-r-md);
+    transition: background var(--inc-fast);
+    cursor: pointer;
+}
+.inc-article-suggestion:hover { background: var(--inc-surface-sunken); }
+.inc-article-suggestion__icon {
+    width: 34px; height: 34px; flex-shrink: 0;
+    border-radius: var(--inc-r-sm);
+    background: var(--inc-info-50); color: var(--inc-info-600);
+    display: flex; align-items: center; justify-content: center;
+}
+.inc-article-suggestion__icon .icon { width: 15px; height: 15px; }
+.inc-article-suggestion__title { font-size: var(--inc-fs-xs); font-weight: 700; color: var(--inc-text-primary); line-height: 1.4; margin-bottom: 2px; }
+.inc-article-suggestion__desc { font-size: 11px; color: var(--inc-text-tertiary); line-height: 1.5; }
+.inc-article-suggestion__arrow { color: var(--inc-text-tertiary); flex-shrink: 0; align-self: center; opacity: 0; transition: all var(--inc-fast); transform: translateX(-4px); }
+.inc-article-suggestion:hover .inc-article-suggestion__arrow { opacity: 1; transform: translateX(0); color: var(--inc-accent-500); }
+.inc-article-suggestion__arrow .icon { width: 14px; height: 14px; }
+
+/* ---------- Action Toolbar ---------- */
+.inc-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--inc-s-2);
+    padding: var(--inc-s-3);
+    background: var(--inc-surface);
+    border: 1px solid var(--inc-border);
+    border-radius: var(--inc-r-lg);
+    box-shadow: var(--inc-shadow-sm);
+}
+.inc-toolbar__group { display: flex; align-items: center; gap: 4px; padding-right: var(--inc-s-2); border-right: 1px solid var(--inc-border); }
+.inc-toolbar__group:last-child { border-right: none; padding-right: 0; }
+
+/* ---------- Quick Actions ---------- */
+.inc-quick-actions { display: flex; flex-wrap: wrap; gap: var(--inc-s-2); }
+.inc-quick-action {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 14px;
+    border-radius: var(--inc-r-full);
+    border: 1px solid var(--inc-border-strong);
+    background: var(--inc-surface);
+    font-size: var(--inc-fs-xs);
+    font-weight: 700;
+    color: var(--inc-text-primary);
+    cursor: pointer;
+    transition: all var(--inc-fast);
+}
+.inc-quick-action:hover { border-color: var(--inc-n-900); background: var(--inc-n-900); color: white; transform: translateY(-1px); box-shadow: var(--inc-shadow-sm); }
+.inc-quick-action .icon { width: 14px; height: 14px; }
+
+/* ---------- Skeleton shimmer (para demostrar estado de carga) ---------- */
+@keyframes incShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.inc-skeleton {
+    background: linear-gradient(90deg, var(--inc-n-100) 25%, var(--inc-n-150) 37%, var(--inc-n-100) 63%);
+    background-size: 400% 100%;
+    animation: incShimmer 1.6s ease infinite;
+    border-radius: var(--inc-r-sm);
+}
+
+dashboard.css
+
+/* =========================================================================
+   Incidents — Dashboard
+   ========================================================================= */
+
+.inc-dash-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--inc-s-5);
+    margin-bottom: var(--inc-s-6);
+}
+
+.inc-dash-body {
+    display: grid;
+    grid-template-columns: 2.1fr 1fr;
+    gap: var(--inc-s-6);
+    align-items: start;
+}
+
+/* ---------- Chart: Donut (CSS conic-gradient, 100% estático) ---------- */
+.inc-donut-wrap { display: flex; align-items: center; gap: var(--inc-s-6); padding: var(--inc-s-2) 0; }
+.inc-donut {
+    width: 148px; height: 148px;
+    border-radius: 50%;
+    background: conic-gradient(
+        var(--inc-danger-500) 0% 18%,
+        var(--inc-warning-500) 18% 46%,
+        var(--inc-info-500) 46% 78%,
+        var(--inc-success-500) 78% 100%
+    );
+    position: relative;
+    flex-shrink: 0;
+    animation: incScaleIn var(--inc-slow) var(--inc-ease) both;
+}
+.inc-donut::after {
+    content: "";
+    position: absolute; inset: 22px;
+    background: var(--inc-surface-raised);
+    border-radius: 50%;
+}
+.inc-donut__center {
+    position: absolute; inset: 22px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 1;
+}
+.inc-donut__center strong { font-size: var(--inc-fs-xl); font-weight: 800; color: var(--inc-text-primary); line-height: 1; }
+.inc-donut__center span { font-size: 10px; color: var(--inc-text-tertiary); font-weight: 700; text-transform: uppercase; margin-top: 3px; }
+
+.inc-legend { display: flex; flex-direction: column; gap: var(--inc-s-3); flex: 1; }
+.inc-legend__row { display: flex; align-items: center; gap: var(--inc-s-2); }
+.inc-legend__dot { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.inc-legend__label { font-size: var(--inc-fs-xs); font-weight: 600; color: var(--inc-text-secondary); flex: 1; }
+.inc-legend__value { font-size: var(--inc-fs-xs); font-weight: 800; color: var(--inc-text-primary); }
+
+/* ---------- Chart: Bars (estático) ---------- */
+.inc-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--inc-s-4);
+    height: 180px;
+    padding: 0 var(--inc-s-2);
+}
+.inc-bars__col { display: flex; flex-direction: column; align-items: center; gap: var(--inc-s-2); flex: 1; height: 100%; justify-content: flex-end; }
+.inc-bars__track { width: 100%; max-width: 34px; display: flex; flex-direction: column-reverse; border-radius: 8px 8px 4px 4px; overflow: hidden; }
+.inc-bars__seg { width: 100%; }
+.inc-bars__label { font-size: 10.5px; font-weight: 700; color: var(--inc-text-tertiary); text-transform: uppercase; }
+.inc-bars__value { font-size: var(--inc-fs-xs); font-weight: 800; color: var(--inc-text-primary); }
+
+/* ---------- Chart: Line sparkline (SVG estático) ---------- */
+.inc-sparkline { width: 100%; height: 90px; }
+.inc-sparkline path.fill { fill: url(#incSparkGradient); opacity: 0.5; }
+.inc-sparkline path.line { fill: none; stroke: var(--inc-accent-500); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.inc-sparkline circle { fill: var(--inc-accent-500); stroke: var(--inc-surface); stroke-width: 2; }
+
+/* ---------- Área más ocupada ---------- */
+.inc-area-load { display: flex; flex-direction: column; gap: var(--inc-s-4); }
+.inc-area-load__row { display: flex; align-items: center; gap: var(--inc-s-3); }
+.inc-area-load__icon {
+    width: 36px; height: 36px; border-radius: var(--inc-r-md); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--inc-n-900); color: white;
+}
+.inc-area-load__icon .icon { width: 16px; height: 16px; }
+.inc-area-load__info { flex: 1; min-width: 0; }
+.inc-area-load__top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.inc-area-load__name { font-size: var(--inc-fs-xs); font-weight: 700; color: var(--inc-text-primary); }
+.inc-area-load__count { font-size: var(--inc-fs-2xs); font-weight: 700; color: var(--inc-text-tertiary); }
+.inc-area-load__bar { height: 6px; border-radius: var(--inc-r-full); background: var(--inc-n-100); overflow: hidden; }
+.inc-area-load__fill { height: 100%; border-radius: var(--inc-r-full); background: linear-gradient(90deg, var(--inc-accent-500), var(--inc-accent-700)); }
+
+/* ---------- Feed de actividad reciente ---------- */
+.inc-feed { display: flex; flex-direction: column; }
+.inc-feed__item {
+    display: flex; gap: var(--inc-s-3);
+    padding: var(--inc-s-3) 0;
+    border-bottom: 1px solid var(--inc-border);
+}
+.inc-feed__item:last-child { border-bottom: none; padding-bottom: 0; }
+.inc-feed__icon {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+}
+.inc-feed__icon .icon { width: 13px; height: 13px; }
+.inc-feed__text { font-size: var(--inc-fs-xs); color: var(--inc-text-primary); line-height: 1.5; }
+.inc-feed__text strong { font-weight: 700; }
+.inc-feed__time { font-size: 10.5px; color: var(--inc-text-tertiary); font-weight: 600; margin-top: 2px; }
+
+/* ---------- Responsables destacados ---------- */
+.inc-responsibles { display: flex; flex-direction: column; gap: var(--inc-s-3); }
+.inc-responsible-row { display: flex; align-items: center; gap: var(--inc-s-3); }
+.inc-responsible-row__info { flex: 1; min-width: 0; }
+.inc-responsible-row__name { font-size: var(--inc-fs-xs); font-weight: 700; color: var(--inc-text-primary); }
+.inc-responsible-row__role { font-size: 11px; color: var(--inc-text-tertiary); }
+.inc-responsible-row__stat { text-align: right; }
+.inc-responsible-row__stat strong { display: block; font-size: var(--inc-fs-sm); font-weight: 800; color: var(--inc-text-primary); }
+.inc-responsible-row__stat span { font-size: 10px; color: var(--inc-text-tertiary); font-weight: 600; }
+
+@media (max-width: 1200px) {
+    .inc-dash-grid { grid-template-columns: repeat(2, 1 ); }
+    .inc-dash-body { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+    .inc-dash-grid { grid-template-columns: 1fr; }
+}
+
+list.css
+
+/* =========================================================================
+   Incidents — Lista
+   ========================================================================= */
+
+.inc-list-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--inc-s-4);
+}
+
+.inc-list-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+.inc-list-table thead th {
+    text-align: left;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--inc-text-tertiary);
+    padding: 0 var(--inc-s-4) var(--inc-s-3);
+    border-bottom: 1px solid var(--inc-border);
+}
+.inc-list-table tbody tr {
+    transition: background var(--inc-fast);
+    cursor: pointer;
+}
+.inc-list-table tbody tr:hover { background: var(--inc-surface-sunken); }
+.inc-list-table tbody td {
+    padding: var(--inc-s-4);
+    border-bottom: 1px solid var(--inc-border);
+    font-size: var(--inc-fs-xs);
+    vertical-align: middle;
+}
+.inc-list-table tbody tr:last-child td { border-bottom: none; }
+.inc-list-table__id { font-family: var(--inc-font-mono); font-weight: 700; color: var(--inc-text-tertiary); }
+.inc-list-table__title { font-weight: 700; color: var(--inc-text-primary); }
+.inc-list-table__title-sub { font-weight: 500; color: var(--inc-text-tertiary); font-size: 11px; margin-top: 2px; }
+
+.inc-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: var(--inc-s-16) var(--inc-s-6);
+    gap: var(--inc-s-3);
+}
+.inc-empty-state__icon {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: var(--inc-surface-sunken);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--inc-text-tertiary);
+    margin-bottom: var(--inc-s-2);
+}
+.inc-empty-state__icon .icon { width: 28px; height: 28px; }
+.inc-empty-state h3 { font-size: var(--inc-fs-md); font-weight: 700; color: var(--inc-text-primary); margin: 0; }
+.inc-empty-state p { font-size: var(--inc-fs-sm); color: var(--inc-text-tertiary); margin: 0; max-width: 320px; }
+
+@media (max-width: 1100px) {
+    .inc-list-grid { grid-template-columns: 1fr; }
+}
+
+wizard.css
+
+/* =========================================================================
+   Incidents — Wizard de creación (guiado por pasos)
+   ========================================================================= */
+
+.inc-wizard {
+    max-width: 760px;
+    margin: 0 auto;
+}
+
+.inc-wizard-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: var(--inc-s-10);
+}
+.inc-wizard-step {
+    display: flex;
+    align-items: center;
+    gap: var(--inc-s-3);
+}
+.inc-wizard-step__circle {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: var(--inc-fs-sm); font-weight: 800;
+    border: 2px solid var(--inc-border-strong);
+    background: var(--inc-surface);
+    color: var(--inc-text-tertiary);
+    transition: all var(--inc-normal) var(--inc-ease);
+    flex-shrink: 0;
+}
+.inc-wizard-step__circle .icon { width: 16px; height: 16px; }
+.inc-wizard-step--done .inc-wizard-step__circle { background: var(--inc-success-500); border-color: var(--inc-success-500); color: white; }
+.inc-wizard-step--active .inc-wizard-step__circle { background: var(--inc-accent-500); border-color: var(--inc-accent-500); color: white; box-shadow: 0 0 0 5px var(--inc-accent-50); }
+.inc-wizard-step__label { font-size: var(--inc-fs-xs); font-weight: 700; color: var(--inc-text-tertiary); white-space: nowrap; }
+.inc-wizard-step--active .inc-wizard-step__label, .inc-wizard-step--done .inc-wizard-step__label { color: var(--inc-text-primary); }
+.inc-wizard-connector { width: 56px; height: 2px; background: var(--inc-border-strong); margin: 0 var(--inc-s-2); transition: background var(--inc-normal); }
+.inc-wizard-connector--done { background: var(--inc-success-500); }
+
+.inc-wizard-panel {
+    padding: var(--inc-s-10);
+    animation: incFadeUp var(--inc-normal) var(--inc-ease) both;
+}
+.inc-wizard-panel__head { text-align: center; margin-bottom: var(--inc-s-8); }
+.inc-wizard-panel__head h2 { font-size: var(--inc-fs-xl); font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px; }
+.inc-wizard-panel__head p { font-size: var(--inc-fs-sm); color: var(--inc-text-secondary); margin: 0; }
+
+.inc-wizard-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--inc-s-5); }
+
+.inc-option-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--inc-s-3); }
+.inc-option-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--inc-s-2);
+    text-align: center;
+    padding: var(--inc-s-5) var(--inc-s-3);
+    border-radius: var(--inc-r-lg);
+    border: 1.5px solid var(--inc-border);
+    background: var(--inc-surface);
+    cursor: pointer;
+    transition: all var(--inc-fast) var(--inc-ease);
+}
+.inc-option-card:hover { border-color: var(--inc-n-300); transform: translateY(-2px); box-shadow: var(--inc-shadow-sm); }
+.inc-option-card--selected { border-color: var(--inc-accent-500); background: var(--inc-accent-50); box-shadow: 0 0 0 3px rgba(196,18,48,0.08); }
+.inc-option-card__icon {
+    width: 42px; height: 42px; border-radius: var(--inc-r-md);
+    display: flex; align-items: center; justify-content: center;
+    background: var(--inc-n-900); color: white;
+    transition: all var(--inc-fast);
+}
+.inc-option-card--selected .inc-option-card__icon { background: var(--inc-accent-500); }
+.inc-option-card__icon .icon { width: 19px; height: 19px; }
+.inc-option-card__title { font-size: var(--inc-fs-xs); font-weight: 700; color: var(--inc-text-primary); }
+.inc-option-card__desc { font-size: 10.5px; color: var(--inc-text-tertiary); line-height: 1.5; }
+
+.inc-priority-select { display: flex; gap: var(--inc-s-3); }
+.inc-priority-option {
+    flex: 1; text-align: center;
+    padding: var(--inc-s-4) var(--inc-s-2);
+    border-radius: var(--inc-r-md);
+    border: 1.5px solid var(--inc-border);
+    cursor: pointer;
+    transition: all var(--inc-fast);
+}
+.inc-priority-option:hover { transform: translateY(-2px); }
+.inc-priority-option--selected { border-color: currentColor; box-shadow: 0 0 0 3px currentColor; }
+.inc-priority-option .inc-priority__bars { justify-content: center; margin: 0 auto 8px; }
+.inc-priority-option__label { font-size: var(--inc-fs-2xs); font-weight: 800; text-transform: uppercase; }
+
+.inc-responsible-list { display: flex; flex-direction: column; gap: var(--inc-s-2); }
+.inc-responsible-option {
+    display: flex; align-items: center; gap: var(--inc-s-3);
+    padding: var(--inc-s-3) var(--inc-s-4);
+    border-radius: var(--inc-r-md);
+    border: 1.5px solid var(--inc-border);
+    cursor: pointer;
+    transition: all var(--inc-fast);
+}
+.inc-responsible-option:hover { border-color: var(--inc-n-300); background: var(--inc-surface-sunken); }
+.inc-responsible-option--selected { border-color: var(--inc-accent-500); background: var(--inc-accent-50); }
+.inc-responsible-option__info { flex: 1; }
+.inc-responsible-option__name { font-size: var(--inc-fs-xs); font-weight: 700; color: var(--inc-text-primary); }
+.inc-responsible-option__role { font-size: 11px; color: var(--inc-text-tertiary); }
+.inc-responsible-option__load { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: var(--inc-r-full); background: var(--inc-n-100); color: var(--inc-text-secondary); }
+.inc-responsible-option__check {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 1.5px solid var(--inc-border-strong);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all var(--inc-fast);
+}
+.inc-responsible-option__check .icon { width: 11px; height: 11px; color: white; opacity: 0; transition: opacity var(--inc-fast); }
+.inc-responsible-option--selected .inc-responsible-option__check { background: var(--inc-accent-500); border-color: var(--inc-accent-500); }
+.inc-responsible-option--selected .inc-responsible-option__check .icon { opacity: 1; }
+
+.inc-summary-review { display: flex; flex-direction: column; gap: 0; }
+.inc-summary-row { display: flex; align-items: center; justify-content: space-between; padding: var(--inc-s-3) 0; border-bottom: 1px solid var(--inc-border); }
+.inc-summary-row:last-child { border-bottom: none; }
+.inc-summary-row__label { font-size: var(--inc-fs-xs); color: var(--inc-text-tertiary); font-weight: 600; }
+.inc-summary-row__value { font-size: var(--inc-fs-xs); color: var(--inc-text-primary); font-weight: 700; text-align: right; }
+
+.inc-wizard-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--inc-s-8);
+    padding-top: var(--inc-s-6);
+    border-top: 1px solid var(--inc-border);
+}
+.inc-wizard-footer__progress { font-size: var(--inc-fs-2xs); font-weight: 700; color: var(--inc-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.inc-success-check {
+    width: 76px; height: 76px; border-radius: 50%;
+    background: var(--inc-success-50);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto var(--inc-s-5);
+    animation: incScaleIn var(--inc-slow) var(--inc-ease) both;
+}
+.inc-success-check .icon { width: 34px; height: 34px; color: var(--inc-success-500); }
+
+@media (max-width: 720px) {
+    .inc-wizard-field-grid, .inc-option-grid { grid-template-columns: 1fr; }
+    .inc-wizard-panel { padding: var(--inc-s-6) var(--inc-s-4); }
+    .inc-wizard-step__label { display: none; }
+    .inc-wizard-connector { width: 24px; }
+}
+
+detail.css
+
+/* =========================================================================
+   Incidents — Detalle de incidencia (header, timeline, actividad, comments)
+   ========================================================================= */
+
+.inc-detail-grid {
+    display: grid;
+    grid-template-columns: 2.2fr 1fr;
+    gap: var(--inc-s-6);
+    align-items: start;
+}
+
+/* ---------- Header ---------- */
+.inc-detail-header {
+    padding: var(--inc-s-6) var(--inc-s-8);
+    background: linear-gradient(135deg, var(--inc-n-900) 0%, #2a2e37 100%);
+    border-radius: var(--inc-r-xl);
+    color: white;
+    margin-bottom: var(--inc-s-6);
+    position: relative;
+    overflow: hidden;
+}
+.inc-detail-header::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(600px circle at 90% -10%, rgba(196,18,48,0.35), transparent 60%);
+    pointer-events: none;
+}
+.inc-detail-header__top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--inc-s-5); position: relative; margin-bottom: var(--inc-s-5); }
+.inc-detail-header__id { font-family: var(--inc-font-mono); font-size: var(--inc-fs-xs); font-weight: 700; color: rgba(255,255,255,0.55); margin-bottom: 8px; }
+.inc-detail-header__title { font-size: var(--inc-fs-xl); font-weight: 800; letter-spacing: -0.02em; margin: 0 0 var(--inc-s-3); max-width: 620px; }
+.inc-detail-header__badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.inc-detail-header__badges .inc-badge, .inc-detail-header__badges .inc-priority { border: 1px solid rgba(255,255,255,0.14); }
+
+.inc-detail-header__meta { display: flex; gap: var(--inc-s-8); flex-wrap: wrap; position: relative; padding-top: var(--inc-s-5); border-top: 1px solid rgba(255,255,255,0.12); }
+.inc-detail-header__meta-item { display: flex; flex-direction: column; gap: 4px; }
+.inc-detail-header__meta-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.45); }
+.inc-detail-header__meta-value { font-size: var(--inc-fs-sm); font-weight: 700; color: white; display: flex; align-items: center; gap: 6px; }
+.inc-detail-header__meta-value .icon { width: 14px; height: 14px; opacity: 0.7; }
+
+/* ---------- Time metrics strip ---------- */
+.inc-time-strip {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--inc-s-4);
+    margin-bottom: var(--inc-s-6);
+}
+.inc-time-metric { padding: var(--inc-s-5); text-align: center; }
+.inc-time-metric__icon {
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto var(--inc-s-3);
+}
+.inc-time-metric__icon .icon { width: 17px; height: 17px; }
+.inc-time-metric__value { font-size: var(--inc-fs-lg); font-weight: 800; color: var(--inc-text-primary); line-height: 1; }
+.inc-time-metric__label { font-size: 10.5px; font-weight: 700; color: var(--inc-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 6px; }
+
+/* ---------- TIMELINE (lo más importante) ---------- */
+.inc-timeline {
+    position: relative;
+    padding: var(--inc-s-4) 0 var(--inc-s-2);
+}
+.inc-timeline::before {
+    content: "";
+    position: absolute;
+    left: 27px; top: 8px; bottom: 8px;
+    width: 2px;
+    background: linear-gradient(var(--inc-border-strong), var(--inc-border-strong));
+    background-size: 2px 10px;
+    background-repeat: repeat-y;
+    -webkit-mask-image: linear-gradient(black, black);
+}
+
+.inc-timeline-node {
+    display: flex;
+    gap: var(--inc-s-5);
+    position: relative;
+    padding-bottom: var(--inc-s-6);
+    animation: incFadeUp var(--inc-normal) var(--inc-ease) both;
+}
+.inc-timeline-node:last-child { padding-bottom: 0; }
+
+.inc-timeline-node__marker {
+    width: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+}
+.inc-timeline-node__avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 14px; color: white;
+    border: 3px solid var(--inc-surface-canvas);
+    box-shadow: var(--inc-shadow-sm);
+}
+
+.inc-timeline-node__card {
+    flex: 1;
+    background: var(--inc-surface-raised);
+    border: 1px solid var(--inc-border);
+    border-radius: var(--inc-r-lg);
+    padding: var(--inc-s-5);
+    transition: box-shadow var(--inc-normal), border-color var(--inc-normal);
+}
+.inc-timeline-node__card:hover { box-shadow: var(--inc-shadow-sm); border-color: var(--inc-border-strong); }
+
+.inc-timeline-node__head { display: flex; align-items: center; justify-content: space-between; gap: var(--inc-s-3); margin-bottom: var(--inc-s-2); flex-wrap: wrap; }
+.inc-timeline-node__actor { font-size: var(--inc-fs-sm); font-weight: 700; color: var(--inc-text-primary); }
+.inc-timeline-node__time { font-size: 10.5px; font-weight: 600; color: var(--inc-text-tertiary); }
+.inc-timeline-node__desc { font-size: var(--inc-fs-xs); color: var(--inc-text-secondary); line-height: 1.6; margin-bottom: var(--inc-s-3); }
+
+.inc-timeline-node__flow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-top: var(--inc-s-3);
+    border-top: 1px dashed var(--inc-border);
+}
+.inc-flow-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border-radius: var(--inc-r-full);
+    background: var(--inc-surface-sunken);
+    border: 1px solid var(--inc-border);
+    font-size: var(--inc-fs-2xs);
+    font-weight: 700;
+    color: var(--inc-text-secondary);
+}
+.inc-flow-pill .icon { width: 12px; height: 12px; }
+.inc-flow-arrow { color: var(--inc-text-tertiary); flex-shrink: 0; }
+.inc-flow-arrow .icon { width: 15px; height: 15px; }
+.inc-flow-duration {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: var(--inc-fs-2xs); font-weight: 800;
+    color: var(--inc-accent-600);
+    background: var(--inc-accent-50);
+    padding: 6px 12px;
+    border-radius: var(--inc-r-full);
+}
+.inc-flow-duration .icon { width: 12px; height: 12px; }
+
+.inc-timeline-node--transfer .inc-timeline-node__avatar { background: var(--inc-violet-500); }
+.inc-timeline-node--created .inc-timeline-node__avatar { background: var(--inc-info-500); }
+.inc-timeline-node--progress .inc-timeline-node__avatar { background: var(--inc-warning-500); }
+.inc-timeline-node--comment .inc-timeline-node__avatar { background: var(--inc-n-500); }
+.inc-timeline-node--resolved .inc-timeline-node__avatar { background: var(--inc-success-500); }
+
+.inc-timeline-node__type-icon {
+    position: absolute; bottom: -3px; right: -3px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--inc-surface-raised);
+    border: 2px solid var(--inc-surface-canvas);
+    display: flex; align-items: center; justify-content: center;
+}
+.inc-timeline-node__type-icon .icon { width: 9px; height: 9px; }
+
+/* ---------- Actividad / Comentarios ---------- */
+.inc-tabs { display: flex; gap: var(--inc-s-1); margin-bottom: var(--inc-s-5); border-bottom: 1px solid var(--inc-border); }
+.inc-tabs__btn {
+    display: flex; align-items: center; gap: 7px;
+    padding: var(--inc-s-3) var(--inc-s-4);
+    font-size: var(--inc-fs-xs); font-weight: 700;
+    color: var(--inc-text-tertiary);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+    transition: all var(--inc-fast);
+    background: none; border-top: none; border-left: none; border-right: none;
+}
+.inc-tabs__btn .icon { width: 14px; height: 14px; }
+.inc-tabs__btn:hover { color: var(--inc-text-primary); }
+.inc-tabs__btn--active { color: var(--inc-accent-500); border-bottom-color: var(--inc-accent-500); }
+.inc-tabs__badge { background: var(--inc-n-100); color: var(--inc-text-secondary); font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: var(--inc-r-full); }
+.inc-tabs__btn--active .inc-tabs__badge { background: var(--inc-accent-50); color: var(--inc-accent-600); }
+
+.inc-comment { display: flex; gap: var(--inc-s-3); padding: var(--inc-s-4) 0; border-bottom: 1px solid var(--inc-border); }
+.inc-comment:last-child { border-bottom: none; }
+.inc-comment__body { flex: 1; }
+.inc-comment__head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.inc-comment__author { font-size: var(--inc-fs-xs); font-weight: 700; color: var(--inc-text-primary); }
+.inc-comment__time { font-size: 10.5px; color: var(--inc-text-tertiary); font-weight: 600; }
+.inc-comment__text { font-size: var(--inc-fs-xs); color: var(--inc-text-secondary); line-height: 1.65; }
+.inc-comment__actions { display: flex; gap: var(--inc-s-4); margin-top: 8px; }
+.inc-comment__action { display: flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; color: var(--inc-text-tertiary); cursor: pointer; }
+.inc-comment__action:hover { color: var(--inc-accent-500); }
+.inc-comment__action .icon { width: 12px; height: 12px; }
+
+.inc-composer { display: flex; gap: var(--inc-s-3); padding-top: var(--inc-s-4); border-top: 1px solid var(--inc-border); margin-top: var(--inc-s-2); }
+.inc-composer__box { flex: 1; }
+.inc-composer textarea { min-height: 70px; }
+.inc-composer__actions { display: flex; justify-content: flex-end; margin-top: var(--inc-s-2); }
+
+/* ---------- Files ---------- */
+.inc-file-chip {
+    display: flex; align-items: center; gap: var(--inc-s-3);
+    padding: var(--inc-s-3);
+    border: 1px solid var(--inc-border);
+    border-radius: var(--inc-r-md);
+    transition: border-color var(--inc-fast), background var(--inc-fast);
+}
+.inc-file-chip:hover { border-color: var(--inc-border-strong); background: var(--inc-surface-sunken); }
+.inc-file-chip__icon {
+    width: 36px; height: 36px; border-radius: var(--inc-r-sm); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--inc-info-50); color: var(--inc-info-600);
+}
+.inc-file-chip__icon .icon { width: 16px; height: 16px; }
+.inc-file-chip__name { font-size: var(--inc-fs-xs); font-weight: 700; color: var(--inc-text-primary); }
+.inc-file-chip__meta { font-size: 10.5px; color: var(--inc-text-tertiary); }
+
+@media (max-width: 1150px) {
+    .inc-detail-grid { grid-template-columns: 1fr; }
+    .inc-time-strip { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+    .inc-detail-header { padding: var(--inc-s-5); }
+    .inc-time-strip { grid-template-columns: 1fr; }
+    .inc-timeline::before { left: 21px; }
+    .inc-timeline-node__marker { width: 44px; }
+    .inc-timeline-node__avatar { width: 34px; height: 34px; font-size: 11px; }
+}
+
+modals.css
+
+/* =========================================================================
+   Incidents — Transfer Drawer + Reactivate Modal
+   ========================================================================= */
+
+.inc-overlay {
+    position: fixed; inset: 0;
+    background: rgba(15, 17, 21, 0.55);
+    backdrop-filter: blur(3px);
+    z-index: 1000;
+    animation: incFadeIn var(--inc-normal) var(--inc-ease) both;
+}
+
+/* ---------- Drawer (transferencia) ---------- */
+.inc-drawer {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 460px;
+    max-width: 92vw;
+    background: var(--inc-surface-raised);
+    box-shadow: var(--inc-shadow-lg);
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    animation: incDrawerIn var(--inc-slow) var(--inc-ease) both;
+}
+@keyframes incDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+.inc-drawer__header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: var(--inc-s-6); border-bottom: 1px solid var(--inc-border);
+}
+.inc-drawer__title { font-size: var(--inc-fs-lg); font-weight: 800; letter-spacing: -0.01em; margin: 0 0 4px; }
+.inc-drawer__subtitle { font-size: var(--inc-fs-xs); color: var(--inc-text-tertiary); margin: 0; }
+.inc-drawer__close {
+    width: 32px; height: 32px; border-radius: var(--inc-r-md);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--inc-text-tertiary); flex-shrink: 0;
+    transition: all var(--inc-fast);
+}
+.inc-drawer__close:hover { background: var(--inc-n-100); color: var(--inc-text-primary); }
+.inc-drawer__close .icon { width: 16px; height: 16px; }
+
+.inc-drawer__body { flex: 1; overflow-y: auto; padding: var(--inc-s-6); display: flex; flex-direction: column; gap: var(--inc-s-5); }
+
+.inc-drawer__current {
+    display: flex; align-items: center; gap: var(--inc-s-3);
+    padding: var(--inc-s-4);
+    background: var(--inc-surface-sunken);
+    border-radius: var(--inc-r-md);
+    border: 1px solid var(--inc-border);
+}
+.inc-drawer__current-arrow { color: var(--inc-text-tertiary); flex-shrink: 0; }
+.inc-drawer__current-arrow .icon { width: 16px; height: 16px; }
+
+.inc-target-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--inc-s-2); }
+.inc-target-option {
+    display: flex; align-items: center; gap: var(--inc-s-2);
+    padding: var(--inc-s-3);
+    border-radius: var(--inc-r-md);
+    border: 1.5px solid var(--inc-border);
+    cursor: pointer;
+    transition: all var(--inc-fast);
+}
+.inc-target-option:hover { border-color: var(--inc-n-300); }
+.inc-target-option--selected { border-color: var(--inc-accent-500); background: var(--inc-accent-50); }
+.inc-target-option__icon {
+    width: 30px; height: 30px; border-radius: var(--inc-r-sm); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--inc-n-900); color: white;
+}
+.inc-target-option__icon .icon { width: 14px; height: 14px; }
+.inc-target-option__label { font-size: 11.5px; font-weight: 700; color: var(--inc-text-primary); }
+
+.inc-drawer__footer {
+    padding: var(--inc-s-5) var(--inc-s-6);
+    border-top: 1px solid var(--inc-border);
+    display: flex; gap: var(--inc-s-3);
+    background: var(--inc-surface-sunken);
+}
+
+/* ---------- Modal (reactivación) ---------- */
+.inc-modal-center {
+    position: fixed; inset: 0; z-index: 1001;
+    display: flex; align-items: center; justify-content: center;
+    padding: var(--inc-s-4);
+    pointer-events: none;
+}
+.inc-modal {
+    width: 100%; max-width: 460px;
+    background: var(--inc-surface-raised);
+    border-radius: var(--inc-r-xl);
+    box-shadow: var(--inc-shadow-lg);
+    padding: var(--inc-s-8);
+    pointer-events: auto;
+    animation: incScaleIn var(--inc-normal) var(--inc-ease) both;
+    text-align: center;
+}
+.inc-modal__icon {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: var(--inc-warning-50); color: var(--inc-warning-600);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto var(--inc-s-5);
+}
+.inc-modal__icon .icon { width: 26px; height: 26px; }
+.inc-modal h3 { font-size: var(--inc-fs-lg); font-weight: 800; margin: 0 0 var(--inc-s-2); }
+.inc-modal p { font-size: var(--inc-fs-sm); color: var(--inc-text-secondary); line-height: 1.6; margin: 0 0 var(--inc-s-5); }
+.inc-modal__warning {
+    display: flex; gap: var(--inc-s-3); text-align: left;
+    padding: var(--inc-s-4);
+    background: var(--inc-warning-50);
+    border: 1px solid rgba(217,154,23,0.25);
+    border-radius: var(--inc-r-md);
+    margin-bottom: var(--inc-s-5);
+}
+.inc-modal__warning .icon { width: 16px; height: 16px; color: var(--inc-warning-600); flex-shrink: 0; margin-top: 1px; }
+.inc-modal__warning p { margin: 0; font-size: var(--inc-fs-2xs); color: var(--inc-warning-600); font-weight: 600; }
+.inc-modal__actions { display: flex; gap: var(--inc-s-3); }
+
+@media (max-width: 560px) {
+    .inc-target-grid { grid-template-columns: 1fr; }
+}
+[14/7, 11:34 a. m.] Hiavert Maldonado: App.razor
+
+<link rel="stylesheet" href="css/incidents/tokens.css" />
+<link rel="stylesheet" href="css/incidents/base.css" />
+<link rel="stylesheet" href="css/incidents/components.css" />
+<link rel="stylesheet" href="css/incidents/dashboard.css" />
+<link rel="stylesheet" href="css/incidents/list.css" />
+<link rel="stylesheet" href="css/incidents/wizard.css" />
+<link rel="stylesheet" href="css/incidents/detail.css" />
+<link rel="stylesheet" href="css/incidents/modals.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+
+IconSvg.razor
+
+@* Uso: <IconSvg Name="bell" /> *@
+
+<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    @switch (Name)
+    {
+        case "bell":
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            break;
+        case "alert":
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+            break;
+        case "clock":
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+            break;
+        case "check-circle":
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
+            break;
+        case "trending-up":
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+            <polyline points="17 6 23 6 23 12" />
+            break;
+        case "trending-down":
+            <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" />
+            <polyline points="17 18 23 18 23 12" />
+            break;
+        case "layers":
+            <polygon points="12 2 2 7 12 12 22 7 12 2" />
+            <polyline points="2 17 12 22 22 17" />
+            <polyline points="2 12 12 17 22 12" />
+            break;
+        case "users":
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            break;
+        case "search":
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            break;
+        case "filter":
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            break;
+        case "grid":
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+            break;
+        case "list":
+            <line x1="8" y1="6" x2="21" y2="6" />
+            <line x1="8" y1="12" x2="21" y2="12" />
+            <line x1="8" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="6" x2="3.01" y2="6" />
+            <line x1="3" y1="12" x2="3.01" y2="12" />
+            <line x1="3" y1="18" x2="3.01" y2="18" />
+            break;
+        case "arrow-right":
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <polyline points="12 5 19 12 12 19" />
+            break;
+        case "plus":
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+            break;
+        case "file":
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            break;
+        case "book":
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            break;
+        case "cpu":
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+            <rect x="9" y="9" width="6" height="6" />
+            <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
+            <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
+            <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
+            <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
+            break;
+        case "server":
+            <rect x="2" y="2" width="20" height="8" rx="2" />
+            <rect x="2" y="14" width="20" height="8" rx="2" />
+            <line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" />
+            break;
+        case "shield":
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+            break;
+        case "repeat":
+            <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
+            <polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            break;
+        case "message":
+            <path d="M21 11.5a8.38 8.38 0 0 1-9.5 8.31A8.5 8.5 0 1 1 21 11.5Z" />
+            break;
+        default:
+            <circle cx="12" cy="12" r="9" />
+            break;
+    }
+</svg>
+
+@code {
+    [Parameter] public string Name { get; set; } = "";
+}
+
+StatusBadge.razor
+
+@* Estados: open | progress | transferred | resolved | closed *@
+
+<span class="inc-badge inc-badge--@Status">
+    <span class="inc-dot"></span>
+    @Label
+</span>
+
+@code {
+    [Parameter] public string Status { get; set; } = "open";
+    [Parameter] public string Label { get; set; } = "Abierta";
+}
+
+PriorityBadge.razor
+
+@* Prioridades: critica | alta | media | baja *@
+
+<span class="inc-priority inc-priority--@Priority">
+    <span class="inc-priority__bars"><span></span><span></span><span></span></span>
+    @Label
+</span>
+
+@code {
+    [Parameter] public string Priority { get; set; } = "media";
+    [Parameter] public string Label { get; set; } = "Media";
+}
+
+AreaBadge.razor
+
+<span class="inc-area">
+    <span class="inc-area__icon">
+        <IconSvg Name="@Icon" />
+    </span>
+    @AreaName
+</span>
+
+@code {
+    [Parameter] public string AreaName { get; set; } = "Desarrollo";
+    [Parameter] public string Icon { get; set; } = "cpu";
+}
+
+UserAvatar.razor
+
+@* Size: xs | sm | md | lg | xl *@
+
+<span class="inc-avatar inc-avatar--@Size" style="background:@Background;">
+    @Initials
+</span>
+
+@code {
+    [Parameter] public string Name { get; set; } = "Usuario";
+    [Parameter] public string Size { get; set; } = "md";
+    [Parameter] public string? Color { get; set; }
+
+    private static readonly string[] Palette =
+    {
+        "#c41230", "#2f7fe0", "#6c4fd6", "#16a672", "#d99a17", "#4b5261", "#a80f29", "#2568bd"
+    };
+
+    private string Background => Color ?? Palette[Math.Abs(Name.GetHashCode()) % Palette.Length];
+
+    private string Initials
+    {
+        get
+        {
+            var parts = Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return "?";
+            if (parts.Length == 1) return parts[0][..Math.Min(2, parts[0].Length)].ToUpper();
+            return $"{parts[0][0]}{parts[^1][0]}".ToUpper();
+        }
+    }
+}
+
+MetricCard.razor
+
+<div class="inc-card inc-card--hover inc-card--pad-md inc-metric">
+    <div class="inc-metric__top">
+        <div class="inc-metric__icon" style="background:@IconBg22; color:@IconColor;">
+            <IconSvg Name="@Icon" />
+        </div>
+        @if (TrendValue is not null)
+        {
+            <span class="inc-metric__trend inc-metric__trend--@(TrendUp ? "up" : "down")">
+                <IconSvg Name="@(TrendUp ? "trending-up" : "trending-down")" />
+                @TrendValue
+            </span>
+        }
     </div>
-    <span class="badge badge--amber">@_model.Estado</span>
+    <div class="inc-metric__value">@Value</div>
+    <div class="inc-metric__label">@Label</div>
+    @if (!string.IsNullOrWhiteSpace(Sub))
+    {
+        <div class="inc-metric__sub">@Sub</div>
+    }
 </div>
 
-<div class="article-layout">
-    <div class="article-main article-main--form">
+@code {
+    [Parameter] public string Icon { get; set; } = "layers";
+    [Parameter] public string IconColor { get; set; } = "var(--inc-accent-500)";
+    [Parameter] public string Value { get; set; } = "0";
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? Sub { get; set; }
+    [Parameter] public string? TrendValue { get; set; }
+    [Parameter] public bool TrendUp { get; set; } = true;
 
-        @* ============================= METADATOS ============================= *@
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="file-text" /> Información general</h3>
+    // Fondo suave derivado del color del ícono (usa el par -50 de cada semántico ya definido en tokens)
+    [Parameter] public string IconBg22 { get; set; } = "var(--inc-accent-50)";
+}
 
-            <div class="form-group">
-                <label class="form-label" for="art-title">Título <span class="form-required">*</span></label>
-                <input id="art-title" class="input" type="text" @bind="_model.Title" placeholder="Ej: Cómo solicitar acceso a la VPN corporativa" />
-                @if (!string.IsNullOrEmpty(_error) && string.IsNullOrWhiteSpace(_model.Title))
-                {
-                    <p class="form-hint form-hint--error">El título es obligatorio.</p>
-                }
+StatCard.razor
+
+<div class="inc-card inc-card--pad-sm inc-stat">
+    <div class="inc-stat__icon" style="background:@IconBg; color:@IconColor;">
+        <IconSvg Name="@Icon" />
+    </div>
+    <div>
+        <div class="inc-stat__value">@Value</div>
+        <div class="inc-stat__label">@Label</div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Icon { get; set; } = "layers";
+    [Parameter] public string IconColor { get; set; } = "var(--inc-info-600)";
+    [Parameter] public string IconBg { get; set; } = "var(--inc-info-50)";
+    [Parameter] public string Value { get; set; } = "0";
+    [Parameter] public string Label { get; set; } = "";
+}
+
+SectionHeader.razor
+
+<div class="inc-section-head">
+    <div>
+        <div class="inc-section-head__title">
+            <IconSvg Name="@Icon" />
+            @Title
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <div class="inc-section-head__sub">@Subtitle</div>
+        }
+    </div>
+    @if (!string.IsNullOrWhiteSpace(LinkText))
+    {
+        <a class="inc-section-head__link" href="@LinkHref">
+            @LinkText
+            <IconSvg Name="arrow-right" />
+        </a>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string Icon { get; set; } = "layers";
+    [Parameter] public string? LinkText { get; set; }
+    [Parameter] public string LinkHref { get; set; } = "#";
+}
+
+SearchBar.razor
+
+<div class="inc-searchbar">
+    <IconSvg Name="search" />
+    <input type="text" placeholder="@Placeholder" @bind="Value" @bind:event="oninput" />
+    <span class="inc-searchbar__kbd">Ctrl K</span>
+</div>
+
+@code {
+    [Parameter] public string Placeholder { get; set; } = "Buscar incidencias...";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+}
+
+FilterBar.razor
+
+@* Barra de filtros con chips hardcodeados + toggle de vista *@
+
+<div class="inc-card inc-filterbar">
+    <div class="inc-filter-chip inc-filter-chip--active">
+        <IconSvg Name="filter" />
+        Todas
+        <span class="inc-filter-chip__count">128</span>
+    </div>
+    <div class="inc-filter-chip">
+        <span class="inc-dot" style="width:6px;height:6px;border-radius:50%;background:var(--inc-info-500);"></span>
+        Abiertas
+        <span class="inc-filter-chip__count">34</span>
+    </div>
+    <div class="inc-filter-chip">
+        <span class="inc-dot" style="width:6px;height:6px;border-radius:50%;background:var(--inc-warning-500);"></span>
+        En progreso
+        <span class="inc-filter-chip__count">21</span>
+    </div>
+    <div class="inc-filter-chip">
+        <span class="inc-dot" style="width:6px;height:6px;border-radius:50%;background:var(--inc-violet-500);"></span>
+        Transferidas
+        <span class="inc-filter-chip__count">9</span>
+    </div>
+    <div class="inc-filter-chip">
+        <span class="inc-dot" style="width:6px;height:6px;border-radius:50%;background:var(--inc-success-500);"></span>
+        Resueltas
+        <span class="inc-filter-chip__count">64</span>
+    </div>
+
+    <div class="inc-filterbar__spacer"></div>
+
+    <div class="inc-view-toggle">
+        <button class="@(ViewMode == "grid" ? "active" : "")" @onclick='() => ViewMode = "grid"'>
+            <IconSvg Name="grid" />
+        </button>
+        <button class="@(ViewMode == "list" ? "active" : "")" @onclick='() => ViewMode = "list"'>
+            <IconSvg Name="list" />
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string ViewMode { get; set; } = "grid";
+    [Parameter] public EventCallback<string> ViewModeChanged { get; set; }
+}
+
+IncidentCard.razor
+
+<div class="inc-card inc-card--hover inc-incident-card inc-incident-card--@Priority" @onclick="OnClick">
+    <div class="inc-incident-card__top">
+        <span class="inc-incident-card__id">@Id</span>
+        <PriorityBadge Priority="@Priority" Label="@PriorityLabel" />
+    </div>
+
+    <h3 class="inc-incident-card__title">@Title</h3>
+    <p class="inc-incident-card__desc">@Description</p>
+
+    <div class="inc-incident-card__badges">
+        <StatusBadge Status="@Status" Label="@StatusLabel" />
+        <AreaBadge AreaName="@Area" Icon="@AreaIcon" />
+    </div>
+
+    <div class="inc-incident-card__footer">
+        <div class="inc-incident-card__meta">
+            <span class="inc-incident-card__meta-item">
+                <UserAvatar Name="@Responsible" Size="xs" />
+                @Responsible
+            </span>
+            <span class="inc-incident-card__meta-item">
+                <IconSvg Name="clock" />
+                @TimeAgo
+            </span>
+        </div>
+        <span class="inc-incident-card__sla inc-incident-card__sla--@SlaState">
+            <IconSvg Name="@(SlaState == "over" ? "alert" : "check-circle")" />
+            @SlaLabel
+        </span>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = "INC-0000";
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Description { get; set; } = "";
+    [Parameter] public string Priority { get; set; } = "media";
+    [Parameter] public string PriorityLabel { get; set; } = "Media";
+    [Parameter] public string Status { get; set; } = "open";
+    [Parameter] public string StatusLabel { get; set; } = "Abierta";
+    [Parameter] public string Area { get; set; } = "Desarrollo";
+    [Parameter] public string AreaIcon { get; set; } = "cpu";
+    [Parameter] public string Responsible { get; set; } = "Juan Pérez";
+    [Parameter] public string TimeAgo { get; set; } = "hace 2h";
+    [Parameter] public string SlaState { get; set; } = "ok"; // ok | warn | over
+    [Parameter] public string SlaLabel { get; set; } = "SLA cumplido";
+    [Parameter] public EventCallback OnClick { get; set; }
+}
+
+ArticleSuggestionCard.razor
+
+<div class="inc-article-suggestion">
+    <div class="inc-article-suggestion__icon">
+        <IconSvg Name="@Icon" />
+    </div>
+    <div style="flex:1; min-width:0;">
+        <div class="inc-article-suggestion__title">@Title</div>
+        <div class="inc-article-suggestion__desc">@Description</div>
+    </div>
+    <div class="inc-article-suggestion__arrow">
+        <IconSvg Name="arrow-right" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Description { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "book";
+}
+
+QuickActions.razor
+
+<div class="inc-quick-actions">
+    <button class="inc-quick-action">
+        <IconSvg Name="plus" /> Nueva incidencia
+    </button>
+    <button class="inc-quick-action">
+        <IconSvg Name="repeat" /> Transferir
+    </button>
+    <button class="inc-quick-action">
+        <IconSvg Name="check-circle" /> Resolver
+    </button>
+    <button class="inc-quick-action">
+        <IconSvg Name="file" /> Exportar reporte
+    </button>
+</div>
+
+Dashboard.razor
+
+@page "/incidencias"
+@page "/incidencias/dashboard"
+
+<div class="inc-shell">
+    <div class="inc-container">
+
+        <div class="inc-pagehead inc-anim-fade-up">
+            <div>
+                <div class="inc-pagehead__eyebrow">
+                    <IconSvg Name="layers" />
+                    Módulo de Incidencias
+                </div>
+                <h1>Dashboard ejecutivo</h1>
+                <p>Resumen general del estado de las incidencias entre áreas de tecnología, actividad reciente y carga de trabajo por equipo.</p>
+            </div>
+            <div class="inc-pagehead__actions">
+                <button class="inc-btn inc-btn--secondary">
+                    <IconSvg Name="file" /> Exportar
+                </button>
+                <button class="inc-btn inc-btn--primary">
+                    <IconSvg Name="plus" /> Nueva incidencia
+                </button>
+            </div>
+        </div>
+
+        <!-- KPIs -->
+        <div class="inc-dash-grid inc-anim-fade-up">
+            <MetricCard Icon="layers" Value="128" Label="Incidencias totales" Sub="Últimos 30 días"
+                        IconColor="var(--inc-accent-500)" IconBg22="var(--inc-accent-50)"
+                        TrendValue="12%" TrendUp="true" />
+            <MetricCard Icon="alert" Value="34" Label="Abiertas" Sub="Requieren atención"
+                        IconColor="var(--inc-info-600)" IconBg22="var(--inc-info-50)"
+                        TrendValue="4%" TrendUp="false" />
+            <MetricCard Icon="clock" Value="6.4h" Label="Tiempo promedio resolución" Sub="vs. 7.1h mes anterior"
+                        IconColor="var(--inc-warning-600)" IconBg22="var(--inc-warning-50)"
+                        TrendValue="9%" TrendUp="true" />
+            <MetricCard Icon="check-circle" Value="94.2%" Label="SLA cumplido" Sub="Meta: 90%"
+                        IconColor="var(--inc-success-600)" IconBg22="var(--inc-success-50)"
+                        TrendValue="2.1%" TrendUp="true" />
+        </div>
+
+        <div class="inc-dash-body">
+
+            <!-- Columna principal -->
+            <div style="display:flex; flex-direction:column; gap: var(--inc-s-6);">
+
+                <!-- Distribución por prioridad + estado -->
+                <div class="inc-card inc-card--pad-lg inc-anim-fade-up">
+                    <SectionHeader Title="Distribución por prioridad" Icon="alert"
+                                   Subtitle="Incidencias activas agrupadas por nivel de criticidad" />
+                    <div class="inc-donut-wrap">
+                        <div class="inc-donut">
+                            <div class="inc-donut__center">
+                                <strong>128</strong>
+                                <span>Total</span>
+                            </div>
+                        </div>
+                        <div class="inc-legend">
+                            <div class="inc-legend__row">
+                                <span class="inc-legend__dot" style="background:var(--inc-danger-500);"></span>
+                                <span class="inc-legend__label">Crítica</span>
+                                <span class="inc-legend__value">23</span>
+                            </div>
+                            <div class="inc-legend__row">
+                                <span class="inc-legend__dot" style="background:var(--inc-warning-500);"></span>
+                                <span class="inc-legend__label">Alta</span>
+                                <span class="inc-legend__value">36</span>
+                            </div>
+                            <div class="inc-legend__row">
+                                <span class="inc-legend__dot" style="background:var(--inc-info-500);"></span>
+                                <span class="inc-legend__label">Media</span>
+                                <span class="inc-legend__value">41</span>
+                            </div>
+                            <div class="inc-legend__row">
+                                <span class="inc-legend__dot" style="background:var(--inc-success-500);"></span>
+                                <span class="inc-legend__label">Baja</span>
+                                <span class="inc-legend__value">28</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Incidencias por semana (barras) + tendencia (sparkline) -->
+                <div class="inc-card inc-card--pad-lg inc-anim-fade-up">
+                    <SectionHeader Title="Incidencias por día" Icon="trending-up"
+                                   Subtitle="Últimos 7 días" LinkText="Ver reporte completo" LinkHref="#" />
+                    <div class="inc-bars">
+                        @foreach (var bar in WeekBars)
+                        {
+                            <div class="inc-bars__col">
+                                <span class="inc-bars__value">@bar.Value</span>
+                                <div class="inc-bars__track" style="height:@(bar.Height)%;">
+                                    <div class="inc-bars__seg" style="height:100%; background:@bar.Color;"></div>
+                                </div>
+                                <span class="inc-bars__label">@bar.Label</span>
+                            </div>
+                        }
+                    </div>
+
+                    <hr class="inc-divider" />
+
+                    <svg class="inc-sparkline" viewBox="0 0 400 90" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="incSparkGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="var(--inc-accent-500)" />
+                                <stop offset="100%" stop-color="var(--inc-accent-500)" stop-opacity="0" />
+                            </linearGradient>
+                        </defs>
+                        <path class="fill" d="M0,70 L40,55 L80,60 L120,40 L160,45 L200,25 L240,35 L280,20 L320,30 L360,15 L400,22 L400,90 L0,90 Z" />
+                        <path class="line" d="M0,70 L40,55 L80,60 L120,40 L160,45 L200,25 L240,35 L280,20 L320,30 L360,15 L400,22" />
+                        <circle cx="400" cy="22" r="4" />
+                    </svg>
+                </div>
+
+                <!-- Incidencias recientes -->
+                <div class="inc-anim-fade-up">
+                    <SectionHeader Title="Incidencias recientes" Icon="layers"
+                                   LinkText="Ver todas" LinkHref="/incidencias/lista" />
+                    <div class="inc-list-grid">
+                        @foreach (var inc in RecentIncidents)
+                        {
+                            <IncidentCard Id="@inc.Id" Title="@inc.Title" Description="@inc.Description"
+                                          Priority="@inc.Priority" PriorityLabel="@inc.PriorityLabel"
+                                          Status="@inc.Status" StatusLabel="@inc.StatusLabel"
+                                          Area="@inc.Area" AreaIcon="@inc.AreaIcon"
+                                          Responsible="@inc.Responsible" TimeAgo="@inc.TimeAgo"
+                                          SlaState="@inc.SlaState" SlaLabel="@inc.SlaLabel" />
+                        }
+                    </div>
+                </div>
+
             </div>
 
-            <div class="form-group">
-                <label class="form-label" for="art-summary">Resumen <span class="form-required">*</span></label>
-                <textarea id="art-summary" class="input" rows="3" @bind="_model.Summary"
-                          placeholder="Resumen breve que aparece en las tarjetas y en resultados de búsqueda"></textarea>
+            <!-- Columna lateral -->
+            <div style="display:flex; flex-direction:column; gap: var(--inc-s-6);">
+
+                <div class="inc-card inc-card--pad-lg inc-anim-fade-up">
+                    <SectionHeader Title="Áreas más ocupadas" Icon="server" />
+                    <div class="inc-area-load">
+                        @foreach (var area in AreaLoad)
+                        {
+                            <div class="inc-area-load__row">
+                                <div class="inc-area-load__icon"><IconSvg Name="@area.Icon" /></div>
+                                <div class="inc-area-load__info">
+                                    <div class="inc-area-load__top">
+                                        <span class="inc-area-load__name">@area.Name</span>
+                                        <span class="inc-area-load__count">@area.Count incidencias</span>
+                                    </div>
+                                    <div class="inc-area-load__bar">
+                                        <div class="inc-area-load__fill" style="width:@(area.Percent)%;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="inc-card inc-card--pad-lg inc-anim-fade-up">
+                    <SectionHeader Title="Responsables destacados" Icon="users" />
+                    <div class="inc-responsibles">
+                        @foreach (var person in TopResponsibles)
+                        {
+                            <div class="inc-responsible-row">
+                                <UserAvatar Name="@person.Name" Size="md" />
+                                <div class="inc-responsible-row__info">
+                                    <div class="inc-responsible-row__name">@person.Name</div>
+                                    <div class="inc-responsible-row__role">@person.Role</div>
+                                </div>
+                                <div class="inc-responsible-row__stat">
+                                    <strong>@person.Resolved</strong>
+                                    <span>resueltas</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="inc-card inc-card--pad-lg inc-anim-fade-up">
+                    <SectionHeader Title="Actividad reciente" Icon="clock" />
+                    <div class="inc-feed">
+                        @foreach (var item in ActivityFeed)
+                        {
+                            <div class="inc-feed__item">
+                                <div class="inc-feed__icon" style="background:@item.IconBg; color:@item.IconColor;">
+                                    <IconSvg Name="@item.Icon" />
+                                </div>
+                                <div>
+                                    <div class="inc-feed__text">@((MarkupString)item.Text)</div>
+                                    <div class="inc-feed__time">@item.Time</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private record BarItem(string Label, string Value, int Height, string Color);
+    private record IncidentItem(string Id, string Title, string Description, string Priority, string PriorityLabel,
+        string Status, string StatusLabel, string Area, string AreaIcon, string Responsible, string TimeAgo,
+        string SlaState, string SlaLabel);
+    private record AreaLoadItem(string Name, string Icon, int Count, int Percent);
+    private record ResponsibleItem(string Name, string Role, int Resolved);
+    private record FeedItem(string Icon, string IconBg, string IconColor, string Text, string Time);
+
+    private readonly List<BarItem> WeekBars = new()
+    {
+        new("Lun", "14", 55, "var(--inc-accent-500)"),
+        new("Mar", "22", 80, "var(--inc-accent-500)"),
+        new("Mié", "9",  35, "var(--inc-accent-500)"),
+        new("Jue", "18", 68, "var(--inc-accent-500)"),
+        new("Vie", "26", 95, "var(--inc-accent-600)"),
+        new("Sáb", "6",  25, "var(--inc-n-300)"),
+        new("Dom", "4",  18, "var(--inc-n-300)"),
+    };
+
+    private readonly List<IncidentItem> RecentIncidents = new()
+    {
+        new("INC-2041", "Falla en autenticación SSO",
+            "Los usuarios del área de finanzas no logran iniciar sesión mediante el proveedor corporativo.",
+            "critica", "Crítica", "progress", "En progreso", "Infraestructura", "server",
+            "Carlos Ruiz", "hace 12m", "warn", "SLA en riesgo"),
+        new("INC-2039", "Error en generación de reportes PDF",
+            "El módulo de reportes financieros arroja excepción al exportar más de 500 registros.",
+            "alta", "Alta", "open", "Abierta", "Desarrollo", "cpu",
+            "Juan Pérez", "hace 34m", "ok", "SLA cumplido"),
+        new("INC-2036", "Latencia elevada en API de pagos",
+            "Se detectó incremento de tiempos de respuesta en el gateway de pagos durante horario pico.",
+            "alta", "Alta", "transferred", "Transferida", "Core", "layers",
+            "María Gómez", "hace 1h", "warn", "SLA en riesgo"),
+        new("INC-2031", "Solicitud de acceso a repositorio",
+            "Nuevo integrante del equipo requiere permisos de escritura en el repositorio de Wiki.",
+            "baja", "Baja", "resolved", "Resuelta", "Seguridad", "shield",
+            "Ana Torres", "hace 3h", "ok", "SLA cumplido"),
+    };
+
+    private readonly List<AreaLoadItem> AreaLoad = new()
+    {
+        new("Desarrollo", "cpu", 41, 82),
+        new("Infraestructura", "server", 33, 66),
+        new("Core", "layers", 28, 56),
+        new("Seguridad", "shield", 14, 28),
+    };
+
+    private readonly List<ResponsibleItem> TopResponsibles = new()
+    {
+        new("María Gómez", "Core Platform", 28),
+        new("Juan Pérez", "Desarrollo", 24),
+        new("Carlos Ruiz", "Infraestructura", 19),
+        new("Ana Torres", "Seguridad", 15),
+    };
+
+    private readonly List<FeedItem> ActivityFeed = new()
+    {
+        new("repeat", "var(--inc-violet-50)", "var(--inc-violet-600)",
+            "<strong>Juan Pérez</strong> transfirió INC-2036 a Core", "hace 8m"),
+        new("check-circle", "var(--inc-success-50)", "var(--inc-success-600)",
+            "<strong>Ana Torres</strong> resolvió INC-2031", "hace 45m"),
+        new("message", "var(--inc-n-100)", "var(--inc-n-600)",
+            "<strong>Carlos Ruiz</strong> comentó en INC-2041", "hace 1h"),
+        new("alert", "var(--inc-danger-50)", "var(--inc-danger-600)",
+            "Nueva incidencia crítica INC-2041 creada", "hace 2h"),
+        new("layers", "var(--inc-info-50)", "var(--inc-info-600)",
+            "<strong>María Gómez</strong> abrió INC-2039", "hace 3h"),
+    };
+}
+[14/7, 11:49 a. m.] Hiavert Maldonado: ActionToolbar.razor
+
+<div class="inc-toolbar">
+    <div class="inc-toolbar__group">
+        <button class="inc-btn inc-btn--primary inc-btn--sm">
+            <IconSvg Name="repeat" /> Transferir
+        </button>
+        <button class="inc-btn inc-btn--secondary inc-btn--sm">
+            <IconSvg Name="check-circle" /> Resolver
+        </button>
+    </div>
+    <div class="inc-toolbar__group">
+        <button class="inc-btn inc-btn--ghost inc-btn--sm">
+            <IconSvg Name="message" /> Comentar
+        </button>
+        <button class="inc-btn inc-btn--ghost inc-btn--sm">
+            <IconSvg Name="file" /> Adjuntar
+        </button>
+    </div>
+    <div class="inc-toolbar__group" style="border-right:none;">
+        <button class="inc-btn inc-btn--danger-ghost inc-btn--sm">
+            <IconSvg Name="repeat" /> Reactivar
+        </button>
+    </div>
+</div>
+
+TimeLineStep.razor
+
+@* Type: created | progress | transfer | comment | resolved *@
+
+<div class="inc-timeline-node inc-timeline-node--@Type" style="animation-delay:@(DelayMs)ms;">
+    <div class="inc-timeline-node__marker">
+        <div class="inc-timeline-node__avatar" style="background:@AvatarColor;">
+            @Initials
+        </div>
+    </div>
+    <div class="inc-timeline-node__card">
+        <div class="inc-timeline-node__head">
+            <span class="inc-timeline-node__actor">@Actor</span>
+            <span class="inc-timeline-node__time">@Time</span>
+        </div>
+        <div class="inc-timeline-node__desc">@((MarkupString)Description)</div>
+
+        @if (ShowFlow)
+        {
+            <div class="inc-timeline-node__flow">
+                <span class="inc-flow-pill">
+                    <IconSvg Name="@FromIcon" /> @From
+                </span>
+                <span class="inc-flow-arrow"><IconSvg Name="arrow-right" /></span>
+                <span class="inc-flow-pill">
+                    <IconSvg Name="@ToIcon" /> @To
+                </span>
+                <span class="inc-flow-duration">
+                    <IconSvg Name="clock" /> @Duration
+                </span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Type { get; set; } = "created";
+    [Parameter] public string Actor { get; set; } = "Sistema";
+    [Parameter] public string Time { get; set; } = "";
+    [Parameter] public string Description { get; set; } = "";
+    [Parameter] public string AvatarColor { get; set; } = "var(--inc-info-500)";
+    [Parameter] public int DelayMs { get; set; } = 0;
+
+    [Parameter] public bool ShowFlow { get; set; } = false;
+    [Parameter] public string From { get; set; } = "";
+    [Parameter] public string FromIcon { get; set; } = "cpu";
+    [Parameter] public string To { get; set; } = "";
+    [Parameter] public string ToIcon { get; set; } = "layers";
+    [Parameter] public string Duration { get; set; } = "";
+
+    private string Initials
+    {
+        get
+        {
+            var parts = Actor.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return "?";
+            if (parts.Length == 1) return parts[0][..Math.Min(2, parts[0].Length)].ToUpper();
+            return $"{parts[0][0]}{parts[^1][0]}".ToUpper();
+        }
+    }
+}
+
+TransferModal.razor
+
+@* Drawer premium para transferencia de incidencia entre áreas *@
+
+@if (IsOpen)
+{
+    <div class="inc-overlay" @onclick="Close"></div>
+
+    <div class="inc-drawer">
+        <div class="inc-drawer__header">
+            <div>
+                <h3 class="inc-drawer__title">Transferir incidencia</h3>
+                <p class="inc-drawer__subtitle">@IncidentId · @IncidentTitle</p>
+            </div>
+            <button class="inc-drawer__close" @onclick="Close">
+                <IconSvg Name="arrow-right" />
+            </button>
+        </div>
+
+        <div class="inc-drawer__body">
+
+            <div>
+                <label class="inc-label">Área actual</label>
+                <div class="inc-drawer__current">
+                    <AreaBadge AreaName="@CurrentArea" Icon="@CurrentAreaIcon" />
+                    <span class="inc-drawer__current-arrow">
+                        <IconSvg Name="arrow-right" />
+                    </span>
+                    <span class="inc-muted" style="font-size: var(--inc-fs-xs); font-weight:600;">
+                        Selecciona el área destino
+                    </span>
+                </div>
             </div>
 
-            <div class="field-grid field-grid--3">
-                <div class="form-group">
-                    <label class="form-label">Categoría <span class="form-required">*</span></label>
-                    <select class="input" @bind="_model.CategoryId">
-                        <option value="">Seleccioná</option>
-                        @foreach (var category in _categories)
-                        {
-                            <option value="@category.Id">@category.Name</option>
-                        }
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Subcategoría</label>
-                    <select class="input" @bind="_model.Subcategory">
-                        <option value="">Seleccioná</option>
-                        @foreach (var sub in _subcategories)
-                        {
-                            <option value="@sub">@sub</option>
-                        }
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Área responsable</label>
-                    <select class="input" @bind="_model.AreaResponsable">
-                        <option value="">Seleccioná</option>
-                        @foreach (var area in _areas)
-                        {
-                            <option value="@area">@area</option>
-                        }
-                    </select>
-                </div>
-            </div>
-
-            <div class="field-grid field-grid--3">
-                <div class="form-group">
-                    <label class="form-label">Autor <span class="form-required">*</span></label>
-                    <select class="input" @bind="_model.AuthorId">
-                        <option value="">Seleccioná</option>
-                        @foreach (var author in _authors)
-                        {
-                            <option value="@author.Id">@author.FullName</option>
-                        }
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Nivel de acceso</label>
-                    <select class="input" @bind="_model.NivelAcceso">
-                        @foreach (var nivel in _nivelesAcceso)
-                        {
-                            <option value="@nivel">@nivel</option>
-                        }
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Prioridad</label>
-                    <select class="input" @bind="_model.Prioridad">
-                        @foreach (var p in _prioridades)
-                        {
-                            <option value="@p">@p</option>
-                        }
-                    </select>
-                </div>
-            </div>
-
-            <div class="field-grid field-grid--3">
-                <div class="form-group">
-                    <label class="form-label">Fecha de creación</label>
-                    <input type="date" class="input" @bind="_model.FechaCreacion" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Fecha de actualización</label>
-                    <input type="date" class="input" @bind="_model.FechaActualizacion" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Versión del documento</label>
-                    <input type="text" class="input" @bind="_model.Version" placeholder="v1.0" />
-                </div>
-            </div>
-
-            <div class="field-grid field-grid--2">
-                <div class="form-group">
-                    <label class="form-label">Estado</label>
-                    <select class="input" @bind="_model.Estado">
-                        <option value="Borrador">Borrador</option>
-                        <option value="En revisión">En revisión</option>
-                        <option value="Publicado">Publicado</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Tiempo estimado de lectura</label>
-                    <input type="text" class="input readonly-field" value="@(_readingTime + " min")" readonly />
-                    <p class="form-hint">Calculado automáticamente en base al contenido del cuerpo del artículo.</p>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Sistemas relacionados</label>
-                <div class="tag-cloud">
-                    @foreach (var sistema in _sistemasDisponibles)
+            <div>
+                <label class="inc-label">Área destino</label>
+                <div class="inc-target-grid">
+                    @foreach (var target in Targets)
                     {
-                        var active = _model.SistemasRelacionados.Contains(sistema);
-                        <button type="button" class="chip @(active ? "chip--active" : "")" @onclick="() => ToggleSistema(sistema)">
-                            @sistema
-                        </button>
+                        <div class="inc-target-option @(SelectedTarget == target.Name ? "inc-target-option--selected" : "")"
+                             @onclick="() => SelectedTarget = target.Name">
+                            <div class="inc-target-option__icon">
+                                <IconSvg Name="@target.Icon" />
+                            </div>
+                            <span class="inc-target-option__label">@target.Name</span>
+                        </div>
                     }
                 </div>
             </div>
 
-            <div class="form-group">
-                <label class="form-label">Palabras clave (tags)</label>
-                <div class="tag-input-row">
-                    <input class="input" @bind="_newTag" @bind:event="oninput" @onkeydown="OnTagKeyDown" placeholder="Escribí una palabra clave y presioná Enter" />
-                    <button type="button" class="btn btn--secondary btn--sm" @onclick="AddTag"><Icon Name="plus" /> Agregar</button>
-                </div>
-                @if (_model.Tags.Count > 0)
-                {
-                    <div class="tag-cloud">
-                        @foreach (var tag in _model.Tags)
-                        {
-                            <span class="chip chip--active">
-                                @tag
-                                <button type="button" class="chip__remove" @onclick="() => _model.Tags.Remove(tag)">×</button>
-                            </span>
-                        }
-                    </div>
-                }
+            <div>
+                <label class="inc-label">Responsable en área destino</label>
+                <select class="inc-select">
+                    <option>Asignar automáticamente</option>
+                    <option>María Gómez — Core Platform</option>
+                    <option>Carlos Ruiz — Infraestructura</option>
+                    <option>Ana Torres — Seguridad</option>
+                </select>
             </div>
+
+            <div>
+                <label class="inc-label">Comentario de transferencia</label>
+                <textarea class="inc-textarea" rows="4"
+                          placeholder="Describe el motivo de la transferencia y cualquier contexto relevante para el área receptora..."></textarea>
+            </div>
+
         </div>
 
-        @* ============================= ADJUNTOS ============================= *@
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="paperclip" /> Adjuntos y referencias</h3>
-
-            <div class="field-grid field-grid--2">
-                <div class="form-group">
-                    <label class="form-label">Archivos adjuntos</label>
-                    <div class="attachment-list">
-                        @foreach (var file in _model.ArchivosAdjuntos)
-                        {
-                            <div class="file-row">
-                                <span class="file-row__icon"><Icon Name="file" /></span>
-                                <div class="file-row__info">
-                                    <span class="file-row__name">@file</span>
-                                    <span class="file-row__meta">Adjunto</span>
-                                </div>
-                                <button type="button" class="icon-btn icon-btn--danger" @onclick="() => _model.ArchivosAdjuntos.Remove(file)">
-                                    <Icon Name="x" />
-                                </button>
-                            </div>
-                        }
-                    </div>
-                    <button type="button" class="btn btn--secondary btn--sm" @onclick="AddFakeAttachment">
-                        <Icon Name="upload" /> Subir archivo
-                    </button>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Imágenes</label>
-                    <div class="attachment-list">
-                        @foreach (var img in _model.Imagenes)
-                        {
-                            <div class="file-row">
-                                <span class="file-row__icon"><Icon Name="image" /></span>
-                                <div class="file-row__info">
-                                    <span class="file-row__name">@img</span>
-                                    <span class="file-row__meta">Imagen</span>
-                                </div>
-                                <button type="button" class="icon-btn icon-btn--danger" @onclick="() => _model.Imagenes.Remove(img)">
-                                    <Icon Name="x" />
-                                </button>
-                            </div>
-                        }
-                    </div>
-                    <button type="button" class="btn btn--secondary btn--sm" @onclick="AddFakeImage">
-                        <Icon Name="upload" /> Subir imagen
-                    </button>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Enlaces relacionados</label>
-                <div class="link-row">
-                    <input class="input" @bind="_newLinkLabel" placeholder="Texto del enlace" />
-                    <input class="input" @bind="_newLinkUrl" placeholder="https://..." />
-                    <button type="button" class="btn btn--secondary btn--sm" @onclick="AddLink"><Icon Name="plus" /></button>
-                </div>
-                @foreach (var link in _model.EnlacesRelacionados)
-                {
-                    <div class="external-link-row">
-                        <Icon Name="link" />
-                        <span style="flex:1">@link.Label</span>
-                        <button type="button" class="icon-btn icon-btn--danger" @onclick="() => _model.EnlacesRelacionados.Remove(link)">
-                            <Icon Name="x" />
-                        </button>
-                    </div>
-                }
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Referencias</label>
-                <textarea class="input" rows="3" @bind="_model.Referencias" placeholder="Manuales, normativas o documentos fuente utilizados"></textarea>
-            </div>
+        <div class="inc-drawer__footer">
+            <button class="inc-btn inc-btn--secondary inc-btn--full" @onclick="Close">Cancelar</button>
+            <button class="inc-btn inc-btn--primary inc-btn--full">
+                <IconSvg Name="repeat" /> Transferir incidencia
+            </button>
         </div>
+    </div>
+}
 
-        @* ============================= EDITOR ============================= *@
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="edit-3" /> Cuerpo del artículo</h3>
+@code {
+    [Parameter] public bool IsOpen { get; set; } = false;
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
 
-            <div class="editor-tabs">
-                <button type="button" class="editor-tabs__btn @(!_showPreview ? "editor-tabs__btn--active" : "")" @onclick="() => _showPreview = false">
-                    <Icon Name="pencil" /> Editar
-                </button>
-                <button type="button" class="editor-tabs__btn @(_showPreview ? "editor-tabs__btn--active" : "")" @onclick="() => _showPreview = true">
-                    <Icon Name="eye" /> Vista previa
+    [Parameter] public string IncidentId { get; set; } = "INC-2041";
+    [Parameter] public string IncidentTitle { get; set; } = "Falla en autenticación SSO";
+    [Parameter] public string CurrentArea { get; set; } = "Infraestructura";
+    [Parameter] public string CurrentAreaIcon { get; set; } = "server";
+
+    private string SelectedTarget = "Core";
+
+    private record TargetArea(string Name, string Icon);
+    private readonly List<TargetArea> Targets = new()
+    {
+        new("Desarrollo", "cpu"),
+        new("Core", "layers"),
+        new("Seguridad", "shield"),
+        new("Infraestructura", "server"),
+    };
+
+    private async Task Close()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(IsOpen);
+    }
+}
+
+ReactivateModal.razor
+
+@if (IsOpen)
+{
+    <div class="inc-overlay" @onclick="Close"></div>
+
+    <div class="inc-modal-center">
+        <div class="inc-modal">
+            <div class="inc-modal__icon">
+                <IconSvg Name="repeat" />
+            </div>
+            <h3>Reactivar incidencia</h3>
+            <p>
+                Estás a punto de reactivar <strong>@IncidentId</strong>. Esta acción reabrirá el caso
+                y notificará al responsable actual y al área correspondiente.
+            </p>
+
+            <div class="inc-modal__warning">
+                <IconSvg Name="alert" />
+                <p>
+                    Reactivar una incidencia resuelta reinicia el conteo de tiempo de resolución
+                    y puede afectar las métricas de SLA del área asignada.
+                </p>
+            </div>
+
+            <div class="inc-modal__actions">
+                <button class="inc-btn inc-btn--secondary inc-btn--full" @onclick="Close">Cancelar</button>
+                <button class="inc-btn inc-btn--primary inc-btn--full">
+                    <IconSvg Name="repeat" /> Confirmar reactivación
                 </button>
             </div>
-
-            @if (!_showPreview)
-            {
-                <div class="editor-toolbar">
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Encabezado 1" @onclick="InsertH1"><Icon Name="heading-1" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Encabezado 2" @onclick="InsertH2"><Icon Name="heading-2" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Encabezado 3" @onclick="InsertH3"><Icon Name="heading-3" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Negrita" @onclick="InsertBold"><Icon Name="bold" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Cursiva" @onclick="InsertItalic"><Icon Name="italic" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Subrayado" @onclick="InsertUnderline"><Icon Name="underline" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Lista numerada" @onclick="InsertOrderedList"><Icon Name="list-ordered" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Lista con viñetas" @onclick="InsertBulletList"><Icon Name="list" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Checklist" @onclick="InsertChecklist"><Icon Name="check-square" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Tabla" @onclick="InsertTable"><Icon Name="table" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Bloque de código" @onclick="InsertCodeBlock"><Icon Name="code" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Cita" @onclick="InsertQuote"><Icon Name="quote" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Hipervínculo" @onclick="InsertLink"><Icon Name="link" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Imagen" @onclick="InsertImage"><Icon Name="image" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Separador" @onclick="InsertDivider"><Icon Name="minus" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Expandible" @onclick="InsertDetails"><Icon Name="chevron-down" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Nota" @onclick="InsertNote"><Icon Name="sticky-note" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Advertencia" @onclick="InsertWarning"><Icon Name="alert-triangle" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Información" @onclick="InsertInfoBlock"><Icon Name="info" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Color de texto" @onclick="InsertColor"><Icon Name="palette" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Resaltar" @onclick="InsertHighlight"><Icon Name="highlighter" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Alinear al centro" @onclick="InsertCenter"><Icon Name="align-center" /></button>
-                    </div>
-                    <div class="editor-toolbar__group">
-                        <button type="button" class="editor-toolbar__btn" title="Deshacer" @onclick="Undo" disabled="@(_undoStack.Count == 0)"><Icon Name="undo-2" /></button>
-                        <button type="button" class="editor-toolbar__btn" title="Rehacer" @onclick="Redo" disabled="@(_redoStack.Count == 0)"><Icon Name="redo-2" /></button>
-                    </div>
-                </div>
-
-                <textarea class="editor-canvas" rows="18"
-                          placeholder="Escribí la documentación técnica acá. Usá la barra de herramientas para insertar bloques de formato."
-                          @bind="_model.Content" @bind:event="oninput" @bind:after="RecomputeDerived"></textarea>
-                <p class="form-hint">El índice lateral y la vista previa se generan automáticamente a partir de lo que escribas.</p>
-            }
-            else
-            {
-                <div class="editor-preview">
-                    @((MarkupString)_previewHtml)
-                </div>
-            }
         </div>
+    </div>
+}
 
-        @* ============================= HISTORIAL ============================= *@
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="history" /> Historial de cambios</h3>
-            <div class="version-timeline">
-                @foreach (var v in _history)
-                {
-                    <div class="version-row">
-                        <span class="version-row__dot"></span>
-                        <div>
-                            <p class="version-row__label">@v.Label — @v.Author</p>
-                            <p class="version-row__summary">@v.Summary</p>
-                            <p class="version-row__date">@v.Date.ToString("d MMM yyyy, HH:mm")</p>
-                        </div>
-                    </div>
-                }
+@code {
+    [Parameter] public bool IsOpen { get; set; } = false;
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public string IncidentId { get; set; } = "INC-2031";
+
+    private async Task Close()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(IsOpen);
+    }
+}
+
+IncidentList.razor
+
+@page "/incidencias/lista"
+
+<div class="inc-shell">
+    <div class="inc-container">
+
+        <div class="inc-pagehead inc-anim-fade-up">
+            <div>
+                <div class="inc-pagehead__eyebrow">
+                    <IconSvg Name="layers" />
+                    Módulo de Incidencias
+                </div>
+                <h1>Lista de incidencias</h1>
+                <p>Consulta, filtra y da seguimiento a todas las incidencias registradas entre áreas de tecnología.</p>
+            </div>
+            <div class="inc-pagehead__actions">
+                <button class="inc-btn inc-btn--primary inc-btn--lg">
+                    <IconSvg Name="plus" /> Nueva incidencia
+                </button>
             </div>
         </div>
 
-        @* ============================= REVISORES ============================= *@
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="users" /> Revisores</h3>
-            @foreach (var r in _reviewers)
-            {
-                <div class="reviewer-row">
-                    <span class="avatar avatar--sm">@r.Initials</span>
-                    <div class="reviewer-row__info">
-                        <span class="reviewer-row__name">@r.Name</span>
-                        <span class="reviewer-row__role">@r.Role</span>
-                    </div>
-                    <span class="@(r.StatusClass)">@r.Status</span>
-                </div>
-            }
+        <div class="inc-flex inc-gap-3" style="margin-bottom: var(--inc-s-5);">
+            <SearchBar @bind-Value="searchTerm" Placeholder="Buscar por ID, título o responsable..." />
+            <button class="inc-btn inc-btn--secondary">
+                <IconSvg Name="filter" /> Filtros avanzados
+            </button>
         </div>
 
-        @* ============================= APROBACIONES ============================= *@
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="check-circle" /> Aprobaciones</h3>
-            <div class="approval-steps">
-                @foreach (var step in _approvalSteps)
-                {
-                    <div class="approval-step approval-step--@step.State">
-                        <span class="approval-step__icon">
-                            <Icon Name="@(step.State == "done" ? "check" : step.State == "current" ? "clock" : "circle")" />
-                        </span>
-                        <span class="approval-step__label">@step.Label</span>
-                    </div>
-                }
-            </div>
-        </div>
+        <FilterBar @bind-ViewMode="viewMode" />
 
-        @* ============================= RELACIONADOS ============================= *@
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="folder-open" /> Documentación relacionada</h3>
-            @foreach (var doc in _relatedDocs)
-            {
-                <div class="file-row">
-                    <span class="file-row__icon"><Icon Name="file-text" /></span>
-                    <div class="file-row__info">
-                        <span class="file-row__name">@doc.Title</span>
-                        <span class="file-row__meta">@doc.Category</span>
-                    </div>
-                    <Icon Name="chevron-right" Class="file-row__download" />
-                </div>
-            }
-        </div>
-
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="link-2" /> Artículos relacionados</h3>
-            @foreach (var art in _relatedArticles)
-            {
-                <div class="file-row">
-                    <span class="file-row__icon"><Icon Name="file-text" /></span>
-                    <div class="file-row__info">
-                        <span class="file-row__name">@art.Title</span>
-                        <span class="file-row__meta">@art.Views vistas · @art.ReadingTime min</span>
-                    </div>
-                    <Icon Name="chevron-right" Class="file-row__download" />
-                </div>
-            }
-        </div>
-
-        @* ============================= OBSERVACIONES ============================= *@
-        <div class="card article-form">
-            <h3 class="form-section-title"><Icon Name="lock" /> Observaciones internas</h3>
-            <p class="form-hint" style="margin-bottom:var(--space-2)">Visibles solo para el equipo editorial. No se muestran en la vista pública del artículo.</p>
-            <textarea class="input" rows="3" @bind="_model.ObservacionesInternas" placeholder="Notas para revisores, pendientes o contexto adicional..."></textarea>
-        </div>
-
-        @if (!string.IsNullOrEmpty(_error))
+        @if (viewMode == "grid")
         {
-            <div class="callout callout--danger">
-                <Icon Name="alert-triangle" />
-                <p>@_error</p>
+            <div class="inc-list-grid inc-anim-fade-up">
+                @foreach (var inc in Incidents)
+                {
+                    <IncidentCard Id="@inc.Id" Title="@inc.Title" Description="@inc.Description"
+                                  Priority="@inc.Priority" PriorityLabel="@inc.PriorityLabel"
+                                  Status="@inc.Status" StatusLabel="@inc.StatusLabel"
+                                  Area="@inc.Area" AreaIcon="@inc.AreaIcon"
+                                  Responsible="@inc.Responsible" TimeAgo="@inc.TimeAgo"
+                                  SlaState="@inc.SlaState" SlaLabel="@inc.SlaLabel" />
+                }
+            </div>
+        }
+        else
+        {
+            <div class="inc-card inc-anim-fade-up" style="overflow-x:auto;">
+                <table class="inc-list-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Incidencia</th>
+                            <th>Estado</th>
+                            <th>Prioridad</th>
+                            <th>Área</th>
+                            <th>Responsable</th>
+                            <th>Tiempo</th>
+                            <th>SLA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var inc in Incidents)
+                        {
+                            <tr>
+                                <td class="inc-list-table__id">@inc.Id</td>
+                                <td>
+                                    <div class="inc-list-table__title">@inc.Title</div>
+                                    <div class="inc-list-table__title-sub">@inc.Area</div>
+                                </td>
+                                <td><StatusBadge Status="@inc.Status" Label="@inc.StatusLabel" /></td>
+                                <td><PriorityBadge Priority="@inc.Priority" Label="@inc.PriorityLabel" /></td>
+                                <td><AreaBadge AreaName="@inc.Area" Icon="@inc.AreaIcon" /></td>
+                                <td class="inc-flex inc-gap-2">
+                                    <UserAvatar Name="@inc.Responsible" Size="xs" /> @inc.Responsible
+                                </td>
+                                <td class="inc-muted">@inc.TimeAgo</td>
+                                <td>
+                                    <span class="inc-incident-card__sla inc-incident-card__sla--@inc.SlaState">
+                                        <IconSvg Name="@(inc.SlaState == "over" ? "alert" : "check-circle")" />
+                                        @inc.SlaLabel
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             </div>
         }
 
-        <div class="form-actions form-actions--triple">
-            <button type="button" class="btn btn--secondary" @onclick="SaveAsDraft"><Icon Name="save" /> Guardar como borrador</button>
-            <button type="button" class="btn btn--secondary" @onclick="SendToReview"><Icon Name="send" /> Enviar a revisión</button>
-            <button type="button" class="btn btn--primary" @onclick="Publish"><Icon Name="check" /> Publicar</button>
-        </div>
-    </div>
-
-    @* ============================= SIDEBAR ============================= *@
-    <aside class="article-sidebar">
-        <div class="toc">
-            <p class="toc__title"><Icon Name="list" /> Índice del artículo</p>
-            @if (_toc.Count == 0)
-            {
-                <p class="form-hint">Agregá encabezados en el cuerpo del artículo para generar el índice.</p>
-            }
-            else
-            {
-                @foreach (var item in _toc)
-                {
-                    <a class="toc__link toc__link--lvl@(item.Level)">@item.Text</a>
-                }
-            }
-        </div>
-
-        <div class="widget card">
-            <h4 class="widget__title"><Icon Name="lightbulb" /> Consejos</h4>
-            <p class="form-hint">Un buen título es específico y usa el mismo vocabulario que la gente busca ("Cómo..." o "Guía de...").</p>
-            <p class="form-hint">Usá encabezados H2/H3 para dividir procedimientos largos en pasos claros.</p>
-            <p class="form-hint">Marcá el nivel de acceso correcto antes de publicar información sensible.</p>
-        </div>
-
-        <div class="widget card">
-            <h4 class="widget__title"><Icon Name="info" /> Resumen de metadatos</h4>
-            <div class="meta-quickview">
-                <span>Estado</span><strong>@_model.Estado</strong>
-                <span>Versión</span><strong>@_model.Version</strong>
-                <span>Prioridad</span><strong>@_model.Prioridad</strong>
-                <span>Lectura</span><strong>@_readingTime min</strong>
+        @if (Incidents.Count == 0)
+        {
+            <div class="inc-card inc-empty-state">
+                <div class="inc-empty-state__icon"><IconSvg Name="search" /></div>
+                <h3>No se encontraron incidencias</h3>
+                <p>Intenta ajustar los filtros o el término de búsqueda para encontrar lo que buscas.</p>
             </div>
-        </div>
-    </aside>
+        }
+
+    </div>
 </div>
 
 @code {
-    private List<Category> _categories = new();
-    private List<Author> _authors = new();
-    private List<BreadcrumbItem> _breadcrumb = new()
+    private string searchTerm = "";
+    private string viewMode = "grid";
+
+    private record IncidentItem(string Id, string Title, string Description, string Priority, string PriorityLabel,
+        string Status, string StatusLabel, string Area, string AreaIcon, string Responsible, string TimeAgo,
+        string SlaState, string SlaLabel);
+
+    private readonly List<IncidentItem> Incidents = new()
     {
-        new("Inicio", "/"),
-        new("Articulos", "/articulos"),
-        new("Nuevo", null)
+        new("INC-2041", "Falla en autenticación SSO",
+            "Los usuarios del área de finanzas no logran iniciar sesión mediante el proveedor corporativo.",
+            "critica", "Crítica", "progress", "En progreso", "Infraestructura", "server",
+            "Carlos Ruiz", "hace 12m", "warn", "SLA en riesgo"),
+        new("INC-2039", "Error en generación de reportes PDF",
+            "El módulo de reportes financieros arroja excepción al exportar más de 500 registros.",
+            "alta", "Alta", "open", "Abierta", "Desarrollo", "cpu",
+            "Juan Pérez", "hace 34m", "ok", "SLA cumplido"),
+        new("INC-2036", "Latencia elevada en API de pagos",
+            "Se detectó incremento de tiempos de respuesta en el gateway de pagos durante horario pico.",
+            "alta", "Alta", "transferred", "Transferida", "Core", "layers",
+            "María Gómez", "hace 1h", "warn", "SLA en riesgo"),
+        new("INC-2031", "Solicitud de acceso a repositorio",
+            "Nuevo integrante del equipo requiere permisos de escritura en el repositorio de Wiki.",
+            "baja", "Baja", "resolved", "Resuelta", "Seguridad", "shield",
+            "Ana Torres", "hace 3h", "ok", "SLA cumplido"),
+        new("INC-2028", "Caída intermitente del servicio de notificaciones",
+            "Los correos de notificación de incidencias no se están enviando de forma consistente.",
+            "media", "Media", "open", "Abierta", "Core", "layers",
+            "María Gómez", "hace 5h", "ok", "SLA cumplido"),
+        new("INC-2019", "Actualización de certificado SSL vencido",
+            "El certificado del entorno de staging expiró y bloquea los despliegues automáticos.",
+            "critica", "Crítica", "resolved", "Resuelta", "Infraestructura", "server",
+            "Carlos Ruiz", "hace 1d", "ok", "SLA cumplido"),
+        new("INC-2015", "Revisión de permisos en Wiki corporativa",
+            "Se solicita auditoría de accesos para el espacio de documentación de Arquitectura.",
+            "baja", "Baja", "closed", "Cerrada", "Seguridad", "shield",
+            "Ana Torres", "hace 2d", "ok", "SLA cumplido"),
+        new("INC-2007", "Error de sincronización en pipeline CI/CD",
+            "El pipeline de integración continua falla al desplegar la rama principal del monorepo.",
+            "alta", "Alta", "progress", "En progreso", "Desarrollo", "cpu",
+            "Juan Pérez", "hace 2d", "over", "SLA vencido"),
+    };
+}
+
+CreateIncidentWizard.razor
+
+@page "/incidencias/nueva"
+
+<div class="inc-shell">
+    <div class="inc-container">
+
+        <div class="inc-pagehead inc-anim-fade-up">
+            <div>
+                <div class="inc-pagehead__eyebrow">
+                    <IconSvg Name="plus" />
+                    Nueva incidencia
+                </div>
+                <h1>Crear incidencia</h1>
+                <p>Completa los siguientes pasos para registrar una nueva incidencia entre áreas de tecnología.</p>
+            </div>
+        </div>
+
+        <div class="inc-wizard inc-anim-fade-up">
+
+            <div class="inc-wizard-steps">
+                @for (int i = 0; i < Steps.Count; i++)
+                {
+                    var index = i;
+                    var state = index < currentStep ? "done" : index == currentStep ? "active" : "";
+                    <div class="inc-wizard-step inc-wizard-step--@state">
+                        <div class="inc-wizard-step__circle">
+                            @if (index < currentStep)
+                            {
+                                <IconSvg Name="check-circle" />
+                            }
+                            else
+                            {
+                                @(index + 1)
+                            }
+                        </div>
+                        <span class="inc-wizard-step__label">@Steps[index]</span>
+                    </div>
+                    @if (index < Steps.Count - 1)
+                    {
+                        <div class="inc-wizard-connector @(index < currentStep ? "inc-wizard-connector--done" : "")"></div>
+                    }
+                }
+            </div>
+
+            <div class="inc-card inc-wizard-panel">
+
+                @if (currentStep == 0)
+                {
+                    <div class="inc-wizard-panel__head">
+                        <h2>Información básica</h2>
+                        <p>Describe brevemente el problema que estás reportando.</p>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap: var(--inc-s-5);">
+                        <div>
+                            <label class="inc-label">Título de la incidencia</label>
+                            <input class="inc-input" type="text" placeholder="Ej. Falla en autenticación SSO" />
+                        </div>
+                        <div>
+                            <label class="inc-label">Descripción</label>
+                            <textarea class="inc-textarea" rows="5" placeholder="Describe el problema con el mayor detalle posible..."></textarea>
+                        </div>
+                        <div class="inc-wizard-field-grid">
+                            <div>
+                                <label class="inc-label">Prioridad</label>
+                                <div class="inc-priority-select">
+                                    @foreach (var p in Priorities)
+                                    {
+                                        <div class="inc-priority-option @(selectedPriority == p.Key ? "inc-priority-option--selected" : "")"
+                                             style="color:@p.Color;" @onclick="() => selectedPriority = p.Key">
+                                            <div class="inc-priority__bars"><span></span><span></span><span></span></div>
+                                            <span class="inc-priority-option__label">@p.Label</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <div>
+                                <label class="inc-label">Categoría</label>
+                                <select class="inc-select">
+                                    <option>Falla de sistema</option>
+                                    <option>Solicitud de acceso</option>
+                                    <option>Rendimiento</option>
+                                    <option>Seguridad</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (currentStep == 1)
+                {
+                    <div class="inc-wizard-panel__head">
+                        <h2>Área afectada</h2>
+                        <p>Selecciona el área de tecnología responsable de atender esta incidencia.</p>
+                    </div>
+
+                    <div class="inc-option-grid">
+                        @foreach (var area in Areas)
+                        {
+                            <div class="inc-option-card @(selectedArea == area.Name ? "inc-option-card--selected" : "")"
+                                 @onclick="() => selectedArea = area.Name">
+                                <div class="inc-option-card__icon"><IconSvg Name="@area.Icon" /></div>
+                                <span class="inc-option-card__title">@area.Name</span>
+                                <span class="inc-option-card__desc">@area.Description</span>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (currentStep == 2)
+                {
+                    <div class="inc-wizard-panel__head">
+                        <h2>Responsable</h2>
+                        <p>Asigna un responsable dentro del área seleccionada, o deja que el sistema lo haga automáticamente.</p>
+                    </div>
+
+                    <div class="inc-responsible-list">
+                        @foreach (var person in Responsibles)
+                        {
+                            <div class="inc-responsible-option @(selectedResponsible == person.Name ? "inc-responsible-option--selected" : "")"
+                                 @onclick="() => selectedResponsible = person.Name">
+                                <UserAvatar Name="@person.Name" Size="md" />
+                                <div class="inc-responsible-option__info">
+                                    <div class="inc-responsible-option__name">@person.Name</div>
+                                    <div class="inc-responsible-option__role">@person.Role</div>
+                                </div>
+                                <span class="inc-responsible-option__load">@person.Load carga</span>
+                                <div class="inc-responsible-option__check"><IconSvg Name="check-circle" /></div>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (currentStep == 3)
+                {
+                    <div class="inc-wizard-panel__head">
+                        <div class="inc-success-check"><IconSvg Name="check-circle" /></div>
+                        <h2>Confirma los datos</h2>
+                        <p>Revisa la información antes de crear la incidencia.</p>
+                    </div>
+
+                    <div class="inc-summary-review">
+                        <div class="inc-summary-row">
+                            <span class="inc-summary-row__label">Título</span>
+                            <span class="inc-summary-row__value">Falla en autenticación SSO</span>
+                        </div>
+                        <div class="inc-summary-row">
+                            <span class="inc-summary-row__label">Prioridad</span>
+                            <span class="inc-summary-row__value">@Priorities.First(p => p.Key == selectedPriority).Label</span>
+                        </div>
+                        <div class="inc-summary-row">
+                            <span class="inc-summary-row__label">Área</span>
+                            <span class="inc-summary-row__value">@selectedArea</span>
+                        </div>
+                        <div class="inc-summary-row">
+                            <span class="inc-summary-row__label">Responsable</span>
+                            <span class="inc-summary-row__value">@selectedResponsible</span>
+                        </div>
+                        <div class="inc-summary-row">
+                            <span class="inc-summary-row__label">Fecha de creación</span>
+                            <span class="inc-summary-row__value">@DateTime.Now.ToString("dd MMM yyyy, HH:mm")</span>
+                        </div>
+                    </div>
+                }
+
+                <div class="inc-wizard-footer">
+                    <span class="inc-wizard-footer__progress">Paso @(currentStep + 1) de @Steps.Count</span>
+                    <div class="inc-flex inc-gap-3">
+                        @if (currentStep > 0)
+                        {
+                            <button class="inc-btn inc-btn--secondary" @onclick="PrevStep">Atrás</button>
+                        }
+                        @if (currentStep < Steps.Count - 1)
+                        {
+                            <button class="inc-btn inc-btn--primary" @onclick="NextStep">
+                                Continuar <IconSvg Name="arrow-right" />
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="inc-btn inc-btn--primary">
+                                <IconSvg Name="check-circle" /> Crear incidencia
+                            </button>
+                        }
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int currentStep = 0;
+    private readonly List<string> Steps = new() { "Básico", "Área", "Responsable", "Confirmación" };
+
+    private string selectedPriority = "alta";
+    private string selectedArea = "Infraestructura";
+    private string selectedResponsible = "Carlos Ruiz";
+
+    private record PriorityOption(string Key, string Label, string Color);
+    private readonly List<PriorityOption> Priorities = new()
+    {
+        new("critica", "Crítica", "var(--inc-danger-500)"),
+        new("alta", "Alta", "var(--inc-warning-500)"),
+        new("media", "Media", "var(--inc-info-500)"),
+        new("baja", "Baja", "var(--inc-success-500)"),
     };
 
-    private readonly List<string> _subcategories = new()
+    private record AreaOption(string Name, string Icon, string Description);
+    private readonly List<AreaOption> Areas = new()
     {
-        "Accesos y Credenciales", "Infraestructura", "Aplicaciones Internas",
-        "Seguridad", "Redes", "Bases de Datos", "Soporte al Usuario"
+        new("Desarrollo", "cpu", "Aplicaciones y sistemas internos"),
+        new("Core", "layers", "Plataforma y servicios base"),
+        new("Infraestructura", "server", "Redes, servidores y despliegues"),
+        new("Seguridad", "shield", "Accesos y protección de datos"),
     };
 
-    private readonly List<string> _areas = new()
+    private record ResponsibleOption(string Name, string Role, string Load);
+    private readonly List<ResponsibleOption> Responsibles = new()
     {
-        "Infraestructura", "Seguridad de la Información", "Soporte Técnico",
-        "Desarrollo", "Redes", "Operaciones TI"
+        new("Carlos Ruiz", "Infraestructura", "Baja"),
+        new("María Gómez", "Core Platform", "Media"),
+        new("Juan Pérez", "Desarrollo", "Alta"),
+        new("Ana Torres", "Seguridad", "Baja"),
     };
 
-    private readonly List<string> _nivelesAcceso = new()
-    {
-        "Público interno", "Confidencial", "Restringido", "Alta confidencialidad"
-    };
+    private void NextStep() { if (currentStep < Steps.Count - 1) currentStep++; }
+    private void PrevStep() { if (currentStep > 0) currentStep--; }
+}
 
-    private readonly List<string> _prioridades = new() { "Baja", "Media", "Alta", "Critica" };
+IncidentDetail.razor
 
-    private readonly List<string> _sistemasDisponibles = new()
-    {
-        "Active Directory", "SharePoint", "VPN Corporativa", "Core Bancario", "ServiceNow", "Office 365"
-    };
+@page "/incidencias/{Id}"
 
-    private readonly ArticleFormModel _model = new();
-    private string? _error;
-    private string _newTag = string.Empty;
-    private string _newLinkLabel = string.Empty;
-    private string _newLinkUrl = string.Empty;
-    private int _readingTime = 1;
-    private List<TocItem> _toc = new();
+<div class="inc-shell">
+    <div class="inc-container">
 
-    private readonly Stack<string> _undoStack = new();
-    private readonly Stack<string> _redoStack = new();
+        <!-- Header -->
+        <div class="inc-detail-header inc-anim-fade-up">
+            <div class="inc-detail-header__top">
+                <div>
+                    <div class="inc-detail-header__id">@Id</div>
+                    <h1 class="inc-detail-header__title">Falla en autenticación SSO</h1>
+                    <div class="inc-detail-header__badges">
+                        <StatusBadge Status="progress" Label="En progreso" />
+                        <PriorityBadge Priority="critica" Label="Crítica" />
+                        <AreaBadge AreaName="Infraestructura" Icon="server" />
+                    </div>
+                </div>
+                <div class="inc-pagehead__actions">
+                    <button class="inc-btn inc-btn--secondary" @onclick="() => transferOpen = true">
+                        <IconSvg Name="repeat" /> Transferir
+                    </button>
+                    <button class="inc-btn inc-btn--primary">
+                        <IconSvg Name="check-circle" /> Resolver
+                    </button>
+                </div>
+            </div>
 
-    private bool _showPreview = false;
-    private string _previewHtml = string.Empty;
+            <div class="inc-detail-header__meta">
+                <div class="inc-detail-header__meta-item">
+                    <span class="inc-detail-header__meta-label">Responsable</span>
+                    <span class="inc-detail-header__meta-value">
+                        <UserAvatar Name="Carlos Ruiz" Size="xs" /> Carlos Ruiz
+                    </span>
+                </div>
+                <div class="inc-detail-header__meta-item">
+                    <span class="inc-detail-header__meta-label">Fecha de creación</span>
+                    <span class="inc-detail-header__meta-value">
+                        <IconSvg Name="clock" /> 14 jul 2026, 09:12
+                    </span>
+                </div>
+                <div class="inc-detail-header__meta-item">
+                    <span class="inc-detail-header__meta-label">Área origen</span>
+                    <span class="inc-detail-header__meta-value">
+                        <IconSvg Name="cpu" /> Desarrollo
+                    </span>
+                </div>
+                <div class="inc-detail-header__meta-item">
+                    <span class="inc-detail-header__meta-label">SLA</span>
+                    <span class="inc-detail-header__meta-value">
+                        <IconSvg Name="alert" /> En riesgo
+                    </span>
+                </div>
+            </div>
+        </div>
 
-    // ---- Datos de demo (se sobreescriben en OnInitialized, por eso no se inicializan acá) ----
-    private List<HistoryEntry> _history;
-    private List<Reviewer> _reviewers;
-    private List<ApprovalStep> _approvalSteps;
-    private List<RelatedDoc> _relatedDocs;
-    private List<RelatedArticle> _relatedArticles;
+        <!-- Time metrics -->
+        <div class="inc-time-strip inc-anim-fade-up">
+            <div class="inc-card inc-time-metric">
+                <div class="inc-time-metric__icon" style="background:var(--inc-info-50); color:var(--inc-info-600);">
+                    <IconSvg Name="clock" />
+                </div>
+                <div class="inc-time-metric__value">5h 40m</div>
+                <div class="inc-time-metric__label">Tiempo activo</div>
+            </div>
+            <div class="inc-card inc-time-metric">
+                <div class="inc-time-metric__icon" style="background:var(--inc-warning-50); color:var(--inc-warning-600);">
+                    <IconSvg Name="clock" />
+                </div>
+                <div class="inc-time-metric__value">1h 15m</div>
+                <div class="inc-time-metric__label">Tiempo detenido</div>
+            </div>
+            <div class="inc-card inc-time-metric">
+                <div class="inc-time-metric__icon" style="background:var(--inc-accent-50); color:var(--inc-accent-500);">
+                    <IconSvg Name="clock" />
+                </div>
+                <div class="inc-time-metric__value">6h 55m</div>
+                <div class="inc-time-metric__label">Tiempo total</div>
+            </div>
+        </div>
 
-    protected override void OnInitialized()
-    {
-        _categories = Data.GetCategories().OrderBy(c => c.Name).ToList();
-        _authors = Data.GetAuthors().OrderBy(a => a.FullName).ToList();
+        <div class="inc-detail-grid">
 
-        _model.FechaCreacion = DateTime.Today;
-        _model.FechaActualizacion = DateTime.Today;
-        _model.Version = "v1.0";
+            <!-- Columna principal -->
+            <div>
+                <!-- Timeline -->
+                <div class="inc-card inc-card--pad-lg inc-anim-fade-up" style="margin-bottom: var(--inc-s-6);">
+                    <SectionHeader Title="Recorrido de la incidencia" Icon="layers"
+                                   Subtitle="Historial completo de transferencias y cambios de estado" />
+                    <div class="inc-timeline">
+                        <TimelineStep Type="created" Actor="Juan Pérez" Time="14 jul, 09:12"
+                                      AvatarColor="var(--inc-info-500)" DelayMs="0"
+                                      Description="Creó la incidencia y la asignó inicialmente al área de <strong>Desarrollo</strong>." />
 
-        _history = new()
-        {
-            new("Creación del documento", "Hiavert Maldonado", "Se creó la estructura inicial del artículo.", DateTime.Now.AddDays(-3)),
-            new("Revisión de contenido", "Lucía Fernández", "Se corrigieron los pasos de configuración de red.", DateTime.Now.AddDays(-2)),
-            new("Actualización menor", "Hiavert Maldonado", "Se agregaron capturas de pantalla y referencias.", DateTime.Now.AddDays(-1)),
-        };
+                        <TimelineStep Type="transfer" Actor="Juan Pérez" Time="14 jul, 13:20"
+                                      AvatarColor="var(--inc-violet-500)" DelayMs="80"
+                                      Description="Transfirió la incidencia indicando que el origen del problema está en la capa de infraestructura de red."
+                                      ShowFlow="true" From="Desarrollo" FromIcon="cpu" To="Core" ToIcon="layers" Duration="4h activo" />
 
-        _reviewers = new()
-        {
-            new("Lucía Fernández", "Referente Técnica - Redes", "LF", "Aprobado", "badge badge--success"),
-            new("Martín Ibarra", "Seguridad de la Información", "MI", "Pendiente", "badge badge--amber"),
-            new("Sofía Ramos", "Responsable de Documentación", "SR", "En revisión", "badge badge--brand"),
-        };
+                        <TimelineStep Type="progress" Actor="María Gómez" Time="14 jul, 13:45"
+                                      AvatarColor="var(--inc-warning-500)" DelayMs="160"
+                                      Description="Tomó el caso y comenzó el diagnóstico del servicio de autenticación SSO." />
 
-        _approvalSteps = new()
-        {
-            new("Autor", "done"),
-            new("Revisión técnica", "current"),
-            new("Responsable de área", "pending"),
-            new("Publicación", "pending"),
-        };
+                        <TimelineStep Type="transfer" Actor="María Gómez" Time="14 jul, 21:50"
+                                      AvatarColor="var(--inc-violet-500)" DelayMs="240"
+                                      Description="Identificó que el problema está relacionado con la configuración del balanceador de carga."
+                                      ShowFlow="true" From="Core" FromIcon="layers" To="Infraestructura" ToIcon="server" Duration="8h 05m activo" />
 
-        _relatedDocs = new()
-        {
-            new("Política de Seguridad de la Información v3", "Seguridad"),
-            new("Manual de Onboarding de Tecnología", "Recursos Humanos / TI"),
-            new("Estándares de Nomenclatura de Servidores", "Infraestructura"),
-        };
+                        <TimelineStep Type="comment" Actor="Carlos Ruiz" Time="15 jul, 08:30"
+                                      AvatarColor="var(--inc-n-500)" DelayMs="320"
+                                      Description="Confirmó el diagnóstico y está aplicando un cambio de configuración en el balanceador principal." />
+                    </div>
+                </div>
 
-        _relatedArticles = new()
-        {
-            new("Cómo restablecer tu contraseña de dominio", 1240, 4),
-            new("Buenas prácticas de seguridad para equipos remotos", 860, 6),
-            new("Checklist de alta de usuario nuevo", 530, 3),
-        };
+                <!-- Tabs: Actividad / Comentarios / Archivos -->
+                <div class="inc-card inc-card--pad-lg inc-anim-fade-up">
+                    <div class="inc-tabs">
+                        <button class="inc-tabs__btn @(activeTab == "comments" ? "inc-tabs__btn--active" : "")" @onclick='() => activeTab = "comments"'>
+                            <IconSvg Name="message" /> Comentarios <span class="inc-tabs__badge">3</span>
+                        </button>
+                        <button class="inc-tabs__btn @(activeTab == "files" ? "inc-tabs__btn--active" : "")" @onclick='() => activeTab = "files"'>
+                            <IconSvg Name="file" /> Archivos <span class="inc-tabs__badge">2</span>
+                        </button>
+                    </div>
 
-        RecomputeDerived();
-    }
+                    @if (activeTab == "comments")
+                    {
+                        <div>
+                            <div class="inc-comment">
+                                <UserAvatar Name="Carlos Ruiz" Size="sm" />
+                                <div class="inc-comment__body">
+                                    <div class="inc-comment__head">
+                                        <span class="inc-comment__author">Carlos Ruiz</span>
+                                        <span class="inc-comment__time">hace 20m</span>
+                                    </div>
+                                    <div class="inc-comment__text">
+                                        Aplicando el cambio de configuración en el balanceador. Estimamos resolución en los próximos 30 minutos.
+                                    </div>
+                                    <div class="inc-comment__actions">
+                                        <span class="inc-comment__action"><IconSvg Name="message" /> Responder</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="inc-comment">
+                                <UserAvatar Name="María Gómez" Size="sm" />
+                                <div class="inc-comment__body">
+                                    <div class="inc-comment__head">
+                                        <span class="inc-comment__author">María Gómez</span>
+                                        <span class="inc-comment__time">hace 11h</span>
+                                    </div>
+                                    <div class="inc-comment__text">
+                                        Revisé los logs del servicio; el error apunta a un timeout en el balanceador de carga durante los handshakes SSO.
+                                    </div>
+                                    <div class="inc-comment__actions">
+                                        <span class="inc-comment__action"><IconSvg Name="message" /> Responder</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="inc-comment">
+                                <UserAvatar Name="Juan Pérez" Size="sm" />
+                                <div class="inc-comment__body">
+                                    <div class="inc-comment__head">
+                                        <span class="inc-comment__author">Juan Pérez</span>
+                                        <span class="inc-comment__time">hace 19h</span>
+                                    </div>
+                                    <div class="inc-comment__text">
+                                        Confirmado con el equipo de finanzas: el 100% de sus usuarios están bloqueados desde las 09:00.
+                                    </div>
+                                    <div class="inc-comment__actions">
+                                        <span class="inc-comment__action"><IconSvg Name="message" /> Responder</span>
+                                    </div>
+                                </div>
+                            </div>
 
-    private void ToggleSistema(string sistema)
-    {
-        if (!_model.SistemasRelacionados.Remove(sistema))
-            _model.SistemasRelacionados.Add(sistema);
-    }
+                            <div class="inc-composer">
+                                <UserAvatar Name="Yo" Size="sm" />
+                                <div class="inc-composer__box">
+                                    <textarea class="inc-textarea" placeholder="Escribe un comentario..."></textarea>
+                                    <div class="inc-composer__actions">
+                                        <button class="inc-btn inc-btn--primary inc-btn--sm">Publicar comentario</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display:flex; flex-direction:column; gap: var(--inc-s-3);">
+                            <div class="inc-file-chip">
+                                <div class="inc-file-chip__icon"><IconSvg Name="file" /></div>
+                                <div style="flex:1;">
+                                    <div class="inc-file-chip__name">logs-sso-14jul.txt</div>
+                                    <div class="inc-file-chip__meta">248 KB · subido por María Gómez</div>
+                                </div>
+                            </div>
+                            <div class="inc-file-chip">
+                                <div class="inc-file-chip__icon"><IconSvg Name="file" /></div>
+                                <div style="flex:1;">
+                                    <div class="inc-file-chip__name">diagrama-balanceador.png</div>
+                                    <div class="inc-file-chip__meta">1.1 MB · subido por Carlos Ruiz</div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
 
-    private void AddTag()
-    {
-        var value = _newTag.Trim();
-        if (!string.IsNullOrEmpty(value) && !_model.Tags.Contains(value))
-        {
-            _model.Tags.Add(value);
-        }
-        _newTag = string.Empty;
-    }
+            <!-- Columna lateral -->
+            <div style="display:flex; flex-direction:column; gap: var(--inc-s-6);">
 
-    private void OnTagKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter") AddTag();
-    }
+                <div class="inc-card inc-card--pad-md inc-anim-fade-up">
+                    <SectionHeader Title="Acciones" Icon="layers" />
+                    <ActionToolbar />
+                </div>
 
-    private void AddLink()
-    {
-        if (!string.IsNullOrWhiteSpace(_newLinkLabel) && !string.IsNullOrWhiteSpace(_newLinkUrl))
-        {
-            _model.EnlacesRelacionados.Add(new RelatedLink(_newLinkLabel, _newLinkUrl));
-            _newLinkLabel = string.Empty;
-            _newLinkUrl = string.Empty;
-        }
-    }
+                <div class="inc-card inc-card--pad-lg inc-anim-fade-up">
+                    <SectionHeader Title="Artículos relacionados" Icon="book"
+                                   Subtitle="Sugeridos según el contenido de la incidencia" />
+                    <div style="display:flex; flex-direction:column; gap: 2px;">
+                        <ArticleSuggestionCard Icon="book" Title="Configuración de SSO corporativo"
+                                                Description="Guía paso a paso para configurar el proveedor de identidad." />
+                        <ArticleSuggestionCard Icon="server" Title="Troubleshooting de balanceadores"
+                                                Description="Checklist de diagnóstico ante caídas del servicio de balanceo." />
+                        <ArticleSuggestionCard Icon="shield" Title="Política de accesos críticos"
+                                                Description="Procedimiento de escalamiento para incidencias de seguridad." />
+                    </div>
+                </div>
 
-    private void AddFakeAttachment()
-    {
-        _model.ArchivosAdjuntos.Add($"documento-{_model.ArchivosAdjuntos.Count + 1}.pdf");
-    }
+                <div class="inc-card inc-card--pad-lg inc-anim-fade-up">
+                    <SectionHeader Title="Historial de transferencias" Icon="repeat" />
+                    <div class="inc-area-load">
+                        <div class="inc-area-load__row">
+                            <div class="inc-area-load__icon"><IconSvg Name="cpu" /></div>
+                            <div class="inc-area-load__info">
+                                <div class="inc-area-load__top">
+                                    <span class="inc-area-load__name">Desarrollo</span>
+                                    <span class="inc-area-load__count">4h 05m</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="inc-area-load__row">
+                            <div class="inc-area-load__icon"><IconSvg Name="layers" /></div>
+                            <div class="inc-area-load__info">
+                                <div class="inc-area-load__top">
+                                    <span class="inc-area-load__name">Core</span>
+                                    <span class="inc-area-load__count">8h 05m</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="inc-area-load__row">
+                            <div class="inc-area-load__icon"><IconSvg Name="server" /></div>
+                            <div class="inc-area-load__info">
+                                <div class="inc-area-load__top">
+                                    <span class="inc-area-load__name">Infraestructura</span>
+                                    <span class="inc-area-load__count">En curso</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-    private void AddFakeImage()
-    {
-        _model.Imagenes.Add($"imagen-{_model.Imagenes.Count + 1}.png");
-    }
+            </div>
+        </div>
+    </div>
+</div>
 
-    // ---- Botones de la barra de herramientas del editor ----
-    private void InsertH1() => InsertSnippet("# Título");
-    private void InsertH2() => InsertSnippet("## Subtítulo");
-    private void InsertH3() => InsertSnippet("### Sección");
-    private void InsertBold() => InsertSnippet("**texto en negrita**");
-    private void InsertItalic() => InsertSnippet("*texto en cursiva*");
-    private void InsertUnderline() => InsertSnippet("<u>texto subrayado</u>");
-    private void InsertOrderedList() => InsertSnippet("1. Elemento uno\n2. Elemento dos");
-    private void InsertBulletList() => InsertSnippet("- Elemento\n- Elemento");
-    private void InsertChecklist() => InsertSnippet("- [ ] Tarea pendiente\n- [x] Tarea realizada");
-    private void InsertTable() => InsertSnippet("| Columna 1 | Columna 2 |\n|---|---|\n| Valor | Valor |");
-    private void InsertCodeBlock() => InsertSnippet("```csharp\nvar x = 1;\n```");
-    private void InsertQuote() => InsertSnippet("> Cita textual");
-    private void InsertLink() => InsertSnippet("[texto del enlace](https://)");
-    // FIX: el string original tenía saltos de línea reales dentro de comillas normales -> error de compilación.
-    private void InsertImage() => InsertSnippet("\n\n![descripcion](url-de-imagen)\n\n");
-    private void InsertDivider() => InsertSnippet("---");
-    private void InsertDetails() => InsertSnippet("<details><summary>Ver más</summary>\nContenido oculto\n</details>");
-    private void InsertNote() => InsertSnippet(":::note\nEsto es una nota.\n:::");
-    private void InsertWarning() => InsertSnippet(":::warning\nEsto es una advertencia.\n:::");
-    private void InsertInfoBlock() => InsertSnippet(":::info\nEsto es información adicional.\n:::");
-    private void InsertColor() => InsertSnippet("{color:#C41230}texto en color{/color}");
-    private void InsertHighlight() => InsertSnippet("==texto resaltado==");
-    private void InsertCenter() => InsertSnippet(":::center\ntexto centrado\n:::");
+<TransferModal @bind-IsOpen="transferOpen" IncidentId="@Id" IncidentTitle="Falla en autenticación SSO"
+               CurrentArea="Infraestructura" CurrentAreaIcon="server" />
 
-    private void InsertSnippet(string snippet)
-    {
-        _undoStack.Push(_model.Content);
-        _redoStack.Clear();
-        _model.Content = string.IsNullOrEmpty(_model.Content)
-            ? snippet
-            : _model.Content.TrimEnd('\n') + "\n\n" + snippet + "\n";
-        RecomputeDerived();
-    }
+<ReactivateModal @bind-IsOpen="reactivateOpen" IncidentId="@Id" />
 
-    private void Undo()
-    {
-        if (_undoStack.Count == 0) return;
-        _redoStack.Push(_model.Content);
-        _model.Content = _undoStack.Pop();
-        RecomputeDerived();
-    }
+@code {
+    [Parameter] public string Id { get; set; } = "INC-2041";
 
-    private void Redo()
-    {
-        if (_redoStack.Count == 0) return;
-        _undoStack.Push(_model.Content);
-        _model.Content = _redoStack.Pop();
-        RecomputeDerived();
-    }
-
-    private void RecomputeDerived()
-    {
-        var words = string.IsNullOrWhiteSpace(_model.Content)
-            ? 0
-            : _model.Content.Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
-        _readingTime = Math.Max(1, (int)Math.Ceiling(words / 200.0));
-
-        _toc = (_model.Content ?? string.Empty)
-            .Split('\n')
-            .Where(l => l.TrimStart().StartsWith("#"))
-            .Select(l =>
-            {
-                var trimmedLine = l.TrimStart();
-                var level = trimmedLine.TakeWhile(c => c == '#').Count();
-                var text = trimmedLine.TrimStart('#').Trim();
-                return new TocItem(Math.Clamp(level, 1, 4), text);
-            })
-            .Where(t => !string.IsNullOrWhiteSpace(t.Text))
-            .ToList();
-
-        _previewHtml = MarkdownRenderer.Render(_model.Content);
-    }
-
-    private bool ValidateBasics()
-    {
-        if (string.IsNullOrWhiteSpace(_model.Title) || string.IsNullOrWhiteSpace(_model.Summary))
-        {
-            _error = "El título y el resumen son obligatorios.";
-            return false;
-        }
-        if (!Guid.TryParse(_model.CategoryId, out _))
-        {
-            _error = "Seleccioná una categoría.";
-            return false;
-        }
-        if (!Guid.TryParse(_model.AuthorId, out _))
-        {
-            _error = "Seleccioná un autor.";
-            return false;
-        }
-        _error = null;
-        return true;
-    }
-
-    private void SaveAsDraft()
-    {
-        if (!ValidateBasics()) return;
-        _model.Estado = "Borrador";
-        Persist(ArticleStatus.Draft);
-    }
-
-    private void SendToReview()
-    {
-        if (!ValidateBasics()) return;
-        _model.Estado = "En revisión";
-        Persist(ArticleStatus.InReview);
-    }
-
-    private void Publish()
-    {
-        if (!ValidateBasics()) return;
-        _model.Estado = "Publicado";
-        Persist(ArticleStatus.Published);
-    }
-
-    private void Persist(ArticleStatus status)
-    {
-        var categoryId = Guid.Parse(_model.CategoryId);
-        var authorId = Guid.Parse(_model.AuthorId);
-
-        // FIX: antes se pasaba string.Empty en lugar del contenido real del artículo,
-        // por lo que el cuerpo escrito por el usuario nunca se guardaba.
-        // TODO: revisar la firma de IWikiDataService.CreateArticle — actualmente no se
-        // envían Tags, SistemasRelacionados, NivelAcceso, Referencias ni ObservacionesInternas.
-        // Si el servicio soporta esos parámetros, agregarlos acá.
-        var created = Data.CreateArticle(
-            _model.Title,
-            _model.Summary,
-            categoryId,
-            authorId,
-            new List<Guid>(),
-            _model.Content,
-            false,
-            status);
-
-        Nav.NavigateTo($"/articulo/{created.Slug}");
-    }
-
-    private class ArticleFormModel
-    {
-        [System.ComponentModel.DataAnnotations.Required]
-        public string Title { get; set; } = string.Empty;
-        public string Summary { get; set; } = string.Empty;
-        public string CategoryId { get; set; } = string.Empty;
-        public string Subcategory { get; set; } = string.Empty;
-        public string AreaResponsable { get; set; } = string.Empty;
-        public string NivelAcceso { get; set; } = "Público interno";
-        public string AuthorId { get; set; } = string.Empty;
-        public DateTime FechaCreacion { get; set; }
-        public DateTime FechaActualizacion { get; set; }
-        public string Version { get; set; } = "v1.0";
-        public string Estado { get; set; } = "Borrador";
-        public string Prioridad { get; set; } = "Media";
-        public string Referencias { get; set; } = string.Empty;
-        public string ObservacionesInternas { get; set; } = string.Empty;
-        public string Content { get; set; } = string.Empty;
-        public List<string> Tags { get; set; } = new();
-        public List<string> SistemasRelacionados { get; set; } = new();
-        public List<string> ArchivosAdjuntos { get; set; } = new();
-        public List<string> Imagenes { get; set; } = new();
-        public List<RelatedLink> EnlacesRelacionados { get; set; } = new();
-    }
-
-    private record RelatedLink(string Label, string Url);
-    private record TocItem(int Level, string Text);
-    private record HistoryEntry(string Label, string Author, string Summary, DateTime Date);
-    private record Reviewer(string Name, string Role, string Initials, string Status, string StatusClass);
-    private record ApprovalStep(string Label, string State);
-    private record RelatedDoc(string Title, string Category);
-    private record RelatedArticle(string Title, int Views, int ReadingTime);
+    private string activeTab = "comments";
+    private bool transferOpen = false;
+    private bool reactivateOpen = false;
 }
