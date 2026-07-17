@@ -1,150 +1,48 @@
-IToastService.cs
-namespace CorpWiki.Web.Services;
+/* ---------- Anclas para el índice lateral del detalle ---------- */
+.incident-anchor-section { scroll-margin-top: 90px; }
 
-public enum ToastVariant { Success, Info, Warning, Danger }
-
-public record ToastMessage(Guid Id, string Text, string Icon, ToastVariant Variant);
-
-/// <summary>
-/// Servicio de UI puro: guarda mensajes de confirmación para que
-/// cualquier página los dispare y ToastContainer los renderice. No tiene
-/// nada que ver con el dominio de Incidencias ni de la Wiki.
-/// </summary>
-public interface IToastService
-{
-    event Action? OnChange;
-    IReadOnlyList<ToastMessage> Toasts { get; }
-    void Show(string text, ToastVariant variant = ToastVariant.Success, string icon = "check-circle");
-    void Dismiss(Guid id);
-}
-
-ToastService.cs
-namespace CorpWiki.Web.Services;
-
-public class ToastService : IToastService
-{
-    private readonly List<ToastMessage> _toasts = new();
-    public event Action? OnChange;
-
-    public IReadOnlyList<ToastMessage> Toasts => _toasts;
-
-    public void Show(string text, ToastVariant variant = ToastVariant.Success, string icon = "check-circle")
-    {
-        var toast = new ToastMessage(Guid.NewGuid(), text, icon, variant);
-        _toasts.Add(toast);
-        OnChange?.Invoke();
-
-        // Auto-cierre a los 4s, sin bloquear el hilo de UI.
-        _ = Task.Delay(4000).ContinueWith(_ => Dismiss(toast.Id));
-    }
-
-    public void Dismiss(Guid id)
-    {
-        if (_toasts.RemoveAll(t => t.Id == id) > 0)
-            OnChange?.Invoke();
-    }
-}
-
-ToastContainer.razor
-@implements IDisposable
-@inject IToastService ToastService
-
-<div class="toast-stack">
-    @foreach (var toast in ToastService.Toasts)
-    {
-        <div class="toast toast--@VariantSuffix(toast.Variant)">
-            <Icon Name="@toast.Icon" />
-            <span class="toast__text">@toast.Text</span>
-            <button class="toast__close" @onclick="() => ToastService.Dismiss(toast.Id)" aria-label="Cerrar">×</button>
-        </div>
-    }
+<div id="descripcion" class="card incident-anchor-section" style="padding: var(--space-6); margin-bottom: var(--space-6);">
+    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="file-text" />Descripción</h4>
+    <p>@_detail.Description</p>
 </div>
 
-@code {
-    protected override void OnInitialized() => ToastService.OnChange += HandleChange;
+@if (_journey.Count > 1)
+{
+    <div id="recorrido" class="card incident-anchor-section" style="padding: var(--space-5) var(--space-6); margin-bottom: var(--space-6);">
+        <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="workflow" />Recorrido entre áreas</h4>
+        @* ... resto sin cambios ... *@
+    </div>
+}
 
-    private void HandleChange() => InvokeAsync(StateHasChanged);
+<section id="historial" class="section incident-anchor-section">
+    <div class="card widget">
+        <h4 class="widget__title" style="margin-bottom: var(--space-3);">
+            <Icon Name="history" />Historial (@_detail.Activity.Count)
+        </h4>
+        <div class="version-timeline">
+            @* ... resto sin cambios ... *@
+        </div>
+    </div>
+</section>
 
-    private static string VariantSuffix(ToastVariant v) => v switch
+<section id="comentarios" class="section incident-anchor-section">
+    <div class="card" style="padding: var(--space-5);">
+        <h4 class="widget__title" style="margin-bottom: var(--space-3);">
+            <Icon Name="message-circle" />Comentarios (@_detail.Comments.Count)
+        </h4>
+        <div class="comment-composer">
+            @* ... resto sin cambios ... *@
+        </div>
+    </div>
+</section>
+
+<div class="toc">
+    <p class="toc__title"><Icon Name="history" />En esta incidencia</p>
+    <a class="toc__link" href="#descripcion">Descripción</a>
+    @if (_journey.Count > 1)
     {
-        ToastVariant.Success => "success",
-        ToastVariant.Info => "info",
-        ToastVariant.Warning => "warning",
-        ToastVariant.Danger => "danger",
-        _ => "info"
-    };
-
-    public void Dispose() => ToastService.OnChange -= HandleChange;
-}
-
-incidents.css
-/* ---------- Toasts ---------- */
-.toast-stack {
-    position: fixed;
-    bottom: var(--space-6);
-    right: var(--space-6);
-    z-index: 1200;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    max-width: 360px;
-}
-@keyframes toastIn {
-    from { opacity: 0; transform: translateX(24px); }
-    to   { opacity: 1; transform: translateX(0); }
-}
-.toast {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-md);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-default);
-    box-shadow: var(--shadow-lg);
-    animation: toastIn 0.25s var(--ease);
-}
-.toast .icon { flex-shrink: 0; }
-.toast__text { flex: 1; font-size: var(--fs-sm); color: var(--text-primary); }
-.toast__close { flex-shrink: 0; font-size: 16px; color: var(--text-tertiary); line-height: 1; }
-.toast__close:hover { color: var(--text-primary); }
-
-.toast--success { border-left: 3px solid var(--accent-emerald); }
-.toast--info    { border-left: 3px solid var(--brand-500); }
-.toast--warning { border-left: 3px solid var(--accent-amber); }
-.toast--danger  { border-left: 3px solid var(--brand-600); }
-.toast--success .icon { color: var(--accent-emerald); }
-.toast--info .icon    { color: var(--brand-500); }
-.toast--warning .icon { color: var(--accent-amber); }
-.toast--danger .icon  { color: var(--brand-600); }
-
-program.cs
-builder.Services.AddScoped<IToastService, ToastService>();
-
-imports.razor
-@using CorpWiki.Web.Services
-
-IncidenteDetalle.razor
-@inject IToastService Toast
-
-// AssignAction
-Toast.Show("Responsable asignado.", ToastVariant.Success, "user-check");
-
-// ChangeStatusAction
-Toast.Show($"Estado actualizado a {IncidentLabels.Status(_newStatus)}.", ToastVariant.Info, "refresh-cw");
-
-// TransferAction
-Toast.Show("Incidencia transferida.", ToastVariant.Info, "arrow-right");
-
-// CloseIncidentAction
-Toast.Show("Incidencia cerrada.", ToastVariant.Success, "check-circle");
-
-// ReactivateAction
-Toast.Show("Incidencia reactivada.", ToastVariant.Warning, "rotate-ccw");
-
-// AddCommentAction
-Toast.Show("Comentario agregado.", ToastVariant.Success, "message-circle");
-
-IncidenteNueva.razor
-@inject IToastService Toast
-Toast.Show("Incidencia creada correctamente.", ToastVariant.Success, "plus-circle");
+        <a class="toc__link" href="#recorrido">Recorrido entre áreas</a>
+    }
+    <a class="toc__link" href="#historial">Historial (@_detail.Activity.Count)</a>
+    <a class="toc__link" href="#comentarios">Comentarios (@_detail.Comments.Count)</a>
+</div>
