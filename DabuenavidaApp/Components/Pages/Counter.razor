@@ -1,125 +1,128 @@
-/* ---------- Journey stepper: nodo interactivo ---------- */
-.journey-stepper__node {
-    border: none;
-    font: inherit;
-    -webkit-appearance: none;
-}
-
-.journey-stepper__node--interactive {
-    cursor: pointer;
-    transition: box-shadow var(--transition-fast), transform var(--transition-fast);
-}
-
-    .journey-stepper__node--interactive:hover,
-    .journey-stepper__node--interactive:focus-visible {
-        box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px currentColor;
-        transform: translateY(-1px);
-        outline: none;
-    }
-
-/* ---------- Modal de área: personas involucradas ---------- */
-.involved-users-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-bottom: var(--space-5);
-}
-
-.involved-user-chip {
+/* ---------- SuccessModal: check animado ---------- */
+.success-modal__icon-wrap {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: rgba(16,185,129,0.12);
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px 6px 6px;
-    border-radius: var(--radius-full);
-    background: var(--bg-surface-2);
+    justify-content: center;
+    margin: 0 auto var(--space-5);
 }
 
-.involved-user-chip__info {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.2;
+.success-modal__check {
+    width: 32px;
+    height: 32px;
 }
 
-.involved-user-chip__name {
-    font-size: var(--fs-xs);
+.success-modal__check-circle {
+    stroke: var(--status-resuelta);
+    stroke-width: 3;
+    fill: none;
+    stroke-dasharray: 166;
+    stroke-dashoffset: 166;
+    animation: successCircle 0.5s var(--ease) forwards;
+}
+
+.success-modal__check-mark {
+    stroke: var(--status-resuelta);
+    stroke-width: 3;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 48;
+    stroke-dashoffset: 48;
+    animation: successMark 0.3s var(--ease) 0.45s forwards;
+}
+
+@keyframes successCircle {
+    to { stroke-dashoffset: 0; }
+}
+
+@keyframes successMark {
+    to { stroke-dashoffset: 0; }
+}
+
+.success-modal__body {
+    text-align: center;
+    padding: var(--space-6) var(--space-4);
+}
+
+.success-modal__title {
+    font-size: var(--fs-lg);
     font-weight: 700;
     color: var(--text-primary);
+    margin-bottom: var(--space-2);
 }
 
-.involved-user-chip__role {
-    font-size: 10px;
+.success-modal__desc {
+    font-size: var(--fs-sm);
     color: var(--text-tertiary);
 }
 
-<button type="button"
-        class="journey-stepper__node journey-stepper__node--interactive"
-        style="background:@ColorUtils.ToRgba(node.Color,0.12); color:@node.Color; @ringStyle"
-        title="Ver participación de @node.AreaName"
-        @onclick="() => OpenAreaModal(node.AreaName)">
-    <span class="journey-stepper__icon" style="background:@node.Color;">
-        <Icon Name="@node.Icon" Class="journey-stepper__icon-svg" />
-    </span>
-    @node.AreaName
-</button>
+@* Modal de confirmación con check animado. Se auto-cierra a los N ms
+   (default 1600) o el usuario puede cerrarlo con el botón. *@
 
-<h4 class="widget__title" style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">
-    <Icon Name="users" /> Personas involucradas (@_selectedAreaInvolvedUsers.Count)
-</h4>
-@if (_selectedAreaInvolvedUsers.Count == 0)
-{
-    <p class="section-header__subtitle">No se identificaron personas específicas de este equipo en el historial.</p>
-}
-else
-{
-    <div class="involved-users-row">
-        @foreach (var u in _selectedAreaInvolvedUsers)
+<InfoModal Show="Show" ShowChanged="ShowChanged" Title="">
+    <div class="success-modal__body">
+        <div class="success-modal__icon-wrap">
+            <svg class="success-modal__check" viewBox="0 0 52 52">
+                <circle class="success-modal__check-circle" cx="26" cy="26" r="23" />
+                <path class="success-modal__check-mark" d="M15 27l7 7 16-16" />
+            </svg>
+        </div>
+        <p class="success-modal__title">@Title</p>
+        @if (!string.IsNullOrEmpty(Description))
         {
-            <div class="involved-user-chip">
-                <span class="avatar avatar--sm">@InitialsOf(u.FullName)</span>
-                <span class="involved-user-chip__info">
-                    <span class="involved-user-chip__name">@u.FullName</span>
-                    <span class="involved-user-chip__role">@u.Role</span>
-                </span>
-            </div>
+            <p class="success-modal__desc">@Description</p>
         }
     </div>
+</InfoModal>
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback<bool> ShowChanged { get; set; }
+    [Parameter] public string Title { get; set; } = "¡Listo!";
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public int AutoCloseMs { get; set; } = 1600;
+
+    private CancellationTokenSource? _cts;
+
+    protected override void OnParametersSet()
+    {
+        if (Show && AutoCloseMs > 0)
+        {
+            _cts?.Cancel();
+            _cts = new CancellationTokenSource();
+            _ = AutoClose(_cts.Token);
+        }
+    }
+
+    private async Task AutoClose(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(AutoCloseMs, token);
+            if (!token.IsCancellationRequested)
+            {
+                Show = false;
+                await ShowChanged.InvokeAsync(false);
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
 }
 
+private bool _showSuccess;
+private string _successTitle = "";
+private string? _successDesc;
 
-private void OpenAreaModal(string areaName)
+private void ShowSuccess(string title, string? desc = null)
 {
-    if (_detail is null) return;
-    _selectedAreaName = areaName;
-
-    var areaId = _areas.FirstOrDefault(a => a.Name == areaName)?.Id;
-    var areaUsers = areaId.HasValue
-        ? Incidents.GetUsersByArea(areaId.Value).ToList()
-        : new List<IncidentUser>();
-    var areaUserNames = areaUsers.Select(u => u.FullName).ToHashSet();
-
-    var segs = _detail.TimeSegments.Where(s => s.AreaName == areaName).ToList();
-    _selectedAreaActiveHours = Math.Round(segs.Where(s => s.IsActiveWork).Sum(s => s.DurationHours), 1);
-    _selectedAreaDeadHours = Math.Round(segs.Where(s => !s.IsActiveWork).Sum(s => s.DurationHours), 1);
-
-    _selectedAreaActivity = _detail.Activity.Where(a => areaUserNames.Contains(a.ActorName)).OrderByDescending(a => a.OccurredAt).ToList();
-    _selectedAreaComments = _detail.Comments.Where(c => areaUserNames.Contains(c.AuthorName)).OrderByDescending(c => c.CreatedAt).ToList();
-    _selectedAreaTransfers = _detail.Transfers.Where(t => t.FromAreaName == areaName || t.ToAreaName == areaName).OrderByDescending(t => t.TransferredAt).ToList();
-
-    // Personas del equipo que efectivamente participaron: actuaron en el
-    // historial, comentaron, o recibieron la incidencia por transferencia
-    // hacia esta área. Mismo cruce por FullName que ya usa el resto del modal.
-    var involvedNames = _selectedAreaActivity.Select(a => a.ActorName)
-        .Concat(_selectedAreaComments.Select(c => c.AuthorName))
-        .Concat(_selectedAreaTransfers.Where(t => t.ToAreaName == areaName).Select(t => t.ToUserName))
-        .ToHashSet();
-
-    _selectedAreaInvolvedUsers = areaUsers.Where(u => involvedNames.Contains(u.FullName)).ToList();
-
-    _showAreaModal = true;
+    _successTitle = title;
+    _successDesc = desc;
+    _showSuccess = true;
 }
 
-private static string InitialsOf(string fullName)
-{
-    var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-    return string.Concat(parts.Take(2).Select(p => char.ToUpperInvariant(p[0])));
-}
+<SuccessModal Show="_showSuccess" ShowChanged="v => _showSuccess = v"
+              Title="@_successTitle" Description="_successDesc" />
