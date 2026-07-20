@@ -1,7 +1,6 @@
-@page "/incidencias/{Id:guid}"
+﻿@page "/incidencias/{Id:guid}"
 @inject IIncidentService Incidents
 @inject NavigationManager Nav
-@inject IToastService Toast
 
 <PageTitle>CorpWiki — @(_detail?.Code ?? "Incidencia")</PageTitle>
 
@@ -18,6 +17,10 @@ else
 {
     <Breadcrumb Items="_breadcrumb" />
 
+    @* ============================================================
+       CABECERA — identidad de la incidencia + acción principal.
+       Nada de metadatos ni gestión acá: solo "qué es y cómo está".
+       ============================================================ *@
     <div class="page-header">
         <div>
             <span class="incident-detail-code">@_detail.Code</span>
@@ -36,9 +39,6 @@ else
             </div>
         </div>
         <div class="page-header__actions">
-            <button class="btn btn--secondary btn--sm" @onclick="() => _showActionsModal = true">
-                <Icon Name="settings" /> Gestionar
-            </button>
             @if (_detail.Status != IncidentStatus.Cerrada)
             {
                 <button class="btn btn--danger btn--sm" @onclick="CloseIncidentAction">
@@ -54,14 +54,42 @@ else
         </div>
     </div>
 
-    <div class="incident-layout">
-        @* ==================== COLUMNA PRINCIPAL: contenido ==================== *@
-        <div>
+    @* ============================================================
+       NAVEGACIÓN POR TABS — separa las 3 tareas del usuario:
+       leer el detalle, revisar el historial/conversación, y
+       gestionar (asignar / cambiar estado / transferir).
+       ============================================================ *@
+    <div class="detail-tabs" role="tablist">
+        <button class="detail-tabs__item @(_activeTab == "resumen" ? "detail-tabs__item--active" : "")"
+                role="tab" aria-selected="@(_activeTab == "resumen")" @onclick='() => SetTab("resumen")'>
+            <Icon Name="file-text" /> Resumen
+        </button>
+        <button class="detail-tabs__item @(_activeTab == "actividad" ? "detail-tabs__item--active" : "")"
+                role="tab" aria-selected="@(_activeTab == "actividad")" @onclick='() => SetTab("actividad")'>
+            <Icon Name="activity" /> Actividad
+            <span class="detail-tabs__count">@(_detail.Activity.Count + _detail.Comments.Count)</span>
+        </button>
+        <button class="detail-tabs__item @(_activeTab == "gestion" ? "detail-tabs__item--active" : "")"
+                role="tab" aria-selected="@(_activeTab == "gestion")" @onclick='() => SetTab("gestion")'>
+            <Icon Name="settings" /> Gestión
+            @if (_detail.Transfers.Count > 0)
+            {
+                <span class="detail-tabs__count">@_detail.Transfers.Count</span>
+            }
+        </button>
+    </div>
+
+    @* ============================================================
+       TAB 1 — RESUMEN: descripción + metadatos + recorrido/tiempos.
+       Todo lo que responde "qué pasó y qué datos tiene", sin acciones.
+       ============================================================ *@
+    @if (_activeTab == "resumen")
+    {
+        <div class="detail-tabs__panel">
             @if (_journey.Count > 1)
             {
-                <div id="recorrido" class="card incident-anchor-section" style="padding: var(--space-5) var(--space-6); margin-bottom: var(--space-6);">
+                <div class="card" style="padding: var(--space-5) var(--space-6); margin-bottom: var(--space-6);">
                     <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="workflow" />Recorrido entre áreas</h4>
-                    <p class="form-hint" style="margin-bottom: var(--space-3);">Hacé clic en un área para ver qué hizo en esta incidencia.</p>
                     <div class="journey-stepper">
                         @for (var i = 0; i < _journey.Count; i++)
                         {
@@ -69,8 +97,7 @@ else
                             var ringStyle = node.IsCurrent
                                 ? $"box-shadow:0 0 0 2px var(--bg-surface), 0 0 0 4px {node.Color};"
                                 : "";
-                            <div class="journey-stepper__node" style="background:@ColorUtils.ToRgba(node.Color,0.12); color:@node.Color; @ringStyle"
-                                 @onclick="() => OpenAreaModal(node.AreaName)">
+                            <div class="journey-stepper__node" style="background:@ColorUtils.ToRgba(node.Color,0.12); color:@node.Color; @ringStyle">
                                 <span class="journey-stepper__icon" style="background:@node.Color;">
                                     <Icon Name="@node.Icon" Class="journey-stepper__icon-svg" />
                                 </span>
@@ -85,25 +112,126 @@ else
                 </div>
             }
 
-            <div id="cuerpo" class="card incident-anchor-section" style="padding: var(--space-6); margin-bottom: var(--space-6);">
-                <h4 class="widget__title" style="margin-bottom: var(--space-4);"><Icon Name="file-text" />Detalle de la incidencia</h4>
-                @* TODO: reemplazar por el visor real de Editra/Yoopta cuando confirmes
-                   su componente y la forma en que serializa el contenido (¿HTML? ¿JSON
-                   de bloques?). Mientras tanto renderizo _detail.Description como
-                   MarkupString asumiendo HTML — si en la práctica viene como JSON de
-                   Yoopta esto va a mostrarse crudo hasta que lo conectemos bien. *@
-                <div class="incident-body-card">
-                    @((MarkupString)_detail.Description)
+            @if (_areaTimeSegments.Count > 0)
+            {
+                <div class="card" style="padding: var(--space-6); margin-bottom: var(--space-6);">
+                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="layers-3" />Tiempo por equipo</h4>
+                    <div class="donut-widget__row">
+                        <DonutChart Segments="_areaTimeSegments" CenterValue="@_areaTimeSegments.Count.ToString()" CenterLabel="equipos"
+                                    OnSegmentClick="OpenAreaModal" ActiveLabel="_selectedAreaName" />
+                        <DonutLegend Items="_areaTimeLegend" OnItemClick="OpenAreaModal" ActiveLabel="_selectedAreaName" />
+                    </div>
+                </div>
+            }
+
+            <div class="card" style="padding: var(--space-6); margin-bottom: var(--space-6);
+                 border-top: 3px solid var(--priority-@(IncidentCssHelpers.PrioritySuffix(_detail.Priority)));
+                 @(_detail.Priority == IncidentPriority.Critica ? "box-shadow: var(--shadow-glow);" : "")">
+                <div class="incident-meta-grid">
+                    <div class="incident-meta-grid__item">
+                        <span class="incident-meta-grid__label"><Icon Name="layers-3" />Área de origen</span>
+                        <span class="incident-meta-grid__value"><AreaBadge Name="@_detail.OriginAreaName" Color="@_detail.OriginAreaColor" ShowIcon="false" Small="true" /></span>
+                    </div>
+                    <div class="incident-meta-grid__item">
+                        <span class="incident-meta-grid__label"><Icon Name="arrow-right" />Área actual</span>
+                        <span class="incident-meta-grid__value"><AreaBadge Name="@_detail.CurrentAreaName" Color="@_detail.CurrentAreaColor" ShowIcon="false" Small="true" /></span>
+                    </div>
+                    <div class="incident-meta-grid__item">
+                        <span class="incident-meta-grid__label"><Icon Name="plus-circle" />Reportado por</span>
+                        <span class="incident-meta-grid__value">
+                            <UserAvatar FullName="@_detail.CreatedByName" Initials="@_detail.CreatedByInitials"
+                                        ColorFrom="@_detail.CreatedByAvatarColorFrom" ColorTo="@_detail.CreatedByAvatarColorTo" Size="UserAvatar.AvatarSize.Sm" />
+                            @_detail.CreatedByName
+                        </span>
+                    </div>
+                    <div class="incident-meta-grid__item">
+                        <span class="incident-meta-grid__label"><Icon Name="user-check" />Responsable</span>
+                        <span class="incident-meta-grid__value">
+                            <UserAvatar FullName="@_detail.ResponsibleName" Initials="@_detail.ResponsibleInitials"
+                                        ColorFrom="@_detail.ResponsibleAvatarColorFrom" ColorTo="@_detail.ResponsibleAvatarColorTo" Size="UserAvatar.AvatarSize.Sm" />
+                            @(_detail.ResponsibleName ?? "Sin asignar")
+                        </span>
+                    </div>
+                    <div class="incident-meta-grid__item">
+                        <span class="incident-meta-grid__label"><Icon Name="clock" />Creada</span>
+                        <span class="incident-meta-grid__value">@_detail.CreatedAt.ToString("d MMM yyyy, HH:mm")</span>
+                    </div>
+                    <div class="incident-meta-grid__item">
+                        <span class="incident-meta-grid__label"><Icon Name="refresh-cw" />Actualizada</span>
+                        <span class="incident-meta-grid__value">@_detail.UpdatedAt.ToRelativeLabel()</span>
+                    </div>
+                    @if (_detail.ClosedAt.HasValue)
+                    {
+                        <div class="incident-meta-grid__item">
+                            <span class="incident-meta-grid__label"><Icon Name="check-circle" />Cerrada</span>
+                            <span class="incident-meta-grid__value">@_detail.ClosedAt.Value.ToString("d MMM yyyy, HH:mm")</span>
+                        </div>
+                    }
+                </div>
+
+                <div class="time-summary">
+                    <DonutChart Segments="_timeSegmentsChart" Size="120" Thickness="16"
+                                CenterValue="@($"{_detail.TotalHours:0.#}h")" CenterLabel="total" />
+                    <div style="flex:1; min-width:220px;">
+                        <IncidentTimeBar ActiveHours="_detail.TotalActiveHours" DeadHours="_detail.TotalDeadHours" />
+                    </div>
                 </div>
             </div>
 
-            <section id="historial" class="section incident-anchor-section">
+            <div class="card" style="padding: var(--space-6); margin-bottom: var(--space-6);">
+                <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="file-text" />Descripción</h4>
+                <p>@_detail.Description</p>
+            </div>
+
+            @if (_detail.Attachments.Count > 0 || _detail.RelatedArticles.Count > 0)
+            {
+                <div class="info-grid">
+                    @if (_detail.Attachments.Count > 0)
+                    {
+                        <div class="widget card">
+                            <h4 class="widget__title"><Icon Name="paperclip" />Adjuntos</h4>
+                            @foreach (var file in _detail.Attachments)
+                            {
+                                <div class="file-row" style="margin-bottom: var(--space-2);">
+                                    <span class="file-row__icon"><Icon Name="file-text" /></span>
+                                    <span class="file-row__info">
+                                        <span class="file-row__name">@file.FileName</span>
+                                        <span class="file-row__meta">@file.FileType · @file.SizeLabel</span>
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (_detail.RelatedArticles.Count > 0)
+                    {
+                        <div class="widget card">
+                            <h4 class="widget__title"><Icon Name="file-text" />Artículos relacionados</h4>
+                            @foreach (var article in _detail.RelatedArticles)
+                            {
+                                <a class="external-link-row" style="margin-bottom: var(--space-2);" href="@article.Url">
+                                    <Icon Name="@article.Icon" /> @article.Title
+                                </a>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @* ============================================================
+       TAB 2 — ACTIVIDAD: historial de eventos + conversación.
+       Todo lo que responde "qué se dijo/hizo en orden cronológico".
+       ============================================================ *@
+    @if (_activeTab == "actividad")
+    {
+        <div class="detail-tabs__panel">
+            <section class="section">
+                <h3>Historial (@_detail.Activity.Count)</h3>
                 <div class="card widget">
-                    <h4 class="widget__title" style="margin-bottom: var(--space-3);">
-                        <Icon Name="history" />Historial (@_detail.Activity.Count)
-                    </h4>
                     <div class="version-timeline">
-                        @foreach (var entry in _visibleActivity)
+                        @foreach (var entry in _detail.Activity.OrderByDescending(a => a.OccurredAt))
                         {
                             var color = IncidentCssHelpers.ActivityColor(entry.Type);
                             <div class="version-row">
@@ -121,22 +249,12 @@ else
                             </div>
                         }
                     </div>
-                    @if (_detail.Activity.Count > _activityVisibleCount)
-                    {
-                        <div class="timeline-load-more">
-                            <button class="btn btn--secondary btn--sm" @onclick="() => _activityVisibleCount += ActivityPageSize">
-                                Ver más (@(_detail.Activity.Count - _activityVisibleCount) restantes)
-                            </button>
-                        </div>
-                    }
                 </div>
             </section>
 
-            <section id="comentarios" class="section incident-anchor-section">
+            <section class="section" style="margin-top: var(--space-6);">
+                <h3>Comentarios (@_detail.Comments.Count)</h3>
                 <div class="card" style="padding: var(--space-5);">
-                    <h4 class="widget__title" style="margin-bottom: var(--space-3);">
-                        <Icon Name="message-circle" />Comentarios (@_detail.Comments.Count)
-                    </h4>
                     <div class="comment-composer">
                         <textarea class="input" rows="2" placeholder="Escribí un comentario..." @bind="_newComment"></textarea>
                         <button class="btn btn--primary btn--sm" @onclick="AddCommentAction">Comentar</button>
@@ -159,185 +277,97 @@ else
                 </div>
             </section>
         </div>
+    }
 
-        @* ==================== PANEL LATERAL: metadatos + navegación ==================== *@
-        <aside style="position: sticky; top: calc(var(--space-4) + 60px); display:flex; flex-direction:column; gap: var(--space-5);">
-            <div class="toc">
-                <p class="toc__title"><Icon Name="history" />En esta incidencia</p>
-                @if (_journey.Count > 1)
-                {
-                    <a class="toc__link" href="#recorrido">Recorrido entre áreas</a>
-                }
-                <a class="toc__link" href="#cuerpo">Detalle</a>
-                <a class="toc__link" href="#historial">Historial (@_detail.Activity.Count)</a>
-                <a class="toc__link" href="#comentarios">Comentarios (@_detail.Comments.Count)</a>
-            </div>
-
-            <div class="card" style="padding: var(--space-5);
-                 border-top: 3px solid var(--priority-@(IncidentCssHelpers.PrioritySuffix(_detail.Priority)));">
-                <div class="incident-meta-panel__row">
-                    <span class="incident-meta-panel__label"><Icon Name="layers-3" />Origen</span>
-                    <span class="incident-meta-panel__value"><AreaBadge Name="@_detail.OriginAreaName" Color="@_detail.OriginAreaColor" ShowIcon="false" Small="true" /></span>
-                </div>
-                <div class="incident-meta-panel__row">
-                    <span class="incident-meta-panel__label"><Icon Name="arrow-right" />Área actual</span>
-                    <span class="incident-meta-panel__value"><AreaBadge Name="@_detail.CurrentAreaName" Color="@_detail.CurrentAreaColor" ShowIcon="false" Small="true" /></span>
-                </div>
-                <div class="incident-meta-panel__row">
-                    <span class="incident-meta-panel__label"><Icon Name="plus-circle" />Reportado por</span>
-                    <span class="incident-meta-panel__value">
-                        <UserAvatar FullName="@_detail.CreatedByName" Initials="@_detail.CreatedByInitials"
-                                    ColorFrom="@_detail.CreatedByAvatarColorFrom" ColorTo="@_detail.CreatedByAvatarColorTo" Size="UserAvatar.AvatarSize.Sm" />
-                        <span>@_detail.CreatedByName</span>
-                    </span>
-                </div>
-                <div class="incident-meta-panel__row">
-                    <span class="incident-meta-panel__label"><Icon Name="user-check" />Responsable</span>
-                    <span class="incident-meta-panel__value">
-                        <UserAvatar FullName="@_detail.ResponsibleName" Initials="@_detail.ResponsibleInitials"
-                                    ColorFrom="@_detail.ResponsibleAvatarColorFrom" ColorTo="@_detail.ResponsibleAvatarColorTo" Size="UserAvatar.AvatarSize.Sm" />
-                        <span>@(_detail.ResponsibleName ?? "Sin asignar")</span>
-                    </span>
-                </div>
-                <div class="incident-meta-panel__row">
-                    <span class="incident-meta-panel__label"><Icon Name="clock" />Creada</span>
-                    <span class="incident-meta-panel__value">@_detail.CreatedAt.ToString("d MMM, HH:mm")</span>
-                </div>
-                <div class="incident-meta-panel__row">
-                    <span class="incident-meta-panel__label"><Icon Name="refresh-cw" />Actualizada</span>
-                    <span class="incident-meta-panel__value">@_detail.UpdatedAt.ToRelativeLabel()</span>
-                </div>
-                @if (_detail.ClosedAt.HasValue)
-                {
-                    <div class="incident-meta-panel__row">
-                        <span class="incident-meta-panel__label"><Icon Name="check-circle" />Cerrada</span>
-                        <span class="incident-meta-panel__value">@_detail.ClosedAt.Value.ToString("d MMM, HH:mm")</span>
+    @* ============================================================
+       TAB 3 — GESTIÓN: todas las acciones sobre la incidencia
+       (asignar, cambiar estado, transferir) + el registro de
+       transferencias, ya que es consecuencia directa de gestionar.
+       ============================================================ *@
+    @if (_activeTab == "gestion")
+    {
+        <div class="detail-tabs__panel">
+            <div class="management-grid">
+                <div class="widget card">
+                    <h4 class="widget__title"><Icon Name="user-check" />Asignar responsable</h4>
+                    <div class="form-group">
+                        <select class="input" @bind="_assignUserId">
+                            <option value="">Seleccioná un responsable</option>
+                            @foreach (var u in _currentAreaUsers)
+                            {
+                                <option value="@u.Id">@u.FullName — @u.Role</option>
+                            }
+                        </select>
                     </div>
-                }
-            </div>
+                    <button class="btn btn--secondary btn--sm" @onclick="AssignAction" disabled="@(!_assignUserId.HasValue)">
+                        Asignar
+                    </button>
+                </div>
 
-            @if (_areaTimeSegments.Count > 0)
-            {
-                <div class="card" style="padding: var(--space-5);">
-                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="layers-3" />Tiempo por equipo</h4>
-                    <div class="donut-widget__row donut-widget__row--stacked">
-                        <DonutChart Segments="_areaTimeSegments" Size="130" Thickness="16"
-                                    CenterValue="@_areaTimeSegments.Count.ToString()" CenterLabel="equipos"
-                                    OnSegmentClick="OpenAreaModal" ActiveLabel="_selectedAreaName" />
-                        <DonutLegend Items="_areaTimeLegend" OnItemClick="OpenAreaModal" ActiveLabel="_selectedAreaName" />
+                <div class="widget card">
+                    <h4 class="widget__title"><Icon Name="refresh-cw" />Cambiar estado</h4>
+                    <div class="form-group">
+                        <select class="input" @bind="_newStatus">
+                            @foreach (var s in Enum.GetValues<IncidentStatus>())
+                            {
+                                <option value="@s">@IncidentLabels.Status(s)</option>
+                            }
+                        </select>
                     </div>
+                    <button class="btn btn--secondary btn--sm" @onclick="ChangeStatusAction">Actualizar estado</button>
                 </div>
-            }
-
-            <div class="card" style="padding: var(--space-5);">
-                <IncidentTimeBar ActiveHours="_detail.TotalActiveHours" DeadHours="_detail.TotalDeadHours" />
             </div>
 
-            @if (_detail.Attachments.Count > 0)
-            {
-                <div class="card" style="padding: var(--space-5);">
-                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="paperclip" />Adjuntos</h4>
-                    @foreach (var file in _detail.Attachments)
-                    {
-                        <div class="file-row" style="margin-bottom: var(--space-2);">
-                            <span class="file-row__icon"><Icon Name="file-text" /></span>
-                            <span class="file-row__info">
-                                <span class="file-row__name">@file.FileName</span>
-                                <span class="file-row__meta">@file.FileType · @file.SizeLabel</span>
-                            </span>
-                        </div>
-                    }
+            <div class="widget card" style="margin-bottom: var(--space-5);">
+                <h4 class="widget__title"><Icon Name="arrow-right" />Transferir a otra área</h4>
+                <div class="form-group">
+                    <select class="input" value="@(_transferAreaId?.ToString() ?? "")" @onchange="OnTransferAreaChanged">
+                        <option value="">Área destino</option>
+                        @foreach (var area in _areas.Where(a => a.Id != _detail.CurrentAreaId))
+                        {
+                            <option value="@area.Id">@area.Name</option>
+                        }
+                    </select>
                 </div>
-            }
-
-            @if (_detail.RelatedArticles.Count > 0)
-            {
-                <div class="card" style="padding: var(--space-5);">
-                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="file-text" />Artículos relacionados</h4>
-                    @foreach (var article in _detail.RelatedArticles)
-                    {
-                        <a class="external-link-row" style="margin-bottom: var(--space-2);" href="@article.Url">
-                            <Icon Name="@article.Icon" /> @article.Title
-                        </a>
-                    }
+                <div class="form-group">
+                    <select class="input" @bind="_transferUserId" disabled="@(!_transferAreaId.HasValue)">
+                        <option value="">Responsable destino</option>
+                        @foreach (var u in _transferUserOptions)
+                        {
+                            <option value="@u.Id">@u.FullName</option>
+                        }
+                    </select>
                 </div>
-            }
+                <div class="form-group">
+                    <textarea class="input" rows="2" placeholder="Motivo de la transferencia" @bind="_transferReason"></textarea>
+                </div>
+                <button class="btn btn--secondary btn--sm" @onclick="TransferAction"
+                        disabled="@(!_transferAreaId.HasValue || !_transferUserId.HasValue)">
+                    Transferir
+                </button>
+            </div>
 
             @if (_detail.Transfers.Count > 0)
             {
-                <div class="card" style="padding: var(--space-5);">
-                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="arrow-right" />Transferencias (@_detail.Transfers.Count)</h4>
-                    @foreach (var t in _detail.Transfers.OrderByDescending(t => t.TransferredAt).Take(4))
+                <div class="widget card">
+                    <h4 class="widget__title"><Icon Name="arrow-right" />Historial de transferencias (@_detail.Transfers.Count)</h4>
+                    @foreach (var t in _detail.Transfers.OrderByDescending(t => t.TransferredAt))
                     {
                         <div class="activity-row">
                             <div class="activity-row__icon" style="background:rgba(236,72,153,0.14); color:#ec4899;">
                                 <Icon Name="arrow-right" />
                             </div>
                             <div style="flex:1; min-width:0;">
-                                <p class="activity-row__text">@t.FromAreaName → <strong>@t.ToAreaName</strong></p>
-                                <p class="activity-row__time">@t.TransferredAt.ToRelativeLabel()</p>
+                                <p class="activity-row__text">@t.FromAreaName → <strong>@t.ToAreaName</strong> (@t.ToUserName)</p>
+                                <p class="activity-row__time">@t.Reason · @t.TransferredAt.ToRelativeLabel()</p>
                             </div>
                         </div>
                     }
                 </div>
             }
-        </aside>
-    </div>
-
-    @* ==================== MODAL: gestión (asignar / estado / transferir) ==================== *@
-    <InfoModal Show="_showActionsModal" ShowChanged="v => _showActionsModal = v" Title="Gestionar incidencia" Large="true">
-        <div class="form-group">
-            <label class="form-label"><Icon Name="user-check" /> Asignar responsable</label>
-            <div style="display:flex; gap: var(--space-2);">
-                <select class="input" @bind="_assignUserId">
-                    <option value="">Seleccioná un responsable</option>
-                    @foreach (var u in _currentAreaUsers)
-                    {
-                        <option value="@u.Id">@u.FullName — @u.Role</option>
-                    }
-                </select>
-                <button class="btn btn--secondary btn--sm" @onclick="AssignAction" disabled="@(!_assignUserId.HasValue)">Asignar</button>
-            </div>
         </div>
+    }
 
-        <div class="form-group">
-            <label class="form-label"><Icon Name="refresh-cw" /> Cambiar estado</label>
-            <div style="display:flex; gap: var(--space-2);">
-                <select class="input" @bind="_newStatus">
-                    @foreach (var s in Enum.GetValues<IncidentStatus>())
-                    {
-                        <option value="@s">@IncidentLabels.Status(s)</option>
-                    }
-                </select>
-                <button class="btn btn--secondary btn--sm" @onclick="ChangeStatusAction">Actualizar</button>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label class="form-label"><Icon Name="arrow-right" /> Transferir a otra área</label>
-            <select class="input" value="@(_transferAreaId?.ToString() ?? "")" @onchange="OnTransferAreaChanged" style="margin-bottom: var(--space-2);">
-                <option value="">Área destino</option>
-                @foreach (var area in _areas.Where(a => a.Id != _detail.CurrentAreaId))
-                {
-                    <option value="@area.Id">@area.Name</option>
-                }
-            </select>
-            <select class="input" @bind="_transferUserId" disabled="@(!_transferAreaId.HasValue)" style="margin-bottom: var(--space-2);">
-                <option value="">Responsable destino</option>
-                @foreach (var u in _transferUserOptions)
-                {
-                    <option value="@u.Id">@u.FullName</option>
-                }
-            </select>
-            <textarea class="input" rows="2" placeholder="Motivo de la transferencia" @bind="_transferReason" style="margin-bottom: var(--space-2);"></textarea>
-            <button class="btn btn--secondary btn--sm" @onclick="TransferAction"
-                    disabled="@(!_transferAreaId.HasValue || !_transferUserId.HasValue)">
-                Transferir
-            </button>
-        </div>
-    </InfoModal>
-
-    @* ==================== MODAL: participación de un equipo ==================== *@
     <InfoModal Show="_showAreaModal" ShowChanged="v => _showAreaModal = v" Title="@($"Participación de {_selectedAreaName}")">
         <div style="display:flex; gap:var(--space-3); margin-bottom:var(--space-5);">
             <span class="badge badge--brand">Activo: @_selectedAreaActiveHours h</span>
@@ -388,19 +418,14 @@ else
 @code {
     [Parameter] public Guid Id { get; set; }
 
-    private const int ActivityPageSize = 6;
-
     private IncidentDetailDto? _detail;
     private List<Area> _areas = new();
     private List<IncidentUser> _currentAreaUsers = new();
     private List<BreadcrumbItem> _breadcrumb = new();
     private List<(string AreaName, string Color, string Icon, bool IsCurrent)> _journey = new();
+    private List<(string Label, double Value, string Color)> _timeSegmentsChart = new();
     private List<(string Label, double Value, string Color)> _areaTimeSegments = new();
     private List<(string Label, string ValueLabel, string Color)> _areaTimeLegend = new();
-
-    private bool _showActionsModal;
-    private int _activityVisibleCount = ActivityPageSize;
-
     private string _newComment = string.Empty;
     private Guid? _assignUserId;
     private IncidentStatus _newStatus;
@@ -408,7 +433,6 @@ else
     private Guid? _transferUserId;
     private string _transferReason = string.Empty;
     private List<IncidentUser> _transferUserOptions = new();
-
     private string? _selectedAreaName;
     private bool _showAreaModal;
     private double _selectedAreaActiveHours;
@@ -417,15 +441,46 @@ else
     private List<IncidentCommentDto> _selectedAreaComments = new();
     private List<IncidentTransferDto> _selectedAreaTransfers = new();
 
-    private Guid ActorId => _detail?.ResponsibleId ?? _detail?.CreatedByUserId ?? Guid.Empty;
+    /// <summary>Tab activo del detalle: "resumen" | "actividad" | "gestion".
+    /// Segmenta las 3 responsabilidades que antes convivían en una sola
+    /// pantalla (leer detalle, revisar actividad, gestionar la incidencia).</summary>
+    private string _activeTab = "resumen";
 
-    private List<IncidentActivityDto> _visibleActivity =>
-        _detail?.Activity.OrderByDescending(a => a.OccurredAt).Take(_activityVisibleCount).ToList() ?? new();
+    private void SetTab(string tab) => _activeTab = tab;
+
+    /// <summary>No hay Guid de área en IncidentTimeSegmentDto/ActivityDto (son
+    /// solo strings), así que cruzo por nombre: traigo los usuarios reales del
+    /// área clickeada vía GetUsersByArea y filtro Activity/Comments por si su
+    /// autor pertenece a ese equipo — mismo patrón de "match por FullName" que
+    /// ya usa el Dashboard entre KPIs y _users.</summary>
+    private void OpenAreaModal(string areaName)
+    {
+        if (_detail is null) return;
+        _selectedAreaName = areaName;
+
+        var areaId = _areas.FirstOrDefault(a => a.Name == areaName)?.Id;
+        var areaUserNames = areaId.HasValue
+            ? Incidents.GetUsersByArea(areaId.Value).Select(u => u.FullName).ToHashSet()
+            : new HashSet<string>();
+
+        var segs = _detail.TimeSegments.Where(s => s.AreaName == areaName).ToList();
+        _selectedAreaActiveHours = Math.Round(segs.Where(s => s.IsActiveWork).Sum(s => s.DurationHours), 1);
+        _selectedAreaDeadHours = Math.Round(segs.Where(s => !s.IsActiveWork).Sum(s => s.DurationHours), 1);
+
+        _selectedAreaActivity = _detail.Activity.Where(a => areaUserNames.Contains(a.ActorName)).OrderByDescending(a => a.OccurredAt).ToList();
+        _selectedAreaComments = _detail.Comments.Where(c => areaUserNames.Contains(c.AuthorName)).OrderByDescending(c => c.CreatedAt).ToList();
+        _selectedAreaTransfers = _detail.Transfers.Where(t => t.FromAreaName == areaName || t.ToAreaName == areaName).OrderByDescending(t => t.TransferredAt).ToList();
+
+        _showAreaModal = true;
+    }
+
+    /// <summary>Actor implícito: responsable actual, o el creador si aún
+    /// no hay nadie asignado. Mismo criterio que ArticuloDetalle.AddComment.</summary>
+    private Guid ActorId => _detail?.ResponsibleId ?? _detail?.CreatedByUserId ?? Guid.Empty;
 
     protected override void OnParametersSet()
     {
-        _areas = Incidents.GetAreas().ToList();
-        _activityVisibleCount = ActivityPageSize;
+        _areas = Incidents.GetAreas().ToList(); // FIX: GetAreas() devuelve IReadOnlyList<Area>
         LoadDetail();
     }
 
@@ -446,6 +501,40 @@ else
 
         BuildJourney();
         BuildAreaTimeDistribution();
+        _timeSegmentsChart = new List<(string, double, string)>
+        {
+            ("Activo", _detail.TotalActiveHours, "var(--status-resuelta)"),
+            ("Muerto", _detail.TotalDeadHours, "var(--border-strong)")
+        };
+    }
+
+    /// <summary>Agrupa los IncidentTimeSegment de esta incidencia por área y
+    /// suma las horas — responde "qué equipos tuvieron esta incidencia y
+    /// cuánto tiempo cada uno", con datos que ya existían desde la Fase 1.</summary>
+    private void BuildAreaTimeDistribution()
+    {
+        if (_detail is null) return;
+
+        var grouped = _detail.TimeSegments
+            .GroupBy(s => s.AreaName)
+            .Select(g => new
+            {
+                AreaName = g.Key,
+                Hours = g.Sum(s => s.DurationHours)
+            })
+            .Where(g => g.Hours > 0)
+            .OrderByDescending(g => g.Hours)
+            .ToList();
+
+        _areaTimeSegments = new List<(string, double, string)>();
+        _areaTimeLegend = new List<(string, string, string)>();
+
+        foreach (var g in grouped)
+        {
+            var color = _areas.FirstOrDefault(a => a.Name == g.AreaName)?.Color ?? "#334155";
+            _areaTimeSegments.Add((g.AreaName, g.Hours, color));
+            _areaTimeLegend.Add((g.AreaName, $"{g.Hours:0.#}h", color));
+        }
     }
 
     private void BuildJourney()
@@ -469,49 +558,6 @@ else
         }
     }
 
-    private void BuildAreaTimeDistribution()
-    {
-        if (_detail is null) return;
-
-        var grouped = _detail.TimeSegments
-            .GroupBy(s => s.AreaName)
-            .Select(g => new { AreaName = g.Key, Hours = g.Sum(s => s.DurationHours) })
-            .Where(g => g.Hours > 0)
-            .OrderByDescending(g => g.Hours)
-            .ToList();
-
-        _areaTimeSegments = new List<(string, double, string)>();
-        _areaTimeLegend = new List<(string, string, string)>();
-
-        foreach (var g in grouped)
-        {
-            var color = _areas.FirstOrDefault(a => a.Name == g.AreaName)?.Color ?? "#334155";
-            _areaTimeSegments.Add((g.AreaName, g.Hours, color));
-            _areaTimeLegend.Add((g.AreaName, $"{g.Hours:0.#}h", color));
-        }
-    }
-
-    private void OpenAreaModal(string areaName)
-    {
-        if (_detail is null) return;
-        _selectedAreaName = areaName;
-
-        var areaId = _areas.FirstOrDefault(a => a.Name == areaName)?.Id;
-        var areaUserNames = areaId.HasValue
-            ? Incidents.GetUsersByArea(areaId.Value).Select(u => u.FullName).ToHashSet()
-            : new HashSet<string>();
-
-        var segs = _detail.TimeSegments.Where(s => s.AreaName == areaName).ToList();
-        _selectedAreaActiveHours = Math.Round(segs.Where(s => s.IsActiveWork).Sum(s => s.DurationHours), 1);
-        _selectedAreaDeadHours = Math.Round(segs.Where(s => !s.IsActiveWork).Sum(s => s.DurationHours), 1);
-
-        _selectedAreaActivity = _detail.Activity.Where(a => areaUserNames.Contains(a.ActorName)).OrderByDescending(a => a.OccurredAt).ToList();
-        _selectedAreaComments = _detail.Comments.Where(c => areaUserNames.Contains(c.AuthorName)).OrderByDescending(c => c.CreatedAt).ToList();
-        _selectedAreaTransfers = _detail.Transfers.Where(t => t.FromAreaName == areaName || t.ToAreaName == areaName).OrderByDescending(t => t.TransferredAt).ToList();
-
-        _showAreaModal = true;
-    }
-
     private void OnTransferAreaChanged(ChangeEventArgs e)
     {
         _transferAreaId = Guid.TryParse(e.Value?.ToString(), out var areaId) ? areaId : null;
@@ -527,7 +573,6 @@ else
         Incidents.AssignResponsible(_detail.Id, _assignUserId.Value, ActorId);
         _assignUserId = null;
         LoadDetail();
-        Toast.Show("Responsable asignado.", ToastVariant.Success, "user-check");
     }
 
     private void ChangeStatusAction()
@@ -535,7 +580,6 @@ else
         if (_detail is null) return;
         Incidents.ChangeStatus(_detail.Id, _newStatus, ActorId);
         LoadDetail();
-        Toast.Show($"Estado actualizado a {IncidentLabels.Status(_newStatus)}.", ToastVariant.Info, "refresh-cw");
     }
 
     private void TransferAction()
@@ -547,7 +591,6 @@ else
         _transferReason = string.Empty;
         _transferUserOptions = new();
         LoadDetail();
-        Toast.Show("Incidencia transferida.", ToastVariant.Info, "arrow-right");
     }
 
     private void CloseIncidentAction()
@@ -555,15 +598,15 @@ else
         if (_detail is null) return;
         Incidents.CloseIncident(_detail.Id, ActorId);
         LoadDetail();
-        Toast.Show("Incidencia cerrada.", ToastVariant.Success, "check-circle");
     }
 
     private void ReactivateAction()
     {
+        // Única acción donde el actor NO es ActorId genérico: la regla de
+        // negocio exige específicamente al creador.
         if (_detail is null) return;
         Incidents.ReactivateIncident(_detail.Id, _detail.CreatedByUserId);
         LoadDetail();
-        Toast.Show("Incidencia reactivada.", ToastVariant.Warning, "rotate-ccw");
     }
 
     private void AddCommentAction()
@@ -572,65 +615,1181 @@ else
         Incidents.AddComment(_detail.Id, ActorId, _newComment);
         _newComment = string.Empty;
         LoadDetail();
-        Toast.Show("Comentario agregado.", ToastVariant.Success, "message-circle");
     }
 }
 
-/* ---------- Layout de detalle: contenido + panel lateral ---------- */
-.incident-layout {
-    display: grid;
-    grid-template-columns: 1fr 320px;
-    gap: var(--space-6);
-    align-items: start;
-}
-@media (max-width: 1000px) {
-    .incident-layout { grid-template-columns: 1fr; }
-    .incident-layout > aside { position: static !important; order: -1; }
+/* =========================================================================
+   Incidencias — Fase 1: tokens de color para estados y prioridades +
+   estilos mínimos de la vista placeholder. El resto de los componentes
+   (IncidentCard, StatusBadge, PriorityBadge, Timeline, Dashboard, etc.)
+   se construye en las fases siguientes sobre esta misma base de tokens.
+   ========================================================================= */
+
+:root {
+    /* Estados */
+    --status-nueva: #64748b;
+    --status-asignada: #0ea5e9;
+    --status-en-analisis: #8b5cf6;
+    --status-en-desarrollo: #f59e0b;
+    --status-pendiente-otra-area: #ec4899;
+    --status-resuelta: #10b981;
+    --status-cerrada: #334155;
+    --status-reactivada: #DA1F3D;
+    /* Prioridades */
+    --priority-baja: #10b981;
+    --priority-media: #0ea5e9;
+    --priority-alta: #f59e0b;
+    --priority-critica: #DA1F3D;
 }
 
-/* ---------- Panel de metadatos compacto (ficha, no grid de 4 columnas) ---------- */
-.incident-meta-panel__row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border-subtle);
+/* ---------- Fase 1: grilla de verificación ---------- */
+.incidents-phase1-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
 }
-.incident-meta-panel__row:last-child { border-bottom: none; }
-.incident-meta-panel__label {
+
+.incidents-phase1-card {
+    padding: var(--space-5);
+    text-align: center;
+}
+
+.incidents-phase1-card__icon {
+    width: 26px;
+    height: 26px;
+    color: var(--brand-500);
+    margin: 0 auto var(--space-3);
+}
+
+.incidents-phase1-card__value {
+    font-size: var(--fs-2xl);
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.incidents-phase1-card__label {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    margin-top: var(--space-2);
+}
+
+.incidents-phase1-note {
     display: flex;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-6);
+    border-left: 4px solid var(--brand-500);
+}
+
+    .incidents-phase1-note .icon {
+        color: var(--brand-500);
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    .incidents-phase1-note h4 {
+        margin-bottom: var(--space-2);
+    }
+
+    .incidents-phase1-note p {
+        font-size: var(--fs-sm);
+        line-height: 1.7;
+    }
+
+    .incidents-phase1-note code {
+        font-family: var(--font-mono);
+        background: var(--bg-surface-2);
+        padding: 1px 6px;
+        border-radius: var(--radius-sm);
+        font-size: 0.85em;
+    }
+
+@media (max-width: 900px) {
+    .incidents-phase1-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 560px) {
+    .incidents-phase1-grid {
+        grid-template-columns: 1fr;
+    }
+}
+/* ---------- Status / Priority badges ---------- */
+.status-badge,
+.priority-badge {
+    display: inline-flex;
     align-items: center;
     gap: 6px;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
     font-size: var(--fs-xs);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.status-badge__dot,
+.priority-badge__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-badge--nueva {
+    background: rgba(100,116,139,0.12);
+    color: var(--status-nueva);
+}
+
+    .status-badge--nueva .status-badge__dot {
+        background: var(--status-nueva);
+    }
+
+.status-badge--asignada {
+    background: rgba(14,165,233,0.12);
+    color: var(--status-asignada);
+}
+
+    .status-badge--asignada .status-badge__dot {
+        background: var(--status-asignada);
+    }
+
+.status-badge--en-analisis {
+    background: rgba(139,92,246,0.12);
+    color: var(--status-en-analisis);
+}
+
+    .status-badge--en-analisis .status-badge__dot {
+        background: var(--status-en-analisis);
+    }
+
+.status-badge--en-desarrollo {
+    background: rgba(245,158,11,0.12);
+    color: var(--status-en-desarrollo);
+}
+
+    .status-badge--en-desarrollo .status-badge__dot {
+        background: var(--status-en-desarrollo);
+    }
+
+.status-badge--pendiente-otra-area {
+    background: rgba(236,72,153,0.12);
+    color: var(--status-pendiente-otra-area);
+}
+
+    .status-badge--pendiente-otra-area .status-badge__dot {
+        background: var(--status-pendiente-otra-area);
+    }
+
+.status-badge--resuelta {
+    background: rgba(16,185,129,0.12);
+    color: var(--status-resuelta);
+}
+
+    .status-badge--resuelta .status-badge__dot {
+        background: var(--status-resuelta);
+    }
+
+.status-badge--cerrada {
+    background: rgba(51,65,85,0.12);
+    color: var(--status-cerrada);
+}
+
+    .status-badge--cerrada .status-badge__dot {
+        background: var(--status-cerrada);
+    }
+
+.status-badge--reactivada {
+    background: rgba(218,31,61,0.12);
+    color: var(--status-reactivada);
+}
+
+    .status-badge--reactivada .status-badge__dot {
+        background: var(--status-reactivada);
+    }
+
+.priority-badge--baja {
+    background: rgba(16,185,129,0.12);
+    color: var(--priority-baja);
+}
+
+    .priority-badge--baja .priority-badge__dot {
+        background: var(--priority-baja);
+    }
+
+.priority-badge--media {
+    background: rgba(14,165,233,0.12);
+    color: var(--priority-media);
+}
+
+    .priority-badge--media .priority-badge__dot {
+        background: var(--priority-media);
+    }
+
+.priority-badge--alta {
+    background: rgba(245,158,11,0.12);
+    color: var(--priority-alta);
+}
+
+    .priority-badge--alta .priority-badge__dot {
+        background: var(--priority-alta);
+    }
+
+.priority-badge--critica {
+    background: rgba(218,31,61,0.12);
+    color: var(--priority-critica);
+}
+
+    .priority-badge--critica .priority-badge__dot {
+        background: var(--priority-critica);
+        animation: pulse 2s ease-in-out infinite;
+    }
+
+/* ---------- UserAvatar: estado sin asignar ---------- */
+.avatar--unassigned {
+    background: var(--bg-surface-3);
+    color: var(--text-tertiary);
+    border: 1px dashed var(--border-strong);
+}
+
+/* ---------- IncidentTimeBar ---------- */
+.time-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.time-bar__track {
+    display: flex;
+    height: 8px;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    background: var(--bg-surface-3);
+}
+
+.time-bar__segment--active {
+    background: var(--status-resuelta);
+    transition: width var(--transition-base);
+}
+
+.time-bar__segment--dead {
+    background: var(--border-strong);
+    transition: width var(--transition-base);
+}
+
+.time-bar__legend {
+    display: flex;
+    gap: var(--space-4);
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+}
+
+    .time-bar__legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+.time-bar__legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+
+.time-bar__legend-dot--active {
+    background: var(--status-resuelta);
+}
+
+.time-bar__legend-dot--dead {
+    background: var(--border-strong);
+}
+/* ---------- RankedBarRow ---------- */
+.ranked-bar-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+}
+
+.ranked-bar-row__lead {
+    flex-shrink: 0;
+}
+
+.ranked-bar-row__body {
+    flex: 1;
+    min-width: 0;
+}
+
+.ranked-bar-row__top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: 5px;
+}
+
+.ranked-bar-row__label {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ranked-bar-row__value {
+    font-size: var(--fs-xs);
+    font-weight: 700;
     color: var(--text-tertiary);
     flex-shrink: 0;
 }
-.incident-meta-panel__label .icon { width: 13px; height: 13px; }
-.incident-meta-panel__value {
+
+.ranked-bar-row__track {
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--bg-surface-3);
+    overflow: hidden;
+}
+
+.ranked-bar-row__fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width var(--transition-base);
+}
+
+/* ---------- Ícono circular para AreaBadge como "lead" y para el feed ---------- */
+.ranked-bar-row__icon-circle,
+.activity-row__icon {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+    .ranked-bar-row__icon-circle .icon,
+    .activity-row__icon .icon {
+        width: 14px;
+        height: 14px;
+    }
+
+/* ---------- Feed de actividad: texto con código de incidencia resaltado ---------- */
+.activity-row__text strong {
+    color: var(--brand-500);
+    font-weight: 700;
+}
+/* ---------- Listado: filtros ---------- */
+.incidents-filters-row {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-4);
+    align-items: center;
+}
+
+    .incidents-filters-row .explorer-search {
+        flex: 1;
+        min-width: 220px;
+    }
+
+    .incidents-filters-row select.input {
+        width: 190px;
+        flex-shrink: 0;
+    }
+
+/* ---------- Listado: filas ---------- */
+.incident-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.incident-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 200px 90px 90px;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+}
+
+.incident-row__id {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.incident-row__code {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    color: var(--text-tertiary);
+}
+
+.incident-row__main {
+    min-width: 0;
+}
+
+.incident-row__title {
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.incident-row__badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.incident-row__responsible {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.incident-row__responsible-name {
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.incident-row__stats {
+    display: flex;
+    gap: var(--space-3);
+}
+
+    .incident-row__stats span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: var(--fs-xs);
+        color: var(--text-tertiary);
+    }
+
+    .incident-row__stats .icon {
+        width: 13px;
+        height: 13px;
+    }
+
+.incident-row__updated {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    text-align: right;
+}
+
+@media (max-width: 1100px) {
+    .incident-row {
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+            "id updated"
+            "main main"
+            "responsible stats";
+        row-gap: var(--space-3);
+    }
+
+    .incident-row__id {
+        grid-area: id;
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .incident-row__updated {
+        grid-area: updated;
+    }
+
+    .incident-row__main {
+        grid-area: main;
+    }
+
+    .incident-row__responsible {
+        grid-area: responsible;
+    }
+
+    .incident-row__stats {
+        grid-area: stats;
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 640px) {
+    .incidents-filters-row select.input {
+        width: 100%;
+    }
+}
+/* ---------- Detalle de incidencia ---------- */
+.incident-detail-code {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+}
+
+.incident-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-5);
+}
+
+.incident-meta-grid__item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.incident-meta-grid__label {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.incident-meta-grid__value {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* La fila del listado ahora es <a>: pisa el subrayado por defecto de los
+   links y mantiene el comportamiento de .card--interactive sin duplicarlo */
+.incident-row--link {
+    display: grid;
+    cursor: pointer;
+}
+
+    .incident-row--link:hover {
+        box-shadow: var(--shadow-md);
+        border-color: var(--border-default);
+        transform: translateY(-3px);
+    }
+
+@media (max-width: 900px) {
+    .incident-meta-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 560px) {
+    .incident-meta-grid {
+        grid-template-columns: 1fr;
+    }
+}
+/* ---------- Hero del módulo ---------- */
+.incidents-hero {
+    position: relative;
+    border-radius: var(--radius-xl);
+    padding: var(--space-8) var(--space-8);
+    background: var(--gradient-brand);
+    overflow: hidden;
+    margin-bottom: var(--space-8);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-6);
+    flex-wrap: wrap;
+}
+
+    .incidents-hero::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 85% 15%, rgba(255,255,255,0.16), transparent 55%);
+    }
+
+.incidents-hero__content {
+    position: relative;
+    max-width: 520px;
+}
+
+.incidents-hero__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: rgba(255,255,255,0.85);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    margin-bottom: var(--space-2);
+}
+
+.incidents-hero h1 {
+    color: white;
+    margin-bottom: var(--space-2);
+}
+
+.incidents-hero p {
+    color: rgba(255,255,255,0.85);
+}
+
+.incidents-hero__actions {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    gap: var(--space-3);
+}
+
+.incidents-hero .btn--secondary {
+    background: rgba(255,255,255,0.14);
+    border-color: rgba(255,255,255,0.3);
+    color: white;
+}
+
+    .incidents-hero .btn--secondary:hover {
+        background: rgba(255,255,255,0.22);
+    }
+
+/* ---------- DonutChart ---------- */
+.donut-chart {
+    position: relative;
+    flex-shrink: 0;
+}
+
+    .donut-chart svg {
+        display: block;
+    }
+
+.donut-chart__segment {
+    transition: stroke-width var(--transition-fast);
+}
+
+.donut-chart__center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    pointer-events: none;
+}
+
+.donut-chart__center-value {
+    font-size: var(--fs-2xl);
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.donut-chart__center-label {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    margin-top: 4px;
+}
+
+.donut-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.donut-legend__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--fs-sm);
+}
+
+.donut-legend__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.donut-legend__label {
+    flex: 1;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.donut-legend__value {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.donut-widget__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+}
+
+@media (max-width: 560px) {
+    .donut-widget__row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* ---------- Distribution widget: grid de dos donas ---------- */
+.distribution-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-6);
+}
+
+@media (max-width: 900px) {
+    .distribution-grid {
+        grid-template-columns: 1fr;
+    }
+}
+/* ---------- SegmentedBar ---------- */
+.segmented-bar {
+    display: flex;
+    height: 10px;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    background: var(--bg-surface-3);
+}
+
+.segmented-bar__part {
+    height: 100%;
+    transition: width var(--transition-base);
+}
+
+    .segmented-bar__part:not(:last-child) {
+        border-right: 2px solid var(--bg-surface);
+    }
+
+.distribution-legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: var(--space-4);
+}
+
+    .distribution-legend-row .chip {
+        font-weight: 600;
+    }
+
+/* ---------- Meta grid: labels con ícono ---------- */
+.incident-meta-grid__label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+    .incident-meta-grid__label .icon {
+        width: 12px;
+        height: 12px;
+    }
+
+/* ---------- Badge "abierta hace N días" ---------- */
+.badge--outline {
+    background: transparent;
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
+}
+/* ---------- Journey stepper (recorrido entre áreas) ---------- */
+.journey-stepper {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.journey-stepper__node {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: var(--radius-full);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    white-space: nowrap;
+    transition: box-shadow var(--transition-base);
+}
+
+.journey-stepper__icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: white;
+}
+
+.journey-stepper__icon-svg {
+    width: 11px;
+    height: 11px;
+}
+
+.journey-stepper__arrow {
+    width: 14px;
+    height: 14px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+/* ---------- Timeline: ícono de tipo dentro de version-row ---------- */
+.version-row__type-icon {
+    display: inline-flex;
+    vertical-align: -3px;
+    margin-right: 4px;
+}
+
+.version-row__type-icon-svg {
+    width: 13px;
+    height: 13px;
+}
+
+/* ---------- Resumen de tiempo: dona + barra lineal lado a lado ---------- */
+.time-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    margin-top: var(--space-6);
+    flex-wrap: wrap;
+}
+/* ---------- StepIndicator (wizard) ---------- */
+.wizard-steps-card {
+    padding: var(--space-8);
+}
+
+.step-indicator {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: var(--space-8);
+}
+
+.step-indicator__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.step-indicator__circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface-3);
+    color: var(--text-tertiary);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    border: 2px solid transparent;
+    transition: background var(--transition-base), color var(--transition-base), border-color var(--transition-base), transform var(--transition-base);
+}
+
+.step-indicator__item--active .step-indicator__circle {
+    background: var(--gradient-brand);
+    color: white;
+    box-shadow: var(--shadow-brand);
+    transform: scale(1.08);
+}
+
+.step-indicator__item--done .step-indicator__circle {
+    background: rgba(16,185,129,0.15);
+    color: var(--accent-emerald);
+    border-color: var(--accent-emerald);
+}
+
+.step-indicator__label {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.step-indicator__item--active .step-indicator__label {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.step-indicator__line {
+    flex: 1;
+    height: 2px;
+    background: var(--border-default);
+    margin: 15px 8px 0;
+    transition: background var(--transition-base);
+}
+
+.step-indicator__line--done {
+    background: var(--accent-emerald);
+}
+
+@keyframes stepFadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.wizard-step-content {
+    animation: stepFadeIn 0.28s var(--ease);
+}
+
+.wizard-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: var(--space-8);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.wizard-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.wizard-summary__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-subtle);
+    gap: var(--space-4);
+}
+
+    .wizard-summary__row:last-child {
+        border-bottom: none;
+    }
+
+.wizard-summary__label {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+}
+
+.wizard-summary__value {
     font-size: var(--fs-sm);
     font-weight: 600;
     color: var(--text-primary);
     text-align: right;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
 }
-.incident-meta-panel__value span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---------- Journey stepper: ahora clickeable ---------- */
-.journey-stepper__node { cursor: pointer; transition: transform var(--transition-fast); }
-.journey-stepper__node:hover { transform: translateY(-2px); }
+@media (max-width: 560px) {
+    .step-indicator__label {
+        display: none;
+    }
 
-/* ---------- Cuerpo de la incidencia (placeholder hasta conectar Editra) ---------- */
-.incident-body-card { line-height: 1.75; }
-.incident-body-card :is(h1, h2, h3, h4) { margin-top: var(--space-5); margin-bottom: var(--space-2); }
-.incident-body-card p { margin-bottom: var(--space-3); }
+    .wizard-steps-card {
+        padding: var(--space-5);
+    }
+}
 
-/* ---------- Historial: cargar más (no paginación numerada) ---------- */
-.timeline-load-more { text-align: center; margin-top: var(--space-4); }
+/* ---------- Animaciones: KPIs y donas (solo dentro del módulo) ---------- */
+@keyframes riseIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
 
-/* ---------- Dona apilada para el panel angosto ---------- */
-.donut-widget__row--stacked { flex-direction: column; align-items: center; text-align: left; }
-.donut-widget__row--stacked .donut-legend { width: 100%; }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.incidents-stat-row > * {
+    animation: riseIn 0.4s var(--ease) both;
+}
+
+    .incidents-stat-row > *:nth-child(1) {
+        animation-delay: 0.02s;
+    }
+
+    .incidents-stat-row > *:nth-child(2) {
+        animation-delay: 0.06s;
+    }
+
+    .incidents-stat-row > *:nth-child(3) {
+        animation-delay: 0.10s;
+    }
+
+    .incidents-stat-row > *:nth-child(4) {
+        animation-delay: 0.14s;
+    }
+
+    .incidents-stat-row > *:nth-child(5) {
+        animation-delay: 0.18s;
+    }
+
+    .incidents-stat-row > *:nth-child(6) {
+        animation-delay: 0.22s;
+    }
+
+.incident-kpi-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+}
+
+@keyframes donutIn {
+    from {
+        opacity: 0;
+        transform: scale(0.85);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.donut-chart {
+    animation: donutIn 0.5s var(--ease) both;
+}
+.donut-chart__segment--interactive {
+    cursor: pointer;
+}
+
+    .donut-chart__segment--interactive:hover {
+        filter: brightness(1.1);
+    }
+
+.donut-legend__row--interactive {
+    cursor: pointer;
+    padding: 4px 6px;
+    margin: 0 -6px;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+}
+
+    .donut-legend__row--interactive:hover {
+        background: var(--bg-hover);
+    }
+
+.donut-legend__row--active {
+    background: var(--bg-active);
+}
+
+.ranked-bar-row--interactive {
+    cursor: pointer;
+    padding: 6px;
+    margin: 0 -6px;
+    border-radius: var(--radius-md);
+    transition: background var(--transition-fast);
+}
+
+    .ranked-bar-row--interactive:hover {
+        background: var(--bg-hover);
+    }
+
+.modal__close {
+    font-size: 20px;
+    font-weight: 300;
+    line-height: 1;
+}
+
+/* =========================================================================
+   Detalle de incidencia — tabs de segmentación (Resumen / Actividad / Gestión)
+   ========================================================================= */
+.detail-tabs {
+    display: flex;
+    gap: var(--space-1, 4px);
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: var(--space-6);
+    overflow-x: auto;
+}
+
+.detail-tabs__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-tertiary);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+    .detail-tabs__item .icon {
+        width: 15px;
+        height: 15px;
+    }
+
+    .detail-tabs__item:hover {
+        color: var(--text-primary);
+    }
+
+.detail-tabs__item--active {
+    color: var(--brand-500);
+    border-bottom-color: var(--brand-500);
+}
+
+.detail-tabs__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--radius-full);
+    background: var(--bg-surface-3);
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.detail-tabs__item--active .detail-tabs__count {
+    background: var(--bg-active);
+    color: var(--brand-500);
+}
+
+.detail-tabs__panel {
+    animation: stepFadeIn 0.2s var(--ease);
+}
+
+/* ---------- Tab Gestión: grid de acciones ---------- */
+.management-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-5);
+    margin-bottom: var(--space-5);
+}
+
+.management-grid > .widget {
+    margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+    .management-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ---------- Tab Resumen: adjuntos + artículos lado a lado ---------- */
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-5);
+}
+
+@media (max-width: 900px) {
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+}
