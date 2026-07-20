@@ -1,48 +1,636 @@
-/* ---------- Anclas para el índice lateral del detalle ---------- */
-.incident-anchor-section { scroll-margin-top: 90px; }
+@page "/incidencias/{Id:guid}"
+@inject IIncidentService Incidents
+@inject NavigationManager Nav
+@inject IToastService Toast
 
-<div id="descripcion" class="card incident-anchor-section" style="padding: var(--space-6); margin-bottom: var(--space-6);">
-    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="file-text" />Descripción</h4>
-    <p>@_detail.Description</p>
-</div>
+<PageTitle>CorpWiki — @(_detail?.Code ?? "Incidencia")</PageTitle>
 
-@if (_journey.Count > 1)
+@if (_detail is null)
 {
-    <div id="recorrido" class="card incident-anchor-section" style="padding: var(--space-5) var(--space-6); margin-bottom: var(--space-6);">
-        <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="workflow" />Recorrido entre áreas</h4>
-        @* ... resto sin cambios ... *@
+    <div class="empty-state">
+        <Icon Name="alert-triangle" Class="empty-state__icon" />
+        <h2>Incidencia no encontrada</h2>
+        <p>Puede que se haya movido o el enlace esté roto.</p>
+        <a class="btn btn--primary" href="/incidencias/listado">Ver todas las incidencias</a>
     </div>
 }
+else
+{
+    <Breadcrumb Items="_breadcrumb" />
 
-<section id="historial" class="section incident-anchor-section">
-    <div class="card widget">
-        <h4 class="widget__title" style="margin-bottom: var(--space-3);">
-            <Icon Name="history" />Historial (@_detail.Activity.Count)
-        </h4>
-        <div class="version-timeline">
-            @* ... resto sin cambios ... *@
+    <div class="page-header">
+        <div>
+            <span class="incident-detail-code">@_detail.Code</span>
+            <h1>@_detail.Title</h1>
+            <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+                <IncidentStatusBadge Status="_detail.Status" />
+                <IncidentPriorityBadge Priority="_detail.Priority" />
+                @if (_detail.ReactivationCount > 0)
+                {
+                    <span class="badge"><Icon Name="rotate-ccw" />Reactivada x@_detail.ReactivationCount</span>
+                }
+                @if (_detail.Status != IncidentStatus.Cerrada)
+                {
+                    <span class="badge badge--outline"><Icon Name="clock" />Abierta hace @((DateTime.Now - _detail.CreatedAt).Days) días</span>
+                }
+            </div>
+        </div>
+        <div class="page-header__actions">
+            <button class="btn btn--secondary btn--sm" @onclick="() => _showActionsModal = true">
+                <Icon Name="settings" /> Gestionar
+            </button>
+            @if (_detail.Status != IncidentStatus.Cerrada)
+            {
+                <button class="btn btn--danger btn--sm" @onclick="CloseIncidentAction">
+                    <Icon Name="check-circle" /> Cerrar
+                </button>
+            }
+            else
+            {
+                <button class="btn btn--secondary btn--sm" @onclick="ReactivateAction">
+                    <Icon Name="rotate-ccw" /> Reactivar
+                </button>
+            }
         </div>
     </div>
-</section>
 
-<section id="comentarios" class="section incident-anchor-section">
-    <div class="card" style="padding: var(--space-5);">
-        <h4 class="widget__title" style="margin-bottom: var(--space-3);">
-            <Icon Name="message-circle" />Comentarios (@_detail.Comments.Count)
-        </h4>
-        <div class="comment-composer">
-            @* ... resto sin cambios ... *@
+    <div class="incident-layout">
+        @* ==================== COLUMNA PRINCIPAL: contenido ==================== *@
+        <div>
+            @if (_journey.Count > 1)
+            {
+                <div id="recorrido" class="card incident-anchor-section" style="padding: var(--space-5) var(--space-6); margin-bottom: var(--space-6);">
+                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="workflow" />Recorrido entre áreas</h4>
+                    <p class="form-hint" style="margin-bottom: var(--space-3);">Hacé clic en un área para ver qué hizo en esta incidencia.</p>
+                    <div class="journey-stepper">
+                        @for (var i = 0; i < _journey.Count; i++)
+                        {
+                            var node = _journey[i];
+                            var ringStyle = node.IsCurrent
+                                ? $"box-shadow:0 0 0 2px var(--bg-surface), 0 0 0 4px {node.Color};"
+                                : "";
+                            <div class="journey-stepper__node" style="background:@ColorUtils.ToRgba(node.Color,0.12); color:@node.Color; @ringStyle"
+                                 @onclick="() => OpenAreaModal(node.AreaName)">
+                                <span class="journey-stepper__icon" style="background:@node.Color;">
+                                    <Icon Name="@node.Icon" Class="journey-stepper__icon-svg" />
+                                </span>
+                                @node.AreaName
+                            </div>
+                            @if (i < _journey.Count - 1)
+                            {
+                                <Icon Name="chevron-right" Class="journey-stepper__arrow" />
+                            }
+                        }
+                    </div>
+                </div>
+            }
+
+            <div id="cuerpo" class="card incident-anchor-section" style="padding: var(--space-6); margin-bottom: var(--space-6);">
+                <h4 class="widget__title" style="margin-bottom: var(--space-4);"><Icon Name="file-text" />Detalle de la incidencia</h4>
+                @* TODO: reemplazar por el visor real de Editra/Yoopta cuando confirmes
+                   su componente y la forma en que serializa el contenido (¿HTML? ¿JSON
+                   de bloques?). Mientras tanto renderizo _detail.Description como
+                   MarkupString asumiendo HTML — si en la práctica viene como JSON de
+                   Yoopta esto va a mostrarse crudo hasta que lo conectemos bien. *@
+                <div class="incident-body-card">
+                    @((MarkupString)_detail.Description)
+                </div>
+            </div>
+
+            <section id="historial" class="section incident-anchor-section">
+                <div class="card widget">
+                    <h4 class="widget__title" style="margin-bottom: var(--space-3);">
+                        <Icon Name="history" />Historial (@_detail.Activity.Count)
+                    </h4>
+                    <div class="version-timeline">
+                        @foreach (var entry in _visibleActivity)
+                        {
+                            var color = IncidentCssHelpers.ActivityColor(entry.Type);
+                            <div class="version-row">
+                                <span class="version-row__dot" style="background:@color;"></span>
+                                <div>
+                                    <p class="version-row__label">
+                                        <span class="version-row__type-icon" style="color:@color;">
+                                            <Icon Name="@IncidentCssHelpers.ActivityIcon(entry.Type)" Class="version-row__type-icon-svg" />
+                                        </span>
+                                        @entry.ActorName
+                                    </p>
+                                    <p class="version-row__summary">@entry.Description</p>
+                                    <p class="version-row__date">@entry.OccurredAt.ToRelativeLabel()</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    @if (_detail.Activity.Count > _activityVisibleCount)
+                    {
+                        <div class="timeline-load-more">
+                            <button class="btn btn--secondary btn--sm" @onclick="() => _activityVisibleCount += ActivityPageSize">
+                                Ver más (@(_detail.Activity.Count - _activityVisibleCount) restantes)
+                            </button>
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <section id="comentarios" class="section incident-anchor-section">
+                <div class="card" style="padding: var(--space-5);">
+                    <h4 class="widget__title" style="margin-bottom: var(--space-3);">
+                        <Icon Name="message-circle" />Comentarios (@_detail.Comments.Count)
+                    </h4>
+                    <div class="comment-composer">
+                        <textarea class="input" rows="2" placeholder="Escribí un comentario..." @bind="_newComment"></textarea>
+                        <button class="btn btn--primary btn--sm" @onclick="AddCommentAction">Comentar</button>
+                    </div>
+                    <div class="comments-list">
+                        @foreach (var c in _detail.Comments.OrderByDescending(c => c.CreatedAt))
+                        {
+                            <div class="comment-card">
+                                <span class="avatar avatar--sm">@c.AuthorInitials</span>
+                                <div class="comment-card__body">
+                                    <div class="comment-card__head">
+                                        <span class="comment-card__author">@c.AuthorName</span>
+                                        <span class="comment-card__date">@c.CreatedAt.ToRelativeLabel()</span>
+                                    </div>
+                                    <p class="comment-card__text">@c.Text</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </section>
         </div>
-    </div>
-</section>
 
-<div class="toc">
-    <p class="toc__title"><Icon Name="history" />En esta incidencia</p>
-    <a class="toc__link" href="#descripcion">Descripción</a>
-    @if (_journey.Count > 1)
+        @* ==================== PANEL LATERAL: metadatos + navegación ==================== *@
+        <aside style="position: sticky; top: calc(var(--space-4) + 60px); display:flex; flex-direction:column; gap: var(--space-5);">
+            <div class="toc">
+                <p class="toc__title"><Icon Name="history" />En esta incidencia</p>
+                @if (_journey.Count > 1)
+                {
+                    <a class="toc__link" href="#recorrido">Recorrido entre áreas</a>
+                }
+                <a class="toc__link" href="#cuerpo">Detalle</a>
+                <a class="toc__link" href="#historial">Historial (@_detail.Activity.Count)</a>
+                <a class="toc__link" href="#comentarios">Comentarios (@_detail.Comments.Count)</a>
+            </div>
+
+            <div class="card" style="padding: var(--space-5);
+                 border-top: 3px solid var(--priority-@(IncidentCssHelpers.PrioritySuffix(_detail.Priority)));">
+                <div class="incident-meta-panel__row">
+                    <span class="incident-meta-panel__label"><Icon Name="layers-3" />Origen</span>
+                    <span class="incident-meta-panel__value"><AreaBadge Name="@_detail.OriginAreaName" Color="@_detail.OriginAreaColor" ShowIcon="false" Small="true" /></span>
+                </div>
+                <div class="incident-meta-panel__row">
+                    <span class="incident-meta-panel__label"><Icon Name="arrow-right" />Área actual</span>
+                    <span class="incident-meta-panel__value"><AreaBadge Name="@_detail.CurrentAreaName" Color="@_detail.CurrentAreaColor" ShowIcon="false" Small="true" /></span>
+                </div>
+                <div class="incident-meta-panel__row">
+                    <span class="incident-meta-panel__label"><Icon Name="plus-circle" />Reportado por</span>
+                    <span class="incident-meta-panel__value">
+                        <UserAvatar FullName="@_detail.CreatedByName" Initials="@_detail.CreatedByInitials"
+                                    ColorFrom="@_detail.CreatedByAvatarColorFrom" ColorTo="@_detail.CreatedByAvatarColorTo" Size="UserAvatar.AvatarSize.Sm" />
+                        <span>@_detail.CreatedByName</span>
+                    </span>
+                </div>
+                <div class="incident-meta-panel__row">
+                    <span class="incident-meta-panel__label"><Icon Name="user-check" />Responsable</span>
+                    <span class="incident-meta-panel__value">
+                        <UserAvatar FullName="@_detail.ResponsibleName" Initials="@_detail.ResponsibleInitials"
+                                    ColorFrom="@_detail.ResponsibleAvatarColorFrom" ColorTo="@_detail.ResponsibleAvatarColorTo" Size="UserAvatar.AvatarSize.Sm" />
+                        <span>@(_detail.ResponsibleName ?? "Sin asignar")</span>
+                    </span>
+                </div>
+                <div class="incident-meta-panel__row">
+                    <span class="incident-meta-panel__label"><Icon Name="clock" />Creada</span>
+                    <span class="incident-meta-panel__value">@_detail.CreatedAt.ToString("d MMM, HH:mm")</span>
+                </div>
+                <div class="incident-meta-panel__row">
+                    <span class="incident-meta-panel__label"><Icon Name="refresh-cw" />Actualizada</span>
+                    <span class="incident-meta-panel__value">@_detail.UpdatedAt.ToRelativeLabel()</span>
+                </div>
+                @if (_detail.ClosedAt.HasValue)
+                {
+                    <div class="incident-meta-panel__row">
+                        <span class="incident-meta-panel__label"><Icon Name="check-circle" />Cerrada</span>
+                        <span class="incident-meta-panel__value">@_detail.ClosedAt.Value.ToString("d MMM, HH:mm")</span>
+                    </div>
+                }
+            </div>
+
+            @if (_areaTimeSegments.Count > 0)
+            {
+                <div class="card" style="padding: var(--space-5);">
+                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="layers-3" />Tiempo por equipo</h4>
+                    <div class="donut-widget__row donut-widget__row--stacked">
+                        <DonutChart Segments="_areaTimeSegments" Size="130" Thickness="16"
+                                    CenterValue="@_areaTimeSegments.Count.ToString()" CenterLabel="equipos"
+                                    OnSegmentClick="OpenAreaModal" ActiveLabel="_selectedAreaName" />
+                        <DonutLegend Items="_areaTimeLegend" OnItemClick="OpenAreaModal" ActiveLabel="_selectedAreaName" />
+                    </div>
+                </div>
+            }
+
+            <div class="card" style="padding: var(--space-5);">
+                <IncidentTimeBar ActiveHours="_detail.TotalActiveHours" DeadHours="_detail.TotalDeadHours" />
+            </div>
+
+            @if (_detail.Attachments.Count > 0)
+            {
+                <div class="card" style="padding: var(--space-5);">
+                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="paperclip" />Adjuntos</h4>
+                    @foreach (var file in _detail.Attachments)
+                    {
+                        <div class="file-row" style="margin-bottom: var(--space-2);">
+                            <span class="file-row__icon"><Icon Name="file-text" /></span>
+                            <span class="file-row__info">
+                                <span class="file-row__name">@file.FileName</span>
+                                <span class="file-row__meta">@file.FileType · @file.SizeLabel</span>
+                            </span>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_detail.RelatedArticles.Count > 0)
+            {
+                <div class="card" style="padding: var(--space-5);">
+                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="file-text" />Artículos relacionados</h4>
+                    @foreach (var article in _detail.RelatedArticles)
+                    {
+                        <a class="external-link-row" style="margin-bottom: var(--space-2);" href="@article.Url">
+                            <Icon Name="@article.Icon" /> @article.Title
+                        </a>
+                    }
+                </div>
+            }
+
+            @if (_detail.Transfers.Count > 0)
+            {
+                <div class="card" style="padding: var(--space-5);">
+                    <h4 class="widget__title" style="margin-bottom: var(--space-3);"><Icon Name="arrow-right" />Transferencias (@_detail.Transfers.Count)</h4>
+                    @foreach (var t in _detail.Transfers.OrderByDescending(t => t.TransferredAt).Take(4))
+                    {
+                        <div class="activity-row">
+                            <div class="activity-row__icon" style="background:rgba(236,72,153,0.14); color:#ec4899;">
+                                <Icon Name="arrow-right" />
+                            </div>
+                            <div style="flex:1; min-width:0;">
+                                <p class="activity-row__text">@t.FromAreaName → <strong>@t.ToAreaName</strong></p>
+                                <p class="activity-row__time">@t.TransferredAt.ToRelativeLabel()</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </aside>
+    </div>
+
+    @* ==================== MODAL: gestión (asignar / estado / transferir) ==================== *@
+    <InfoModal Show="_showActionsModal" ShowChanged="v => _showActionsModal = v" Title="Gestionar incidencia" Large="true">
+        <div class="form-group">
+            <label class="form-label"><Icon Name="user-check" /> Asignar responsable</label>
+            <div style="display:flex; gap: var(--space-2);">
+                <select class="input" @bind="_assignUserId">
+                    <option value="">Seleccioná un responsable</option>
+                    @foreach (var u in _currentAreaUsers)
+                    {
+                        <option value="@u.Id">@u.FullName — @u.Role</option>
+                    }
+                </select>
+                <button class="btn btn--secondary btn--sm" @onclick="AssignAction" disabled="@(!_assignUserId.HasValue)">Asignar</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label"><Icon Name="refresh-cw" /> Cambiar estado</label>
+            <div style="display:flex; gap: var(--space-2);">
+                <select class="input" @bind="_newStatus">
+                    @foreach (var s in Enum.GetValues<IncidentStatus>())
+                    {
+                        <option value="@s">@IncidentLabels.Status(s)</option>
+                    }
+                </select>
+                <button class="btn btn--secondary btn--sm" @onclick="ChangeStatusAction">Actualizar</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label"><Icon Name="arrow-right" /> Transferir a otra área</label>
+            <select class="input" value="@(_transferAreaId?.ToString() ?? "")" @onchange="OnTransferAreaChanged" style="margin-bottom: var(--space-2);">
+                <option value="">Área destino</option>
+                @foreach (var area in _areas.Where(a => a.Id != _detail.CurrentAreaId))
+                {
+                    <option value="@area.Id">@area.Name</option>
+                }
+            </select>
+            <select class="input" @bind="_transferUserId" disabled="@(!_transferAreaId.HasValue)" style="margin-bottom: var(--space-2);">
+                <option value="">Responsable destino</option>
+                @foreach (var u in _transferUserOptions)
+                {
+                    <option value="@u.Id">@u.FullName</option>
+                }
+            </select>
+            <textarea class="input" rows="2" placeholder="Motivo de la transferencia" @bind="_transferReason" style="margin-bottom: var(--space-2);"></textarea>
+            <button class="btn btn--secondary btn--sm" @onclick="TransferAction"
+                    disabled="@(!_transferAreaId.HasValue || !_transferUserId.HasValue)">
+                Transferir
+            </button>
+        </div>
+    </InfoModal>
+
+    @* ==================== MODAL: participación de un equipo ==================== *@
+    <InfoModal Show="_showAreaModal" ShowChanged="v => _showAreaModal = v" Title="@($"Participación de {_selectedAreaName}")">
+        <div style="display:flex; gap:var(--space-3); margin-bottom:var(--space-5);">
+            <span class="badge badge--brand">Activo: @_selectedAreaActiveHours h</span>
+            <span class="badge">Muerto: @_selectedAreaDeadHours h</span>
+        </div>
+
+        <h4 class="widget__title" style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">Qué hizo el equipo</h4>
+        @if (_selectedAreaActivity.Count == 0)
+        {
+            <p class="section-header__subtitle">Nadie de este equipo generó actividad registrada todavía.</p>
+        }
+        else
+        {
+            @foreach (var entry in _selectedAreaActivity)
+            {
+                <div class="activity-row">
+                    <div class="activity-row__icon" style="background:@ColorUtils.ToRgba(IncidentCssHelpers.ActivityColor(entry.Type),0.14); color:@IncidentCssHelpers.ActivityColor(entry.Type);">
+                        <Icon Name="@IncidentCssHelpers.ActivityIcon(entry.Type)" />
+                    </div>
+                    <div style="flex:1; min-width:0;">
+                        <p class="activity-row__text"><strong>@entry.ActorName</strong> — @entry.Description</p>
+                        <p class="activity-row__time">@entry.OccurredAt.ToRelativeLabel()</p>
+                    </div>
+                </div>
+            }
+        }
+
+        @if (_selectedAreaTransfers.Count > 0)
+        {
+            <h4 class="widget__title" style="font-size:var(--fs-sm); margin:var(--space-5) 0 var(--space-2);">Transferencias relacionadas</h4>
+            @foreach (var t in _selectedAreaTransfers)
+            {
+                <p class="form-hint">@t.FromAreaName → @t.ToAreaName (@t.ToUserName) · @t.TransferredAt.ToRelativeLabel()</p>
+            }
+        }
+
+        @if (_selectedAreaComments.Count > 0)
+        {
+            <h4 class="widget__title" style="font-size:var(--fs-sm); margin:var(--space-5) 0 var(--space-2);">Comentarios del equipo (@_selectedAreaComments.Count)</h4>
+            @foreach (var c in _selectedAreaComments)
+            {
+                <p class="form-hint"><strong>@c.AuthorName:</strong> @c.Text</p>
+            }
+        }
+    </InfoModal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private const int ActivityPageSize = 6;
+
+    private IncidentDetailDto? _detail;
+    private List<Area> _areas = new();
+    private List<IncidentUser> _currentAreaUsers = new();
+    private List<BreadcrumbItem> _breadcrumb = new();
+    private List<(string AreaName, string Color, string Icon, bool IsCurrent)> _journey = new();
+    private List<(string Label, double Value, string Color)> _areaTimeSegments = new();
+    private List<(string Label, string ValueLabel, string Color)> _areaTimeLegend = new();
+
+    private bool _showActionsModal;
+    private int _activityVisibleCount = ActivityPageSize;
+
+    private string _newComment = string.Empty;
+    private Guid? _assignUserId;
+    private IncidentStatus _newStatus;
+    private Guid? _transferAreaId;
+    private Guid? _transferUserId;
+    private string _transferReason = string.Empty;
+    private List<IncidentUser> _transferUserOptions = new();
+
+    private string? _selectedAreaName;
+    private bool _showAreaModal;
+    private double _selectedAreaActiveHours;
+    private double _selectedAreaDeadHours;
+    private List<IncidentActivityDto> _selectedAreaActivity = new();
+    private List<IncidentCommentDto> _selectedAreaComments = new();
+    private List<IncidentTransferDto> _selectedAreaTransfers = new();
+
+    private Guid ActorId => _detail?.ResponsibleId ?? _detail?.CreatedByUserId ?? Guid.Empty;
+
+    private List<IncidentActivityDto> _visibleActivity =>
+        _detail?.Activity.OrderByDescending(a => a.OccurredAt).Take(_activityVisibleCount).ToList() ?? new();
+
+    protected override void OnParametersSet()
     {
-        <a class="toc__link" href="#recorrido">Recorrido entre áreas</a>
+        _areas = Incidents.GetAreas().ToList();
+        _activityVisibleCount = ActivityPageSize;
+        LoadDetail();
     }
-    <a class="toc__link" href="#historial">Historial (@_detail.Activity.Count)</a>
-    <a class="toc__link" href="#comentarios">Comentarios (@_detail.Comments.Count)</a>
-</div>
+
+    private void LoadDetail()
+    {
+        _detail = Incidents.GetIncidentDetail(Id);
+        if (_detail is null) return;
+
+        _newStatus = _detail.Status;
+        _currentAreaUsers = Incidents.GetUsersByArea(_detail.CurrentAreaId).OrderBy(u => u.FullName).ToList();
+
+        _breadcrumb = new List<BreadcrumbItem>
+        {
+            new("Inicio", "/"),
+            new("Incidencias", "/incidencias/listado"),
+            new(_detail.Code, null)
+        };
+
+        BuildJourney();
+        BuildAreaTimeDistribution();
+    }
+
+    private void BuildJourney()
+    {
+        _journey = new List<(string, string, string, bool)>();
+        if (_detail is null) return;
+
+        var origin = _areas.FirstOrDefault(a => a.Name == _detail.OriginAreaName);
+        _journey.Add((_detail.OriginAreaName, origin?.Color ?? "#334155", origin?.Icon ?? "layers-3", false));
+
+        foreach (var t in _detail.Transfers.OrderBy(t => t.TransferredAt))
+        {
+            var area = _areas.FirstOrDefault(a => a.Name == t.ToAreaName);
+            _journey.Add((t.ToAreaName, area?.Color ?? "#334155", area?.Icon ?? "layers-3", false));
+        }
+
+        if (_journey.Count > 0)
+        {
+            var last = _journey[^1];
+            _journey[^1] = (last.AreaName, last.Color, last.Icon, true);
+        }
+    }
+
+    private void BuildAreaTimeDistribution()
+    {
+        if (_detail is null) return;
+
+        var grouped = _detail.TimeSegments
+            .GroupBy(s => s.AreaName)
+            .Select(g => new { AreaName = g.Key, Hours = g.Sum(s => s.DurationHours) })
+            .Where(g => g.Hours > 0)
+            .OrderByDescending(g => g.Hours)
+            .ToList();
+
+        _areaTimeSegments = new List<(string, double, string)>();
+        _areaTimeLegend = new List<(string, string, string)>();
+
+        foreach (var g in grouped)
+        {
+            var color = _areas.FirstOrDefault(a => a.Name == g.AreaName)?.Color ?? "#334155";
+            _areaTimeSegments.Add((g.AreaName, g.Hours, color));
+            _areaTimeLegend.Add((g.AreaName, $"{g.Hours:0.#}h", color));
+        }
+    }
+
+    private void OpenAreaModal(string areaName)
+    {
+        if (_detail is null) return;
+        _selectedAreaName = areaName;
+
+        var areaId = _areas.FirstOrDefault(a => a.Name == areaName)?.Id;
+        var areaUserNames = areaId.HasValue
+            ? Incidents.GetUsersByArea(areaId.Value).Select(u => u.FullName).ToHashSet()
+            : new HashSet<string>();
+
+        var segs = _detail.TimeSegments.Where(s => s.AreaName == areaName).ToList();
+        _selectedAreaActiveHours = Math.Round(segs.Where(s => s.IsActiveWork).Sum(s => s.DurationHours), 1);
+        _selectedAreaDeadHours = Math.Round(segs.Where(s => !s.IsActiveWork).Sum(s => s.DurationHours), 1);
+
+        _selectedAreaActivity = _detail.Activity.Where(a => areaUserNames.Contains(a.ActorName)).OrderByDescending(a => a.OccurredAt).ToList();
+        _selectedAreaComments = _detail.Comments.Where(c => areaUserNames.Contains(c.AuthorName)).OrderByDescending(c => c.CreatedAt).ToList();
+        _selectedAreaTransfers = _detail.Transfers.Where(t => t.FromAreaName == areaName || t.ToAreaName == areaName).OrderByDescending(t => t.TransferredAt).ToList();
+
+        _showAreaModal = true;
+    }
+
+    private void OnTransferAreaChanged(ChangeEventArgs e)
+    {
+        _transferAreaId = Guid.TryParse(e.Value?.ToString(), out var areaId) ? areaId : null;
+        _transferUserId = null;
+        _transferUserOptions = _transferAreaId.HasValue
+            ? Incidents.GetUsersByArea(_transferAreaId.Value).OrderBy(u => u.FullName).ToList()
+            : new();
+    }
+
+    private void AssignAction()
+    {
+        if (!_assignUserId.HasValue || _detail is null) return;
+        Incidents.AssignResponsible(_detail.Id, _assignUserId.Value, ActorId);
+        _assignUserId = null;
+        LoadDetail();
+        Toast.Show("Responsable asignado.", ToastVariant.Success, "user-check");
+    }
+
+    private void ChangeStatusAction()
+    {
+        if (_detail is null) return;
+        Incidents.ChangeStatus(_detail.Id, _newStatus, ActorId);
+        LoadDetail();
+        Toast.Show($"Estado actualizado a {IncidentLabels.Status(_newStatus)}.", ToastVariant.Info, "refresh-cw");
+    }
+
+    private void TransferAction()
+    {
+        if (_detail is null || !_transferAreaId.HasValue || !_transferUserId.HasValue) return;
+        Incidents.TransferIncident(_detail.Id, _transferAreaId.Value, _transferUserId.Value, _transferReason, ActorId);
+        _transferAreaId = null;
+        _transferUserId = null;
+        _transferReason = string.Empty;
+        _transferUserOptions = new();
+        LoadDetail();
+        Toast.Show("Incidencia transferida.", ToastVariant.Info, "arrow-right");
+    }
+
+    private void CloseIncidentAction()
+    {
+        if (_detail is null) return;
+        Incidents.CloseIncident(_detail.Id, ActorId);
+        LoadDetail();
+        Toast.Show("Incidencia cerrada.", ToastVariant.Success, "check-circle");
+    }
+
+    private void ReactivateAction()
+    {
+        if (_detail is null) return;
+        Incidents.ReactivateIncident(_detail.Id, _detail.CreatedByUserId);
+        LoadDetail();
+        Toast.Show("Incidencia reactivada.", ToastVariant.Warning, "rotate-ccw");
+    }
+
+    private void AddCommentAction()
+    {
+        if (string.IsNullOrWhiteSpace(_newComment) || _detail is null) return;
+        Incidents.AddComment(_detail.Id, ActorId, _newComment);
+        _newComment = string.Empty;
+        LoadDetail();
+        Toast.Show("Comentario agregado.", ToastVariant.Success, "message-circle");
+    }
+}
+
+/* ---------- Layout de detalle: contenido + panel lateral ---------- */
+.incident-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: var(--space-6);
+    align-items: start;
+}
+@media (max-width: 1000px) {
+    .incident-layout { grid-template-columns: 1fr; }
+    .incident-layout > aside { position: static !important; order: -1; }
+}
+
+/* ---------- Panel de metadatos compacto (ficha, no grid de 4 columnas) ---------- */
+.incident-meta-panel__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.incident-meta-panel__row:last-child { border-bottom: none; }
+.incident-meta-panel__label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+.incident-meta-panel__label .icon { width: 13px; height: 13px; }
+.incident-meta-panel__value {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: right;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.incident-meta-panel__value span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Journey stepper: ahora clickeable ---------- */
+.journey-stepper__node { cursor: pointer; transition: transform var(--transition-fast); }
+.journey-stepper__node:hover { transform: translateY(-2px); }
+
+/* ---------- Cuerpo de la incidencia (placeholder hasta conectar Editra) ---------- */
+.incident-body-card { line-height: 1.75; }
+.incident-body-card :is(h1, h2, h3, h4) { margin-top: var(--space-5); margin-bottom: var(--space-2); }
+.incident-body-card p { margin-bottom: var(--space-3); }
+
+/* ---------- Historial: cargar más (no paginación numerada) ---------- */
+.timeline-load-more { text-align: center; margin-top: var(--space-4); }
+
+/* ---------- Dona apilada para el panel angosto ---------- */
+.donut-widget__row--stacked { flex-direction: column; align-items: center; text-align: left; }
+.donut-widget__row--stacked .donut-legend { width: 100%; }
