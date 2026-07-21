@@ -815,6 +815,7 @@
     height: 14px;
     color: var(--text-tertiary);
     flex-shrink: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 /* ---------- Timeline: ícono de tipo dentro de version-row ---------- */
@@ -1161,7 +1162,7 @@
     }
 }
 
-/* ---------- Journey stepper: interactividad + reproducción animada ---------- */
+/* ---------- Journey stepper: interactividad ---------- */
 .journey-stepper__node--interactive {
     cursor: pointer;
     transition: transform var(--transition-fast), box-shadow var(--transition-fast), opacity 0.4s ease;
@@ -1185,60 +1186,6 @@
     to { transform: rotate(360deg); }
 }
 
-.journey-stepper--playing .journey-stepper__node {
-    transition: opacity 0.35s ease, transform 0.45s cubic-bezier(.34,1.56,.64,1), box-shadow 0.35s ease;
-}
-
-.journey-stepper__node--pending {
-    opacity: 0.25;
-    transform: scale(0.86);
-    pointer-events: none;
-}
-
-.journey-stepper__node--active-step {
-    animation: journeyPop 0.5s cubic-bezier(.34,1.56,.64,1);
-    box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px currentColor;
-}
-
-@keyframes journeyPop {
-    0%   { transform: scale(0.55); opacity: 0; }
-    60%  { transform: scale(1.1); opacity: 1; }
-    100% { transform: scale(1); opacity: 1; }
-}
-
-.journey-stepper__duration {
-    display: block;
-    font-size: 10px;
-    font-weight: 700;
-    opacity: 0;
-    margin-top: 2px;
-    animation: journeyFadeIn 0.35s ease forwards;
-    animation-delay: 0.25s;
-}
-
-@keyframes journeyFadeIn {
-    from { opacity: 0; transform: translateY(-2px); }
-    to   { opacity: 0.85; transform: translateY(0); }
-}
-
-.journey-stepper__arrow {
-    transition: opacity 0.3s ease, transform 0.3s ease;
-}
-
-.journey-stepper__arrow--pending {
-    opacity: 0.15;
-}
-
-.journey-stepper__arrow--drawn {
-    opacity: 1;
-    animation: journeyArrowIn 0.3s ease;
-}
-
-@keyframes journeyArrowIn {
-    from { opacity: 0; transform: translateX(-6px); }
-    to   { opacity: 1; transform: translateX(0); }
-}
-
 /* ---------- Modal de área: lista de personas del equipo ---------- */
 .person-row-list {
     display: flex;
@@ -1258,6 +1205,77 @@
     .info-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* =========================================================================
+   Modal de historia del recorrido (story mode)
+   ========================================================================= */
+.story-modal__header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-md);
+    font-weight: 700;
+    font-size: var(--fs-sm);
+    margin-bottom: var(--space-5);
+}
+
+.story-modal__narrative {
+    font-size: var(--fs-lg, 1.05rem);
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.5;
+    margin-bottom: var(--space-5);
+    animation: storyFadeSlide 0.3s var(--ease);
+}
+
+.story-modal__events {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+    animation: storyFadeSlide 0.3s var(--ease);
+}
+
+@keyframes storyFadeSlide {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.story-modal__progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: var(--space-6) 0 0;
+}
+
+.story-modal__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: none;
+    padding: 0;
+    background: var(--bg-surface-3);
+    cursor: pointer;
+    transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+    .story-modal__dot:hover {
+        transform: scale(1.2);
+    }
+
+.story-modal__dot--active {
+    background: var(--brand-500);
+    transform: scale(1.25);
 }
 
 
@@ -1361,45 +1379,31 @@ else
                 <div class="card" style="padding: var(--space-5) var(--space-6); margin-bottom: var(--space-6);">
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-bottom: var(--space-3); flex-wrap:wrap;">
                         <h4 class="widget__title" style="margin-bottom:0;"><Icon Name="workflow" />Recorrido entre áreas</h4>
-                        <button class="btn btn--secondary btn--sm" @onclick="PlayJourney" disabled="@_isPlaying">
-                            @if (_isPlaying)
-                            {
-                                <Icon Name="loader" Class="journey-play-btn__icon--spin" /> <text>Reproduciendo…</text>
-                            }
-                            else
-                            {
-                                <Icon Name="play-circle" /> <text>Reproducir recorrido</text>
-                            }
+                        <button class="btn btn--secondary btn--sm" @onclick="OpenJourneyStory">
+                            <Icon Name="play-circle" /> <text>Reproducir recorrido</text>
                         </button>
                     </div>
 
-                    <div class="journey-stepper @(_isPlaying ? "journey-stepper--playing" : "")">
+                    <div class="journey-stepper">
                         @for (var i = 0; i < _journey.Count; i++)
                         {
                             var node = _journey[i];
-                            var index = i;
-                            var ringStyle = node.IsCurrent && !_isPlaying
+
+                            var ringStyle = node.IsCurrent
                                 ? $"box-shadow:0 0 0 2px var(--bg-surface), 0 0 0 4px {node.Color};"
                                 : "";
-                            var revealState = !_isPlaying ? "" : index <= _playbackIndex ? "journey-stepper__node--active-step" : "journey-stepper__node--pending";
-                            var hours = _areaTimeSegments.FirstOrDefault(s => s.Label == node.AreaName).Value;
 
-                            <div class="journey-stepper__node journey-stepper__node--interactive @revealState"
+                            <div class="journey-stepper__node journey-stepper__node--interactive"
                                  style="background:@ColorUtils.ToRgba(node.Color,0.12); color:@node.Color; @ringStyle"
                                  @onclick="() => OpenAreaModal(node.AreaName)" title="Ver personas e información de @node.AreaName">
                                 <span class="journey-stepper__icon" style="background:@node.Color;">
                                     <Icon Name="@node.Icon" Class="journey-stepper__icon-svg" />
                                 </span>
                                 @node.AreaName
-                                @if (_isPlaying && index <= _playbackIndex && hours > 0)
-                                {
-                                    <span class="journey-stepper__duration">@hours.ToString("0.#")h</span>
-                                }
                             </div>
                             @if (i < _journey.Count - 1)
                             {
-                                var arrowState = !_isPlaying ? "" : index < _playbackIndex ? "journey-stepper__arrow--drawn" : "journey-stepper__arrow--pending";
-                                <Icon Name="chevron-right" Class="@($"journey-stepper__arrow {arrowState}")" />
+                                <Icon Name="chevron-right" Class="journey-stepper__arrow" />
                             }
                         }
                     </div>
@@ -1740,6 +1744,81 @@ else
             }
         }
     </InfoModal>
+
+    @* ============================================================
+       MODAL DE HISTORIA — recorrido narrado paso a paso, un tramo
+       (origen o destino de una transferencia) por pantalla. Sustituye
+       a la animación inline del stepper de la Fase anterior.
+       ============================================================ *@
+    <InfoModal Show="_showStoryModal" ShowChanged="v => _showStoryModal = v" Title="Recorrido de la incidencia">
+        @if (_storySteps.Count > 0)
+        {
+            var step = _storySteps[_storyIndex];
+
+            <div class="story-modal__header" style="background:@ColorUtils.ToRgba(step.Color,0.14); color:@step.Color;">
+                <span class="journey-stepper__icon" style="background:@step.Color;">
+                    <Icon Name="@step.Icon" Class="journey-stepper__icon-svg" />
+                </span>
+                <span>@step.AreaName</span>
+            </div>
+
+            <p class="story-modal__narrative">@step.ArrivalLabel</p>
+
+            @if (step.Events.Count > 0)
+            {
+                <div class="story-modal__events">
+                    @foreach (var ev in step.Events)
+                    {
+                        <div class="activity-row">
+                            <div class="activity-row__icon" style="background:@ColorUtils.ToRgba(step.Color,0.14); color:@step.Color;">
+                                <Icon Name="activity" />
+                            </div>
+                            <div style="flex:1; min-width:0;">
+                                <p class="activity-row__text">@ev</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="section-header__subtitle">Sin eventos registrados en este tramo.</p>
+            }
+
+            @if (step.DurationOutLabel is not null)
+            {
+                <p class="form-hint" style="margin-top:var(--space-4);">@step.DurationOutLabel</p>
+            }
+
+            <div class="story-modal__progress">
+                @for (var i = 0; i < _storySteps.Count; i++)
+                {
+                    var idx = i;
+                    <button type="button" class="story-modal__dot @(idx == _storyIndex ? "story-modal__dot--active" : "")"
+                            @onclick="() => GoToStep(idx)" title="@_storySteps[idx].AreaName"></button>
+                }
+            </div>
+
+            <div class="wizard-actions">
+                <button class="btn btn--secondary btn--sm" @onclick="PrevStep" disabled="@(_storyIndex == 0)">
+                    <Icon Name="chevron-left" /> Anterior
+                </button>
+                <button class="btn btn--secondary btn--sm" @onclick="ToggleAutoPlay">
+                    @if (_isAutoPlaying)
+                    {
+                        <Icon Name="loader" Class="journey-play-btn__icon--spin" /> <text>Automático</text>
+                    }
+                    else
+                    {
+                        <text>▶ Automático</text>
+                    }
+                </button>
+                <button class="btn btn--secondary btn--sm" @onclick="NextStep" disabled="@(_storyIndex == _storySteps.Count - 1)">
+                    Siguiente <Icon Name="chevron-right" />
+                </button>
+            </div>
+        }
+    </InfoModal>
 }
 
 @code {
@@ -1774,8 +1853,18 @@ else
     /// pantalla (leer detalle, revisar actividad, gestionar la incidencia).</summary>
     private string _activeTab = "resumen";
 
-    private bool _isPlaying;
-    private int _playbackIndex = -1;
+    /// <summary>Representa un tramo de la historia del recorrido: un área
+    /// (origen o destino de una transferencia) con su narrativa de llegada,
+    /// los eventos ocurridos mientras estuvo ahí, y —si no es el último
+    /// tramo— cómo y cuándo salió hacia el siguiente.</summary>
+    private record JourneyStoryStep(string AreaName, string Color, string Icon,
+        string ArrivalLabel, string? DurationOutLabel, string ResponsibleName,
+        List<string> Events);
+
+    private List<JourneyStoryStep> _storySteps = new();
+    private int _storyIndex;
+    private bool _showStoryModal;
+    private bool _isAutoPlaying;
 
     private void SetTab(string tab) => _activeTab = tab;
 
@@ -1905,29 +1994,139 @@ else
         }
     }
 
-    /// <summary>Anima el recorrido revelando cada área en secuencia. Usa
-    /// StateHasChanged + Task.Delay entre pasos (sin JS interop) para que
-    /// cada re-render dispare las transiciones CSS de .journey-stepper--playing.
-    /// Al terminar vuelve al estado estático normal.</summary>
-    private async Task PlayJourney()
+    /// <summary>Abre el modal de historia y reconstruye los pasos desde cero,
+    /// arrancando siempre en el primer tramo (origen de la incidencia).</summary>
+    private void OpenJourneyStory()
     {
-        if (_isPlaying || _journey.Count == 0) return;
+        BuildStorySteps();
+        _storyIndex = 0;
+        _showStoryModal = true;
+    }
 
-        _isPlaying = true;
-        _playbackIndex = -1;
-        StateHasChanged();
-        await Task.Delay(250);
+    /// <summary>Arma la narrativa del recorrido tramo a tramo: origen +
+    /// cada transferencia en orden. Por cada tramo cruza Activity/Comments
+    /// por nombre de usuarios del área (mismo patrón que OpenAreaModal) para
+    /// saber "qué pasó" mientras la incidencia estuvo ahí, y usa la
+    /// transferencia siguiente para narrar cuánto duró y por qué salió.</summary>
+    private void BuildStorySteps()
+    {
+        _storySteps = new List<JourneyStoryStep>();
+        if (_detail is null) return;
 
-        for (var i = 0; i < _journey.Count; i++)
+        var transfers = _detail.Transfers.OrderBy(t => t.TransferredAt).ToList();
+
+        // Tramo 0: área de origen.
+        var originName = _detail.OriginAreaName;
+        var originArea = _areas.FirstOrDefault(a => a.Name == originName);
+        var originArrival = $"{originName} recibió la incidencia el {_detail.CreatedAt:d MMM} a las {_detail.CreatedAt:HH:mm}.";
+        _storySteps.Add(BuildStoryStep(
+            originName,
+            originArea?.Color ?? "#334155",
+            originArea?.Icon ?? "layers-3",
+            originArrival,
+            transfers.Count > 0 ? transfers[0] : null,
+            _detail.CreatedAt));
+
+        // Tramos siguientes: uno por cada transferencia realizada.
+        for (var i = 0; i < transfers.Count; i++)
         {
-            _playbackIndex = i;
-            StateHasChanged();
-            await Task.Delay(i == _journey.Count - 1 ? 1100 : 850);
+            var t = transfers[i];
+            var area = _areas.FirstOrDefault(a => a.Name == t.ToAreaName);
+            var arrival = $"{t.ToAreaName} recibió la incidencia el {t.TransferredAt:d MMM} a las {t.TransferredAt:HH:mm}, de manos de {t.ToUserName}.";
+            var nextTransfer = i + 1 < transfers.Count ? transfers[i + 1] : null;
+
+            _storySteps.Add(BuildStoryStep(
+                t.ToAreaName,
+                area?.Color ?? "#334155",
+                area?.Icon ?? "layers-3",
+                arrival,
+                nextTransfer,
+                t.TransferredAt));
+        }
+    }
+
+    /// <summary>Construye un tramo individual: eventos ocurridos desde que
+    /// el área recibió la incidencia (stepStart), y si existe una transferencia
+    /// de salida, el texto de cierre con duración y motivo.</summary>
+    private JourneyStoryStep BuildStoryStep(string areaName, string color, string icon, string arrivalLabel,
+        IncidentTransferDto? outgoingTransfer, DateTime stepStart)
+    {
+        var area = _areas.FirstOrDefault(a => a.Name == areaName);
+        var areaUserNames = (area is not null ? Incidents.GetUsersByArea(area.Id) : Enumerable.Empty<IncidentUser>())
+            .Select(u => u.FullName)
+            .ToHashSet();
+
+        var events = new List<string>();
+
+        if (_detail is not null)
+        {
+            events.AddRange(_detail.Activity
+                .Where(a => areaUserNames.Contains(a.ActorName) && a.OccurredAt >= stepStart)
+                .OrderBy(a => a.OccurredAt)
+                .Select(a => $"{a.ActorName}: {a.Description}"));
+
+            events.AddRange(_detail.Comments
+                .Where(c => areaUserNames.Contains(c.AuthorName) && c.CreatedAt >= stepStart)
+                .OrderBy(c => c.CreatedAt)
+                .Select(c => $"{c.AuthorName} comentó: {c.Text}"));
         }
 
-        await Task.Delay(500);
-        _isPlaying = false;
-        _playbackIndex = -1;
+        string? durationLabel = null;
+        if (outgoingTransfer is not null)
+        {
+            var hours = (outgoingTransfer.TransferredAt - stepStart).TotalHours;
+            durationLabel = $"{hours:0.#}h después, {outgoingTransfer.ToUserName} la transfirió a {outgoingTransfer.ToAreaName} — motivo: {outgoingTransfer.Reason}.";
+        }
+
+        var responsibleName = outgoingTransfer?.ToUserName ?? _detail?.ResponsibleName ?? "Sin asignar";
+
+        return new JourneyStoryStep(areaName, color, icon, arrivalLabel, durationLabel, responsibleName, events);
+    }
+
+    private void NextStep()
+    {
+        if (_storyIndex < _storySteps.Count - 1) _storyIndex++;
+    }
+
+    private void PrevStep()
+    {
+        if (_storyIndex > 0) _storyIndex--;
+    }
+
+    private void GoToStep(int index)
+    {
+        if (index >= 0 && index < _storySteps.Count) _storyIndex = index;
+    }
+
+    private void ToggleAutoPlay()
+    {
+        if (_isAutoPlaying)
+        {
+            _isAutoPlaying = false;
+            return;
+        }
+        _ = AutoPlayStory();
+    }
+
+    /// <summary>Mientras _isAutoPlaying esté activo, avanza _storyIndex cada
+    /// cierto intervalo — mismo patrón de loop con Task.Delay + StateHasChanged
+    /// que usaba el PlayJourney anterior, pero moviendo el índice del modal
+    /// en vez de clases CSS del stepper.</summary>
+    private async Task AutoPlayStory()
+    {
+        if (_storySteps.Count == 0) return;
+        _isAutoPlaying = true;
+        StateHasChanged();
+
+        while (_isAutoPlaying && _storyIndex < _storySteps.Count - 1)
+        {
+            await Task.Delay(1400);
+            if (!_isAutoPlaying) break;
+            _storyIndex++;
+            StateHasChanged();
+        }
+
+        _isAutoPlaying = false;
         StateHasChanged();
     }
 
