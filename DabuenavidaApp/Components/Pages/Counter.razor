@@ -1,248 +1,59 @@
-@if (_showJourneyModal && _journeyStep is not null)
-{
-    <div class="journey-modal-overlay" @onclick="CloseJourneyModal">
-        <div class="journey-modal" @onclick:stopPropagation="true">
-
-            <div class="journey-modal__header" style="background:@ColorUtils.ToRgba(_journeyStep.Color,0.14); color:@_journeyStep.Color;">
-                <span class="journey-modal__header-icon" style="background:@_journeyStep.Color;">
-                    <Icon Name="@_journeyStep.Icon" />
-                </span>
-                <div style="flex:1; min-width:0;">
-                    <h3 class="journey-modal__title">@_journeyStep.AreaName</h3>
-                    <span class="journey-modal__step-label">Paso @(_journeyStepIndex + 1) de @_journey.Count</span>
-                </div>
-                <button class="btn btn--ghost btn--sm" @onclick="CloseJourneyModal"><Icon Name="x" /></button>
-            </div>
-
-            <div class="journey-modal__dots">
-                @for (var i = 0; i < _journey.Count; i++)
-                {
-                    var idx = i;
-                    var isActive = idx == _journeyStepIndex;
-                    <span class="journey-modal__dot @(isActive ? "journey-modal__dot--active" : "")"
-                          style="@(isActive ? $"background:{_journey[idx].Color};" : "")"
-                          @onclick="() => GoToJourneyStep(idx)"
-                          title="@_journey[idx].AreaName"></span>
-                }
-            </div>
-
-            <div class="journey-modal__body" @key="_journeyStepIndex">
-
-                <div style="display:flex; gap:var(--space-3); margin-bottom:var(--space-5); flex-wrap:wrap;">
-                    <span class="badge badge--brand">Activo: @_journeyStep.ActiveHours h</span>
-                    <span class="badge">Muerto: @_journeyStep.DeadHours h</span>
-                </div>
-
-                <h4 class="widget__title" style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">
-                    <Icon Name="users" />Personas del equipo (@_journeyStep.Users.Count)
-                </h4>
-                @if (_journeyStep.Users.Count == 0)
-                {
-                    <p class="section-header__subtitle">No hay personas cargadas en este equipo.</p>
-                }
-                else
-                {
-                    <div class="person-row-list" style="margin-bottom: var(--space-5);">
-                        @foreach (var u in _journeyStep.Users)
-                        {
-                            var isResponsible = _detail?.ResponsibleId == u.Id;
-                            <div class="activity-row">
-                                <span class="avatar avatar--sm">@InitialsOf(u.FullName)</span>
-                                <div style="flex:1; min-width:0;">
-                                    <p class="activity-row__text">
-                                        <strong>@u.FullName</strong>
-                                        @if (isResponsible)
-                                        {
-                                            <span class="badge badge--brand" style="margin-left:6px;">Responsable actual</span>
-                                        }
-                                    </p>
-                                    <p class="activity-row__time">@u.Role</p>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-
-                <h4 class="widget__title" style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">Qué hizo el equipo</h4>
-                @if (_journeyStep.Activity.Count == 0)
-                {
-                    <p class="section-header__subtitle">Nadie de este equipo generó actividad registrada todavía.</p>
-                }
-                else
-                {
-                    @foreach (var entry in _journeyStep.Activity)
-                    {
-                        var color = IncidentCssHelpers.ActivityColor(entry.Type);
-                        <div class="activity-row">
-                            <div class="activity-row__icon" style="background:@ColorUtils.ToRgba(color,0.14); color:@color;">
-                                <Icon Name="@IncidentCssHelpers.ActivityIcon(entry.Type)" />
-                            </div>
-                            <div style="flex:1; min-width:0;">
-                                <p class="activity-row__text"><strong>@entry.ActorName</strong> — @entry.Description</p>
-                                <p class="activity-row__time">@entry.OccurredAt.ToRelativeLabel()</p>
-                            </div>
-                        </div>
-                    }
-                }
-
-                @if (_journeyStep.Transfers.Count > 0)
-                {
-                    <h4 class="widget__title" style="font-size:var(--fs-sm); margin:var(--space-5) 0 var(--space-2);">Transferencias relacionadas</h4>
-                    @foreach (var t in _journeyStep.Transfers)
-                    {
-                        <p class="form-hint">@t.FromAreaName → @t.ToAreaName (@t.ToUserName) · @t.TransferredAt.ToRelativeLabel()</p>
-                    }
-                }
-
-                @if (_journeyStep.Comments.Count > 0)
-                {
-                    <h4 class="widget__title" style="font-size:var(--fs-sm); margin:var(--space-5) 0 var(--space-2);">Comentarios del equipo (@_journeyStep.Comments.Count)</h4>
-                    @foreach (var c in _journeyStep.Comments)
-                    {
-                        <p class="form-hint"><strong>@c.AuthorName:</strong> @c.Text</p>
-                    }
-                }
-            </div>
-
-            <div class="journey-modal__controls">
-                <button class="btn btn--secondary btn--sm" @onclick="() => GoToJourneyStep(_journeyStepIndex - 1)" disabled="@(_journeyStepIndex == 0)">
-                    <Icon Name="chevron-left" /> Anterior
-                </button>
-                <button class="btn btn--secondary btn--sm" @onclick="() => GoToJourneyStep(_journeyStepIndex + 1)" disabled="@(_journeyStepIndex == _journey.Count - 1)">
-                    Siguiente <Icon Name="chevron-right" />
-                </button>
-            </div>
-        </div>
-    </div>
-}
-
-
-
-
-@if (_journey.Count > 1)
-{
-    <div class="card" style="padding: var(--space-5) var(--space-6); margin-bottom: var(--space-6);">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-bottom: var(--space-3); flex-wrap:wrap;">
-            <h4 class="widget__title" style="margin-bottom:0;"><Icon Name="workflow" />Recorrido entre áreas</h4>
-            <button class="btn btn--secondary btn--sm" @onclick="() => OpenJourneyModal(0)">
-                <Icon Name="eye" /> Ver recorrido detallado
-            </button>
-        </div>
-
-        <div class="journey-stepper">
-            @for (var i = 0; i < _journey.Count; i++)
-            {
-                var node = _journey[i];
-                var index = i;
-                var ringStyle = node.IsCurrent
-                    ? $"box-shadow:0 0 0 2px var(--bg-surface), 0 0 0 4px {node.Color};"
-                    : "";
-                <div class="journey-stepper__node journey-stepper__node--interactive"
-                     style="background:@ColorUtils.ToRgba(node.Color,0.12); color:@node.Color; @ringStyle"
-                     @onclick="() => OpenJourneyModal(index)"
-                     title="Ver detalle de @node.AreaName">
-                    <span class="journey-stepper__icon" style="background:@node.Color;">
-                        <Icon Name="@node.Icon" Class="journey-stepper__icon-svg" />
-                    </span>
-                    @node.AreaName
-                </div>
-                @if (i < _journey.Count - 1)
-                {
-                    <Icon Name="chevron-right" Class="journey-stepper__arrow" />
-                }
-            }
-        </div>
-        <p class="form-hint" style="margin-top:var(--space-2);">
-            <Icon Name="mouse-pointer-click" /> Hacé clic en un área para ver su historia completa.
-        </p>
-    </div>
-}
-
-
-
-
-
 .journey-modal-overlay {
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.55);
+
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: flex-start;
+
     z-index: 1000;
-    padding: var(--space-4);
+
+    padding: var(--space-6) var(--space-4);
+
+    overflow-y: auto;
+
+    animation: journeyOverlayFade .18s ease;
 }
 
 .journey-modal {
     background: var(--bg-surface);
     border-radius: var(--radius-lg);
+
     width: 100%;
     max-width: 560px;
-    max-height: 85vh;
+
+    max-height: calc(100vh - 80px);
+
     display: flex;
     flex-direction: column;
+
     overflow: hidden;
+
     box-shadow: var(--shadow-lg);
+
+    animation: journeyModalEnter .28s cubic-bezier(.22,.61,.36,1);
 }
 
-.journey-modal__header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-5) var(--space-6);
+@keyframes journeyOverlayFade {
+    from {
+        background: rgba(0,0,0,0);
+    }
+
+    to {
+        background: rgba(0,0,0,.55);
+    }
 }
 
-.journey-modal__header-icon {
-    width: 40px; height: 40px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    color: white; flex-shrink: 0;
-}
+@keyframes journeyModalEnter {
 
-.journey-modal__title { margin: 0; font-size: var(--fs-lg); }
-.journey-modal__step-label { font-size: var(--fs-sm); opacity: 0.75; }
+    from {
+        opacity: 0;
+        transform: translateY(-28px) scale(.98);
+    }
 
-.journey-modal__dots {
-    display: flex;
-    gap: var(--space-2);
-    padding: 0 var(--space-6) var(--space-3);
-}
-
-.journey-modal__dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--border-strong);
-    cursor: pointer;
-    transition: transform 0.15s ease;
-}
-
-.journey-modal__dot--active {
-    transform: scale(1.4);
-}
-
-.journey-modal__body {
-    padding: 0 var(--space-6) var(--space-6);
-    overflow-y: auto;
-    flex: 1;
-    animation: journeyFade 0.2s ease;
-}
-
-@keyframes journeyFade {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.journey-modal__controls {
-    display: flex;
-    justify-content: space-between;
-    padding: var(--space-4) var(--space-6);
-    border-top: 1px solid var(--border-subtle);
-}
-
-.journey-stepper__node--interactive {
-    cursor: pointer;
-    transition: transform 0.15s ease;
-}
-.journey-stepper__node--interactive:hover {
-    transform: translateY(-1px);
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
