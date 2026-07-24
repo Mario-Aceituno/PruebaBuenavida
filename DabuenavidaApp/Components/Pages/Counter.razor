@@ -1,69 +1,96 @@
-@keyframes journeyContentIn {
+.journey-stepper__node--interactive {
+
+    cursor: pointer;
+
+    opacity: 0;
+
+    animation: journeyNodeAppear .35s ease forwards;
+
+    transition:
+        transform .18s ease,
+        box-shadow .18s ease,
+        filter .18s ease;
+}
+
+
+@keyframes journeyNodeAppear {
 
     from {
         opacity: 0;
-        transform: translateY(8px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-
-}
-
-Div1
-
-<div class="journey-section journey-section--delay-1"
-     style="display:flex; gap:var(--space-3); margin-bottom:var(--space-5); flex-wrap:wrap;"> 
-
-Div2
-
-<h4 class="widget__title journey-section journey-section--delay-2"
-    style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">
-    <Icon Name="users" />Personas del equipo
-</h4>
-
-H4
-<h4 class="widget__title journey-section journey-section--delay-3"
-    style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">
-    Qué hizo el equipo
-</h4> 
-
-.journey-section {
-
-    animation: journeySectionIn .25s ease both;
-
-}
-
-
-.journey-section--delay-1 {
-    animation-delay: .05s;
-}
-
-
-.journey-section--delay-2 {
-    animation-delay: .12s;
-}
-
-
-.journey-section--delay-3 {
-    animation-delay: .20s;
-}
-
-
-
-@keyframes journeySectionIn {
-
-    from {
-        opacity: 0;
-        transform: translateY(10px);
+        transform: translateY(12px) scale(.95);
     }
 
 
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
+    }
+
+}
+
+
+<div class="journey-stepper__node journey-stepper__node--interactive"
+     style="animation-delay:@($"{i * 80}ms");"
+
+.journey-stepper__node--interactive:hover {
+
+    transform: translateY(-3px) scale(1.02);
+
+    filter: brightness(1.05);
+
+}
+
+.journey-stepper__arrow {
+
+    animation: journeyArrowMove 1.8s ease-in-out infinite;
+
+}
+
+
+@keyframes journeyArrowMove {
+
+    0%,100% {
+        transform: translateX(0);
+        opacity:.6;
+    }
+
+
+    50% {
+        transform: translateX(4px);
+        opacity:1;
+    }
+
+}
+
+class="journey-stepper__node journey-stepper__node--interactive @(node.IsCurrent ? "journey-stepper__node--current" : "")"
+
+.journey-stepper__node--current {
+
+    animation:
+        journeyNodeAppear .35s ease forwards,
+        journeyCurrentPulse 2s infinite;
+
+}
+
+
+
+@keyframes journeyCurrentPulse {
+
+    0%,100% {
+
+        box-shadow:
+        0 0 0 2px var(--bg-surface),
+        0 0 0 4px currentColor;
+
+    }
+
+
+    50% {
+
+        box-shadow:
+        0 0 0 2px var(--bg-surface),
+        0 0 0 7px currentColor;
+
     }
 
 }
