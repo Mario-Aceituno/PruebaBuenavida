@@ -1,823 +1,248 @@
-@page "/admin"
-
-<PageTitle>CorpWiki — Administración</PageTitle>
-
-<div class="page-header">
-    <div>
-        <h1>Panel de Administración</h1>
-        <p>Configuración global del sitio, usuarios, roles y equipos. Estos ajustes aplican a todos los usuarios.</p>
-    </div>
-</div>
-
-<div class="admin-tabs">
-    <button type="button" class="admin-tabs__btn @(_tab == "general" ? "admin-tabs__btn--active" : "")" @onclick='() => _tab = "general"'>
-        <Icon Name="settings" /> General
-    </button>
-    <button type="button" class="admin-tabs__btn @(_tab == "usuarios" ? "admin-tabs__btn--active" : "")" @onclick='() => _tab = "usuarios"'>
-        <Icon Name="users" /> Usuarios
-        <span class="admin-tabs__count">@_users.Count</span>
-    </button>
-    <button type="button" class="admin-tabs__btn @(_tab == "roles" ? "admin-tabs__btn--active" : "")" @onclick='() => _tab = "roles"'>
-        <Icon Name="shield-alert" /> Roles y Permisos
-    </button>
-    <button type="button" class="admin-tabs__btn @(_tab == "equipos" ? "admin-tabs__btn--active" : "")" @onclick='() => _tab = "equipos"'>
-        <Icon Name="network" /> Equipos y Áreas
-    </button>
-    <button type="button" class="admin-tabs__btn @(_tab == "seguridad" ? "admin-tabs__btn--active" : "")" @onclick='() => _tab = "seguridad"'>
-        <Icon Name="lock" /> Seguridad
-    </button>
-</div>
-
-@* ============================================================ GENERAL ============================================================ *@
-@if (_tab == "general")
+@if (_showJourneyModal && _journeyStep is not null)
 {
-    <div class="admin-grid admin-fade-in">
-        <div>
-            <div class="card admin-section">
-                <h3 class="admin-section__title"><Icon Name="settings" /> General</h3>
-                <p class="admin-section__desc">Nombre del sitio, lema y comportamiento por defecto de los listados.</p>
+    <div class="journey-modal-overlay" @onclick="CloseJourneyModal">
+        <div class="journey-modal" @onclick:stopPropagation="true">
 
-                <div class="field-grid field-grid--2">
-                    <div class="form-group">
-                        <label class="form-label" for="site-name">Nombre del sitio</label>
-                        <input id="site-name" class="input" type="text" @bind="_form.SiteName" />
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="site-tagline">Lema / descripción corta</label>
-                        <input id="site-tagline" class="input" type="text" @bind="_form.Tagline" />
-                    </div>
+            <div class="journey-modal__header" style="background:@ColorUtils.ToRgba(_journeyStep.Color,0.14); color:@_journeyStep.Color;">
+                <span class="journey-modal__header-icon" style="background:@_journeyStep.Color;">
+                    <Icon Name="@_journeyStep.Icon" />
+                </span>
+                <div style="flex:1; min-width:0;">
+                    <h3 class="journey-modal__title">@_journeyStep.AreaName</h3>
+                    <span class="journey-modal__step-label">Paso @(_journeyStepIndex + 1) de @_journey.Count</span>
                 </div>
+                <button class="btn btn--ghost btn--sm" @onclick="CloseJourneyModal"><Icon Name="x" /></button>
+            </div>
 
-                <div class="field-grid field-grid--2">
-                    <div class="form-group">
-                        <label class="form-label" for="page-size">Elementos por página (listados)</label>
-                        <input id="page-size" class="input" type="number" min="4" max="60" @bind="_form.DefaultPageSize" />
-                        <p class="form-hint">Se aplica a Artículos, Categorías, Etiquetas, Colecciones, Multimedia, Autores y Buscar.</p>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="default-theme">Tema por defecto para nuevas sesiones</label>
-                        <select id="default-theme" class="input" @bind="_form.DefaultTheme">
-                            <option value="dark">Oscuro</option>
-                            <option value="light">Claro</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="admin-toggle-row">
-                    <div>
-                        <p class="admin-toggle-row__label">Modo mantenimiento</p>
-                        <p class="admin-toggle-row__hint">Muestra un aviso visible en todas las páginas para todos los usuarios.</p>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" @bind="_form.MaintenanceMode" />
-                        <span class="switch__track"></span>
-                    </label>
-                </div>
-
-                <div class="admin-toggle-row">
-                    <div>
-                        <p class="admin-toggle-row__label">Permitir comentarios</p>
-                        <p class="admin-toggle-row__hint">Habilita el cuadro de comentarios al pie de cada artículo.</p>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" @bind="_form.AllowComments" />
-                        <span class="switch__track"></span>
-                    </label>
-                </div>
-
-                <div class="admin-toggle-row">
-                    <div>
-                        <p class="admin-toggle-row__label">Permitir registro público</p>
-                        <p class="admin-toggle-row__hint">Reservado para cuando exista autenticación real (fuera de este alcance).</p>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" @bind="_form.AllowPublicRegistration" />
-                        <span class="switch__track"></span>
-                    </label>
-                </div>
-
-                @if (_saved)
+            <div class="journey-modal__dots">
+                @for (var i = 0; i < _journey.Count; i++)
                 {
-                    <div class="callout callout--tip">
-                        <Icon Name="check-circle" />
-                        <p>Configuración guardada. Ya aplica para todos los usuarios conectados.</p>
+                    var idx = i;
+                    var isActive = idx == _journeyStepIndex;
+                    <span class="journey-modal__dot @(isActive ? "journey-modal__dot--active" : "")"
+                          style="@(isActive ? $"background:{_journey[idx].Color};" : "")"
+                          @onclick="() => GoToJourneyStep(idx)"
+                          title="@_journey[idx].AreaName"></span>
+                }
+            </div>
+
+            <div class="journey-modal__body" @key="_journeyStepIndex">
+
+                <div style="display:flex; gap:var(--space-3); margin-bottom:var(--space-5); flex-wrap:wrap;">
+                    <span class="badge badge--brand">Activo: @_journeyStep.ActiveHours h</span>
+                    <span class="badge">Muerto: @_journeyStep.DeadHours h</span>
+                </div>
+
+                <h4 class="widget__title" style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">
+                    <Icon Name="users" />Personas del equipo (@_journeyStep.Users.Count)
+                </h4>
+                @if (_journeyStep.Users.Count == 0)
+                {
+                    <p class="section-header__subtitle">No hay personas cargadas en este equipo.</p>
+                }
+                else
+                {
+                    <div class="person-row-list" style="margin-bottom: var(--space-5);">
+                        @foreach (var u in _journeyStep.Users)
+                        {
+                            var isResponsible = _detail?.ResponsibleId == u.Id;
+                            <div class="activity-row">
+                                <span class="avatar avatar--sm">@InitialsOf(u.FullName)</span>
+                                <div style="flex:1; min-width:0;">
+                                    <p class="activity-row__text">
+                                        <strong>@u.FullName</strong>
+                                        @if (isResponsible)
+                                        {
+                                            <span class="badge badge--brand" style="margin-left:6px;">Responsable actual</span>
+                                        }
+                                    </p>
+                                    <p class="activity-row__time">@u.Role</p>
+                                </div>
+                            </div>
+                        }
                     </div>
                 }
 
-                <div class="form-actions">
-                    <button type="button" class="btn btn--primary" @onclick="SaveGeneral"><Icon Name="check-circle" /> Guardar configuración</button>
-                </div>
-            </div>
-        </div>
+                <h4 class="widget__title" style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">Qué hizo el equipo</h4>
+                @if (_journeyStep.Activity.Count == 0)
+                {
+                    <p class="section-header__subtitle">Nadie de este equipo generó actividad registrada todavía.</p>
+                }
+                else
+                {
+                    @foreach (var entry in _journeyStep.Activity)
+                    {
+                        var color = IncidentCssHelpers.ActivityColor(entry.Type);
+                        <div class="activity-row">
+                            <div class="activity-row__icon" style="background:@ColorUtils.ToRgba(color,0.14); color:@color;">
+                                <Icon Name="@IncidentCssHelpers.ActivityIcon(entry.Type)" />
+                            </div>
+                            <div style="flex:1; min-width:0;">
+                                <p class="activity-row__text"><strong>@entry.ActorName</strong> — @entry.Description</p>
+                                <p class="activity-row__time">@entry.OccurredAt.ToRelativeLabel()</p>
+                            </div>
+                        </div>
+                    }
+                }
 
-        <div>
-            <div class="card admin-section">
-                <h3 class="admin-section__title"><Icon Name="bar-chart-3" /> Resumen del sistema</h3>
-                <div class="admin-stat-grid">
-                    <StatCard Label="Artículos" Value="@_stats.TotalArticles.ToString()" Icon="file-text" AccentColor="#c41230" />
-                    <StatCard Label="Categorías" Value="@_stats.TotalCategories.ToString()" Icon="folder-tree" AccentColor="#2f7fe0" />
-                    <StatCard Label="Etiquetas" Value="@_stats.TotalTags.ToString()" Icon="tag" AccentColor="#10b981" />
-                    <StatCard Label="Archivos" Value="@_stats.TotalMediaFiles.ToString()" Icon="image" AccentColor="#f59e0b" />
-                    <StatCard Label="Autores" Value="@_stats.TotalAuthors.ToString()" Icon="users" AccentColor="#8b5cf6" />
-                    <StatCard Label="Vistas totales" Value="@_stats.TotalViews.ToString("N0")" Icon="eye" AccentColor="#0ea5e9" />
-                </div>
-            </div>
-        </div>
-    </div>
-}
+                @if (_journeyStep.Transfers.Count > 0)
+                {
+                    <h4 class="widget__title" style="font-size:var(--fs-sm); margin:var(--space-5) 0 var(--space-2);">Transferencias relacionadas</h4>
+                    @foreach (var t in _journeyStep.Transfers)
+                    {
+                        <p class="form-hint">@t.FromAreaName → @t.ToAreaName (@t.ToUserName) · @t.TransferredAt.ToRelativeLabel()</p>
+                    }
+                }
 
-@* ============================================================ USUARIOS ============================================================ *@
-@if (_tab == "usuarios")
-{
-    <div class="admin-fade-in">
-        <div class="card admin-section">
-            <div class="admin-section__head-row">
-                <div>
-                    <h3 class="admin-section__title"><Icon Name="users" /> Usuarios</h3>
-                    <p class="admin-section__desc">Cuentas con acceso a la wiki, su rol y su equipo asignado.</p>
-                </div>
-                <button type="button" class="btn btn--primary" @onclick="() => _showNewUser = true">
-                    <Icon Name="plus" /> Invitar usuario
+                @if (_journeyStep.Comments.Count > 0)
+                {
+                    <h4 class="widget__title" style="font-size:var(--fs-sm); margin:var(--space-5) 0 var(--space-2);">Comentarios del equipo (@_journeyStep.Comments.Count)</h4>
+                    @foreach (var c in _journeyStep.Comments)
+                    {
+                        <p class="form-hint"><strong>@c.AuthorName:</strong> @c.Text</p>
+                    }
+                }
+            </div>
+
+            <div class="journey-modal__controls">
+                <button class="btn btn--secondary btn--sm" @onclick="() => GoToJourneyStep(_journeyStepIndex - 1)" disabled="@(_journeyStepIndex == 0)">
+                    <Icon Name="chevron-left" /> Anterior
+                </button>
+                <button class="btn btn--secondary btn--sm" @onclick="() => GoToJourneyStep(_journeyStepIndex + 1)" disabled="@(_journeyStepIndex == _journey.Count - 1)">
+                    Siguiente <Icon Name="chevron-right" />
                 </button>
             </div>
+        </div>
+    </div>
+}
 
-            <div class="admin-search-row">
-                <div class="admin-search">
-                    <Icon Name="search" />
-                    <input type="text" placeholder="Buscar por nombre, email o equipo..." @bind="_userSearch" @bind:event="oninput" />
+
+
+
+@if (_journey.Count > 1)
+{
+    <div class="card" style="padding: var(--space-5) var(--space-6); margin-bottom: var(--space-6);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-bottom: var(--space-3); flex-wrap:wrap;">
+            <h4 class="widget__title" style="margin-bottom:0;"><Icon Name="workflow" />Recorrido entre áreas</h4>
+            <button class="btn btn--secondary btn--sm" @onclick="() => OpenJourneyModal(0)">
+                <Icon Name="eye" /> Ver recorrido detallado
+            </button>
+        </div>
+
+        <div class="journey-stepper">
+            @for (var i = 0; i < _journey.Count; i++)
+            {
+                var node = _journey[i];
+                var index = i;
+                var ringStyle = node.IsCurrent
+                    ? $"box-shadow:0 0 0 2px var(--bg-surface), 0 0 0 4px {node.Color};"
+                    : "";
+                <div class="journey-stepper__node journey-stepper__node--interactive"
+                     style="background:@ColorUtils.ToRgba(node.Color,0.12); color:@node.Color; @ringStyle"
+                     @onclick="() => OpenJourneyModal(index)"
+                     title="Ver detalle de @node.AreaName">
+                    <span class="journey-stepper__icon" style="background:@node.Color;">
+                        <Icon Name="@node.Icon" Class="journey-stepper__icon-svg" />
+                    </span>
+                    @node.AreaName
                 </div>
-                <select class="input admin-search__select" @bind="_userRoleFilter">
-                    <option value="">Todos los roles</option>
-                    @foreach (var role in _roles)
-                    {
-                        <option value="@role.Name">@role.Name</option>
-                    }
-                </select>
-            </div>
-
-            <div class="admin-table-wrap">
-                <table class="admin-table">
-                    <thead>
-                        <tr>
-                            <th>Usuario</th>
-                            <th>Rol</th>
-                            <th>Equipo</th>
-                            <th>Último acceso</th>
-                            <th>Estado</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var user in FilteredUsers())
-                        {
-                            <tr>
-                                <td>
-                                    <div class="admin-user-cell">
-                                        <span class="avatar avatar--sm" style="background:@user.AvatarColor">@user.Initials</span>
-                                        <div>
-                                            <p class="admin-user-cell__name">@user.FullName</p>
-                                            <p class="admin-user-cell__email">@user.Email</p>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td><span class="@RoleBadgeClass(user.Role)">@user.Role</span></td>
-                                <td class="admin-table__muted">@user.Team</td>
-                                <td class="admin-table__muted">@user.LastSeen</td>
-                                <td>
-                                    <span class="admin-status admin-status--@(user.Active ? "active" : "inactive")">
-                                        <span class="admin-status__dot"></span>
-                                        @(user.Active ? "Activo" : "Inactivo")
-                                    </span>
-                                </td>
-                                <td>
-                                    <div class="row-actions">
-                                        <button type="button" class="icon-btn" title="Editar"><Icon Name="pencil" /></button>
-                                        <button type="button" class="icon-btn icon-btn--danger" title="Suspender" @onclick="() => user.Active = !user.Active">
-                                            <Icon Name="@(user.Active ? "x-circle" : "check-circle")" />
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-
-                @if (FilteredUsers().Count == 0)
+                @if (i < _journey.Count - 1)
                 {
-                    <div class="admin-empty">
-                        <Icon Name="users" />
-                        <p>No se encontraron usuarios con ese filtro.</p>
-                    </div>
+                    <Icon Name="chevron-right" Class="journey-stepper__arrow" />
                 }
-            </div>
-        </div>
-    </div>
-
-    @if (_showNewUser)
-    {
-        <div class="admin-modal-overlay" @onclick="() => _showNewUser = false">
-            <div class="card admin-modal" @onclick:stopPropagation="true">
-                <div class="admin-modal__head">
-                    <h3><Icon Name="user" /> Invitar usuario</h3>
-                    <button type="button" class="icon-btn" @onclick="() => _showNewUser = false"><Icon Name="x" /></button>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Nombre completo</label>
-                    <input class="input" type="text" placeholder="Ej: María González" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Email corporativo</label>
-                    <input class="input" type="email" placeholder="nombre.apellido@banco.com" />
-                </div>
-                <div class="field-grid field-grid--2">
-                    <div class="form-group">
-                        <label class="form-label">Rol</label>
-                        <select class="input">
-                            @foreach (var role in _roles)
-                            {
-                                <option value="@role.Name">@role.Name</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Equipo</label>
-                        <select class="input">
-                            @foreach (var team in _teams)
-                            {
-                                <option value="@team.Name">@team.Name</option>
-                            }
-                        </select>
-                    </div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn--secondary" @onclick="() => _showNewUser = false">Cancelar</button>
-                    <button type="button" class="btn btn--primary" @onclick="() => _showNewUser = false"><Icon Name="plus" /> Enviar invitación</button>
-                </div>
-            </div>
-        </div>
-    }
-}
-
-@* ============================================================ ROLES Y PERMISOS ============================================================ *@
-@if (_tab == "roles")
-{
-    <div class="admin-fade-in">
-        <div class="admin-section__head-row" style="margin-bottom:var(--space-5)">
-            <div>
-                <h3 class="admin-section__title" style="margin-bottom:2px"><Icon Name="shield-alert" /> Roles y Permisos</h3>
-                <p class="admin-section__desc" style="margin-bottom:0">Definí qué puede hacer cada rol dentro de la wiki.</p>
-            </div>
-            <button type="button" class="btn btn--primary"><Icon Name="plus" /> Nuevo rol</button>
-        </div>
-
-        <div class="admin-roles-grid">
-            @foreach (var role in _roles)
-            {
-                <div class="card admin-role-card">
-                    <div class="admin-role-card__head">
-                        <span class="admin-role-card__icon" style="background:@role.Color">
-                            <Icon Name="@role.Icon" />
-                        </span>
-                        <div>
-                            <p class="admin-role-card__name">@role.Name</p>
-                            <p class="admin-role-card__count">@role.UserCount usuarios</p>
-                        </div>
-                    </div>
-                    <p class="admin-role-card__desc">@role.Description</p>
-                    <div class="admin-permission-list">
-                        @foreach (var perm in _permissions)
-                        {
-                            var granted = role.Permissions.Contains(perm.Key);
-                            <div class="admin-permission-row">
-                                <span class="admin-permission-row__label">@perm.Label</span>
-                                <span class="admin-permission-row__icon @(granted ? "admin-permission-row__icon--granted" : "admin-permission-row__icon--denied")">
-                                    <Icon Name="@(granted ? "check" : "x")" />
-                                </span>
-                            </div>
-                        }
-                    </div>
-                    <button type="button" class="btn btn--secondary btn--sm" style="width:100%">
-                        <Icon Name="pencil" /> Editar permisos
-                    </button>
-                </div>
             }
         </div>
+        <p class="form-hint" style="margin-top:var(--space-2);">
+            <Icon Name="mouse-pointer-click" /> Hacé clic en un área para ver su historia completa.
+        </p>
     </div>
 }
 
-@* ============================================================ EQUIPOS Y ÁREAS ============================================================ *@
-@if (_tab == "equipos")
-{
-    <div class="admin-fade-in">
-        <div class="admin-section__head-row" style="margin-bottom:var(--space-5)">
-            <div>
-                <h3 class="admin-section__title" style="margin-bottom:2px"><Icon Name="network" /> Equipos y Áreas</h3>
-                <p class="admin-section__desc" style="margin-bottom:0">Áreas de Tecnología, sus responsables y carga de trabajo.</p>
-            </div>
-            <button type="button" class="btn btn--primary"><Icon Name="plus" /> Nueva área</button>
-        </div>
-
-        <div class="admin-teams-grid">
-            @foreach (var team in _teams)
-            {
-                <div class="card admin-team-card">
-                    <div class="admin-team-card__head">
-                        <span class="admin-team-card__icon"><Icon Name="@team.Icon" /></span>
-                        <span class="badge badge--brand">@team.OpenIncidents activas</span>
-                    </div>
-                    <p class="admin-team-card__name">@team.Name</p>
-                    <p class="admin-team-card__desc">@team.Description</p>
-
-                    <div class="admin-team-card__lead">
-                        <span class="avatar avatar--xs" style="background:@team.LeadColor">@team.LeadInitials</span>
-                        <div>
-                            <p class="admin-team-card__lead-name">@team.Lead</p>
-                            <p class="admin-team-card__lead-role">Responsable de área</p>
-                        </div>
-                    </div>
-
-                    <div class="admin-team-card__footer">
-                        <div class="admin-avatar-stack">
-                            @foreach (var m in team.Members.Take(4))
-                            {
-                                <span class="avatar avatar--xs" style="background:@m.Color" title="@m.Name">@m.Initials</span>
-                            }
-                            @if (team.Members.Count > 4)
-                            {
-                                <span class="admin-avatar-stack__more">+@(team.Members.Count - 4)</span>
-                            }
-                        </div>
-                        <span class="admin-team-card__members">@team.Members.Count integrantes</span>
-                    </div>
-                </div>
-            }
-        </div>
-    </div>
-}
-
-@* ============================================================ SEGURIDAD ============================================================ *@
-@if (_tab == "seguridad")
-{
-    <div class="admin-grid admin-fade-in">
-        <div>
-            <div class="card admin-section">
-                <h3 class="admin-section__title"><Icon Name="lock" /> Políticas de sesión</h3>
-                <p class="admin-section__desc">Reglas de acceso y autenticación para todos los usuarios.</p>
-
-                <div class="admin-toggle-row">
-                    <div>
-                        <p class="admin-toggle-row__label">Autenticación en dos pasos (2FA)</p>
-                        <p class="admin-toggle-row__hint">Obligatoria para roles Administrador y Editor.</p>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" checked />
-                        <span class="switch__track"></span>
-                    </label>
-                </div>
-
-                <div class="admin-toggle-row">
-                    <div>
-                        <p class="admin-toggle-row__label">Cierre de sesión automático</p>
-                        <p class="admin-toggle-row__hint">Cierra la sesión luego de 30 minutos de inactividad.</p>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" checked />
-                        <span class="switch__track"></span>
-                    </label>
-                </div>
-
-                <div class="admin-toggle-row">
-                    <div>
-                        <p class="admin-toggle-row__label">Restricción por red corporativa</p>
-                        <p class="admin-toggle-row__hint">Solo permite acceso desde IPs dentro de la VPN del banco.</p>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" />
-                        <span class="switch__track"></span>
-                    </label>
-                </div>
-
-                <div class="form-group" style="margin-top:var(--space-4)">
-                    <label class="form-label">Política de contraseñas</label>
-                    <select class="input">
-                        <option>Estándar (8+ caracteres, mayúsculas y números)</option>
-                        <option>Reforzada (12+ caracteres, símbolos, rotación 90 días)</option>
-                    </select>
-                </div>
-
-                <div class="form-actions">
-                    <button type="button" class="btn btn--primary"><Icon Name="check-circle" /> Guardar políticas</button>
-                </div>
-            </div>
-        </div>
-
-        <div>
-            <div class="card admin-section">
-                <h3 class="admin-section__title"><Icon Name="history" /> Actividad reciente</h3>
-                <div class="admin-audit-list">
-                    @foreach (var log in _auditLog)
-                    {
-                        <div class="admin-audit-row">
-                            <span class="admin-audit-row__icon admin-audit-row__icon--@log.Kind">
-                                <Icon Name="@log.Icon" />
-                            </span>
-                            <div>
-                                <p class="admin-audit-row__text"><strong>@log.Actor</strong> @log.Action</p>
-                                <p class="admin-audit-row__time">@log.Time</p>
-                            </div>
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
-@code {
-    private string _tab = "general";
-    private bool _saved = false;
-    private bool _showNewUser = false;
-    private string _userSearch = string.Empty;
-    private string _userRoleFilter = string.Empty;
-
-    private readonly GeneralSettingsForm _form = new()
-    {
-        SiteName = "DaviWiki",
-        Tagline = "Base de conocimiento corporativa",
-        DefaultPageSize = 12,
-        DefaultTheme = "dark",
-        MaintenanceMode = false,
-        AllowComments = true,
-        AllowPublicRegistration = false
-    };
-
-    private readonly SystemStats _stats = new()
-    {
-        TotalArticles = 120,
-        TotalCategories = 12,
-        TotalTags = 87,
-        TotalMediaFiles = 220,
-        TotalAuthors = 6,
-        TotalViews = 34034
-    };
-
-    private void SaveGeneral()
-    {
-        _saved = true;
-    }
-
-    // ---- Roles ----
-    private readonly List<RoleDef> _roles = new()
-    {
-        new("Administrador", "Acceso total: usuarios, roles, configuración y contenido.", 4, "shield-alert", "#c41230",
-            new() { "view", "create", "edit", "delete", "publish", "manage_users", "manage_roles", "manage_settings" }),
-        new("Editor", "Puede crear, editar y publicar artículos de su área.", 9, "pen-tool", "#2f7fe0",
-            new() { "view", "create", "edit", "publish" }),
-        new("Colaborador", "Puede crear borradores, pero no publicar directamente.", 14, "file-text", "#10b981",
-            new() { "view", "create", "edit" }),
-        new("Lector", "Solo puede consultar contenido publicado.", 6, "eye", "#8b5cf6",
-            new() { "view" }),
-    };
-
-    private readonly List<PermissionDef> _permissions = new()
-    {
-        new("view", "Ver artículos"),
-        new("create", "Crear borradores"),
-        new("edit", "Editar contenido"),
-        new("publish", "Publicar artículos"),
-        new("delete", "Eliminar artículos"),
-        new("manage_users", "Gestionar usuarios"),
-        new("manage_roles", "Gestionar roles"),
-        new("manage_settings", "Configuración global"),
-    };
-
-    private string RoleBadgeClass(string role) => role switch
-    {
-        "Administrador" => "badge badge--priority badge--priority-critica",
-        "Editor" => "badge badge--brand",
-        "Colaborador" => "badge badge--success",
-        _ => "badge badge--amber"
-    };
-
-    // ---- Usuarios ----
-    private readonly List<UserRow> _users = new()
-    {
-        new("Hiavert Maldonado", "hiavert.maldonado@banco.com", "Administrador", "Desarrollo", "hace minutos", true, "HM", "linear-gradient(135deg,#C41230,#8B0E25)"),
-        new("Lucía Fernández", "lucia.fernandez@banco.com", "Editor", "Redes", "hace 2h", true, "LF", "linear-gradient(135deg,#2f7fe0,#1e4f8f)"),
-        new("Martín Ibarra", "martin.ibarra@banco.com", "Editor", "Seguridad de la Información", "hace 5h", true, "MI", "linear-gradient(135deg,#8b5cf6,#5a3fc0)"),
-        new("Sofía Ramos", "sofia.ramos@banco.com", "Colaborador", "Documentación", "hace 1d", true, "SR", "linear-gradient(135deg,#10b981,#0f8f61)"),
-        new("Diego Salas", "diego.salas@banco.com", "Editor", "Redes", "hace 3d", true, "DS", "linear-gradient(135deg,#f59e0b,#b8810e)"),
-        new("Rocío Paz", "rocio.paz@banco.com", "Colaborador", "Infraestructura", "hace 1 semana", false, "RP", "linear-gradient(135deg,#0ea5e9,#2568bd)"),
-    };
-
-    private List<UserRow> FilteredUsers() => _users.Where(u =>
-        (string.IsNullOrWhiteSpace(_userSearch) ||
-            u.FullName.Contains(_userSearch, StringComparison.OrdinalIgnoreCase) ||
-            u.Email.Contains(_userSearch, StringComparison.OrdinalIgnoreCase) ||
-            u.Team.Contains(_userSearch, StringComparison.OrdinalIgnoreCase)) &&
-        (string.IsNullOrEmpty(_userRoleFilter) || u.Role == _userRoleFilter)
-    ).ToList();
-
-    // ---- Equipos ----
-    private readonly List<TeamDef> _teams = new()
-    {
-        new("Mesa de Ayuda", "Primer contacto y triage de incidencias del usuario final.", "life-buoy", "Ana Torres", "AT", "#c41230", 4,
-            new() { new("Ana Torres","AT","#c41230"), new("Julián Reyes","JR","#2f7fe0"), new("Pablo Ríos","PR","#10b981") }),
-        new("Infraestructura", "Servidores, almacenamiento y disponibilidad de servicios.", "database", "Rocío Paz", "RP", "#0ea5e9", 3,
-            new() { new("Rocío Paz","RP","#0ea5e9"), new("Nicolás Vega","NV","#8b5cf6"), new("Carla Ortiz","CO","#f59e0b"), new("Iván Soto","IS","#10b981") }),
-        new("Redes", "Conectividad, VPN corporativa y enlaces entre sucursales.", "network", "Diego Salas", "DS", "#f59e0b", 2,
-            new() { new("Diego Salas","DS","#f59e0b"), new("Lucía Fernández","LF","#2f7fe0") }),
-        new("Seguridad de la Información", "Accesos, certificados y cumplimiento normativo.", "shield-alert", "Martín Ibarra", "MI", "#8b5cf6", 5,
-            new() { new("Martín Ibarra","MI","#8b5cf6"), new("Valeria Cruz","VC","#c41230"), new("Tomás Duarte","TD","#0ea5e9") }),
-        new("Desarrollo", "Aplicaciones internas, mantenimiento y nuevos módulos.", "pen-tool", "Hiavert Maldonado", "HM", "#c41230", 6,
-            new() { new("Hiavert Maldonado","HM","#c41230"), new("Camila Rey","CR","#10b981"), new("Federico Luna","FL","#f59e0b"), new("Agustina Bravo","AB","#8b5cf6"), new("Bruno Cano","BC","#0ea5e9") }),
-        new("Base de Datos", "Administración, respaldo y performance de motores de datos.", "database", "Iván Soto", "IS", "#10b981", 1,
-            new() { new("Iván Soto","IS","#10b981"), new("Melina Paz","MP","#c41230") }),
-    };
-
-    // ---- Auditoría ----
-    private readonly List<AuditRow> _auditLog = new()
-    {
-        new("Hiavert Maldonado", "publicó el artículo \"Configuración de VPN corporativa\".", "hace 12 min", "check-circle", "success"),
-        new("Lucía Fernández", "editó permisos del rol Editor.", "hace 1 h", "shield-alert", "warning"),
-        new("Sistema", "modo mantenimiento fue desactivado.", "hace 3 h", "settings", "info"),
-        new("Martín Ibarra", "suspendió la cuenta de un usuario inactivo.", "hace 1 d", "x-circle", "danger"),
-        new("Rocío Paz", "invitó a un nuevo colaborador al equipo Infraestructura.", "hace 2 d", "user", "info"),
-    };
-
-    private class GeneralSettingsForm
-    {
-        public string SiteName { get; set; } = string.Empty;
-        public string Tagline { get; set; } = string.Empty;
-        public int DefaultPageSize { get; set; } = 12;
-        public string DefaultTheme { get; set; } = "dark";
-        public bool MaintenanceMode { get; set; }
-        public bool AllowComments { get; set; }
-        public bool AllowPublicRegistration { get; set; }
-    }
-
-    private class SystemStats
-    {
-        public int TotalArticles { get; set; }
-        public int TotalCategories { get; set; }
-        public int TotalTags { get; set; }
-        public int TotalMediaFiles { get; set; }
-        public int TotalAuthors { get; set; }
-        public int TotalViews { get; set; }
-    }
-
-    private record RoleDef(string Name, string Description, int UserCount, string Icon, string Color, List<string> Permissions);
-    private record PermissionDef(string Key, string Label);
-    private record UserRow(string FullName, string Email, string Role, string Team, string LastSeen, bool Active, string Initials, string AvatarColor)
-    {
-        public bool Active { get; set; } = Active;
-    }
-    private record TeamMember(string Name, string Initials, string Color);
-    private record TeamDef(string Name, string Description, string Icon, string Lead, string LeadInitials, string LeadColor, int OpenIncidents, List<TeamMember> Members);
-    private record AuditRow(string Actor, string Action, string Time, string Icon, string Kind);
-}
 
 
 
 
-
-
-/* =========================================================================
-   CorpWiki — Administración: Tabs, Usuarios, Roles, Equipos, Seguridad
-   Extiende las clases ya existentes de modal-forms.css
-   (.admin-grid, .admin-section, .switch, .admin-toggle-row, .admin-stat-grid)
-   ========================================================================= */
-
-@keyframes adminFadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.admin-fade-in { animation: adminFadeIn 0.25s ease both; }
-
-/* ---------- Tabs ---------- */
-.admin-tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: var(--space-6);
-    border-bottom: 1px solid var(--border-subtle);
-    overflow-x: auto;
-}
-.admin-tabs__btn {
+.journey-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: var(--space-3) var(--space-4);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    color: var(--text-tertiary);
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    white-space: nowrap;
-    transition: color var(--transition-fast), border-color var(--transition-fast);
-}
-.admin-tabs__btn .icon { width: 15px; height: 15px; }
-.admin-tabs__btn:hover { color: var(--text-primary); }
-.admin-tabs__btn--active { color: var(--brand-500); border-bottom-color: var(--brand-500); }
-.admin-tabs__count {
-    background: var(--bg-surface-3);
-    color: var(--text-tertiary);
-    font-size: 10px;
-    font-weight: 800;
-    padding: 1px 7px;
-    border-radius: var(--radius-full);
-}
-.admin-tabs__btn--active .admin-tabs__count { background: rgba(218,31,61,0.12); color: var(--brand-500); }
-
-/* ---------- Section head row (título + acción) ---------- */
-.admin-section__head-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-4);
-    margin-bottom: var(--space-5);
-    flex-wrap: wrap;
-}
-
-/* ---------- Search row (Usuarios) ---------- */
-.admin-search-row {
-    display: flex;
-    gap: var(--space-3);
-    margin-bottom: var(--space-5);
-    flex-wrap: wrap;
-}
-.admin-search {
-    position: relative;
-    flex: 1;
-    min-width: 220px;
-}
-.admin-search .icon {
-    position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
-    width: 15px; height: 15px; color: var(--text-tertiary);
-}
-.admin-search input {
-    width: 100%; height: 40px;
-    padding: 0 var(--space-4) 0 38px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-default);
-    background: var(--bg-surface);
-    font-size: var(--fs-sm);
-    color: var(--text-primary);
-}
-.admin-search input:focus { outline: none; border-color: var(--brand-500); }
-.admin-search__select { width: 220px; }
-
-/* ---------- Table ---------- */
-.admin-table-wrap { overflow-x: auto; }
-.admin-table { width: 100%; border-collapse: collapse; }
-.admin-table thead th {
-    text-align: left;
-    font-size: var(--fs-xs);
-    font-weight: 700;
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    padding: 0 var(--space-3) var(--space-3);
-    border-bottom: 1px solid var(--border-subtle);
-}
-.admin-table tbody td {
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--border-subtle);
-    font-size: var(--fs-sm);
-    vertical-align: middle;
-}
-.admin-table tbody tr:last-child td { border-bottom: none; }
-.admin-table tbody tr:hover { background: var(--bg-hover); }
-.admin-table__muted { color: var(--text-tertiary); font-size: var(--fs-xs); }
-
-.admin-user-cell { display: flex; align-items: center; gap: var(--space-3); }
-.admin-user-cell__name { font-size: var(--fs-sm); font-weight: 700; color: var(--text-primary); }
-.admin-user-cell__email { font-size: var(--fs-xs); color: var(--text-tertiary); }
-
-.admin-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 700; }
-.admin-status__dot { width: 7px; height: 7px; border-radius: 50%; }
-.admin-status--active { color: #10b981; }
-.admin-status--active .admin-status__dot { background: #10b981; }
-.admin-status--inactive { color: var(--text-tertiary); }
-.admin-status--inactive .admin-status__dot { background: var(--border-strong); }
-
-.admin-empty {
-    display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
-    padding: var(--space-8) var(--space-4);
-    color: var(--text-tertiary);
-    text-align: center;
-}
-.admin-empty .icon { width: 28px; height: 28px; opacity: 0.5; }
-.admin-empty p { font-size: var(--fs-sm); }
-
-/* ---------- Modal invitar usuario ---------- */
-.admin-modal-overlay {
-    position: fixed; inset: 0; z-index: var(--z-modal, 1000);
-    background: rgba(0,0,0,0.5);
-    backdrop-filter: blur(4px);
-    display: flex; align-items: center; justify-content: center;
+    justify-content: center;
+    z-index: 1000;
     padding: var(--space-4);
-    animation: adminFadeIn 0.18s ease both;
 }
-.admin-modal { width: 100%; max-width: 440px; padding: var(--space-6); }
-.admin-modal__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-5); }
-.admin-modal__head h3 { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); margin: 0; }
 
-/* ---------- Roles grid ---------- */
-.admin-roles-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-    gap: var(--space-5);
+.journey-modal {
+    background: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 560px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
 }
-.admin-role-card { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
-.admin-role-card__head { display: flex; align-items: center; gap: var(--space-3); }
-.admin-role-card__icon {
-    width: 42px; height: 42px; border-radius: var(--radius-md); flex-shrink: 0;
+
+.journey-modal__header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-5) var(--space-6);
+}
+
+.journey-modal__header-icon {
+    width: 40px; height: 40px;
+    border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    color: white;
+    color: white; flex-shrink: 0;
 }
-.admin-role-card__icon .icon { width: 19px; height: 19px; }
-.admin-role-card__name { font-size: var(--fs-md); font-weight: 700; color: var(--text-primary); }
-.admin-role-card__count { font-size: var(--fs-xs); color: var(--text-tertiary); font-weight: 600; }
-.admin-role-card__desc { font-size: var(--fs-xs); color: var(--text-secondary); line-height: 1.6; }
 
-.admin-permission-list { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); padding: var(--space-2) 0; }
-.admin-permission-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 2px; }
-.admin-permission-row__label { font-size: var(--fs-xs); color: var(--text-secondary); font-weight: 500; }
-.admin-permission-row__icon {
-    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-}
-.admin-permission-row__icon .icon { width: 11px; height: 11px; }
-.admin-permission-row__icon--granted { background: rgba(16,185,129,0.14); color: #10b981; }
-.admin-permission-row__icon--denied { background: var(--bg-surface-3); color: var(--text-tertiary); }
+.journey-modal__title { margin: 0; font-size: var(--fs-lg); }
+.journey-modal__step-label { font-size: var(--fs-sm); opacity: 0.75; }
 
-/* ---------- Equipos grid ---------- */
-.admin-teams-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-    gap: var(--space-5);
+.journey-modal__dots {
+    display: flex;
+    gap: var(--space-2);
+    padding: 0 var(--space-6) var(--space-3);
 }
-.admin-team-card { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
-.admin-team-card__head { display: flex; align-items: center; justify-content: space-between; }
-.admin-team-card__icon {
-    width: 38px; height: 38px; border-radius: var(--radius-md);
-    background: var(--bg-surface-3); color: var(--brand-500);
-    display: flex; align-items: center; justify-content: center;
-}
-.admin-team-card__icon .icon { width: 17px; height: 17px; }
-.admin-team-card__name { font-size: var(--fs-md); font-weight: 700; color: var(--text-primary); margin: 0; }
-.admin-team-card__desc { font-size: var(--fs-xs); color: var(--text-secondary); line-height: 1.6; min-height: 36px; }
 
-.admin-team-card__lead {
-    display: flex; align-items: center; gap: var(--space-3);
-    padding: var(--space-3);
-    background: var(--bg-surface-2);
-    border-radius: var(--radius-md);
+.journey-modal__dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border-strong);
+    cursor: pointer;
+    transition: transform 0.15s ease;
 }
-.admin-team-card__lead-name { font-size: var(--fs-xs); font-weight: 700; color: var(--text-primary); }
-.admin-team-card__lead-role { font-size: 11px; color: var(--text-tertiary); }
 
-.admin-team-card__footer {
-    display: flex; align-items: center; justify-content: space-between;
-    padding-top: var(--space-3);
+.journey-modal__dot--active {
+    transform: scale(1.4);
+}
+
+.journey-modal__body {
+    padding: 0 var(--space-6) var(--space-6);
+    overflow-y: auto;
+    flex: 1;
+    animation: journeyFade 0.2s ease;
+}
+
+@keyframes journeyFade {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.journey-modal__controls {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-6);
     border-top: 1px solid var(--border-subtle);
 }
-.admin-avatar-stack { display: flex; align-items: center; }
-.admin-avatar-stack .avatar { border: 2px solid var(--bg-elevated); margin-left: -8px; }
-.admin-avatar-stack .avatar:first-child { margin-left: 0; }
-.admin-avatar-stack__more {
-    width: 22px; height: 22px; border-radius: 50%;
-    background: var(--bg-surface-3); color: var(--text-tertiary);
-    font-size: 9px; font-weight: 800;
-    display: flex; align-items: center; justify-content: center;
-    margin-left: -8px; border: 2px solid var(--bg-elevated);
-}
-.admin-team-card__members { font-size: 11px; color: var(--text-tertiary); font-weight: 600; }
 
-/* ---------- Seguridad: audit log ---------- */
-.admin-audit-list { display: flex; flex-direction: column; }
-.admin-audit-row { display: flex; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-subtle); }
-.admin-audit-row:last-child { border-bottom: none; padding-bottom: 0; }
-.admin-audit-row__icon {
-    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
+.journey-stepper__node--interactive {
+    cursor: pointer;
+    transition: transform 0.15s ease;
 }
-.admin-audit-row__icon .icon { width: 13px; height: 13px; }
-.admin-audit-row__icon--success { background: rgba(16,185,129,0.12); color: #10b981; }
-.admin-audit-row__icon--warning { background: rgba(245,158,11,0.14); color: #b45309; }
-.admin-audit-row__icon--danger { background: rgba(218,31,61,0.12); color: var(--brand-500); }
-.admin-audit-row__icon--info { background: rgba(14,165,233,0.12); color: #0ea5e9; }
-.admin-audit-row__text { font-size: var(--fs-xs); color: var(--text-secondary); line-height: 1.5; }
-.admin-audit-row__text strong { color: var(--text-primary); font-weight: 700; }
-.admin-audit-row__time { font-size: 10.5px; color: var(--text-tertiary); font-weight: 600; margin-top: 2px; }
-
-/* ---------- Responsive ---------- */
-@media (max-width: 1000px) {
-    .admin-grid { grid-template-columns: 1fr; }
-    .admin-roles-grid, .admin-teams-grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 640px) {
-    .admin-search-row { flex-direction: column; }
-    .admin-search__select { width: 100%; }
-    .admin-tabs__btn span, .admin-tabs__btn .admin-tabs__count { display: none; }
+.journey-stepper__node--interactive:hover {
+    transform: translateY(-1px);
 }
