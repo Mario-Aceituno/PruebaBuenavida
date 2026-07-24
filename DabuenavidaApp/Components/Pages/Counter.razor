@@ -1,30 +1,69 @@
-.journey-modal__dot {
-    width: 8px;
-    height: 8px;
+@keyframes journeyContentIn {
 
-    border-radius: 50%;
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
 
-    background: var(--border-strong);
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 
-    cursor: pointer;
+}
 
-    transition:
-        transform .20s ease,
-        background-color .20s ease,
-        opacity .20s ease,
-        box-shadow .20s ease;
+Div1
 
-    opacity: .65;
+<div class="journey-section journey-section--delay-1"
+     style="display:flex; gap:var(--space-3); margin-bottom:var(--space-5); flex-wrap:wrap;"> 
+
+Div2
+
+<h4 class="widget__title journey-section journey-section--delay-2"
+    style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">
+    <Icon Name="users" />Personas del equipo
+</h4>
+
+H4
+<h4 class="widget__title journey-section journey-section--delay-3"
+    style="font-size:var(--fs-sm); margin-bottom:var(--space-2);">
+    Qué hizo el equipo
+</h4> 
+
+.journey-section {
+
+    animation: journeySectionIn .25s ease both;
+
 }
 
 
-.journey-modal__dot--active {
-    transform: scale(1.45);
-    opacity: 1;
-    box-shadow: 0 0 0 4px rgba(255,255,255,.08);
+.journey-section--delay-1 {
+    animation-delay: .05s;
 }
 
-.journey-modal__dot:hover {
-    transform: scale(1.2);
-    opacity: .9;
+
+.journey-section--delay-2 {
+    animation-delay: .12s;
+}
+
+
+.journey-section--delay-3 {
+    animation-delay: .20s;
+}
+
+
+
+@keyframes journeySectionIn {
+
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
 }
