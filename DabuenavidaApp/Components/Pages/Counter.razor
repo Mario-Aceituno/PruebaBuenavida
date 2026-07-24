@@ -1,96 +1,57 @@
-.journey-stepper__node--interactive {
+private void GoToJourneyStep(int index)
+{
+    if (index < 0 || index >= _journey.Count) return;
 
-    cursor: pointer;
+    _journeyDirection = index > _journeyStepIndex 
+        ? "next" 
+        : "prev";
 
-    opacity: 0;
-
-    animation: journeyNodeAppear .35s ease forwards;
-
-    transition:
-        transform .18s ease,
-        box-shadow .18s ease,
-        filter .18s ease;
+    _journeyStepIndex = index;
+    _journeyStep = BuildAreaStory(_journey[index].AreaName);
 }
 
 
-@keyframes journeyNodeAppear {
+<div class="journey-modal__body journey-modal__body--@_journeyDirection"
+     @key="_journeyStepIndex">
+
+.journey-modal__body--next {
+    animation: journeySlideNext .25s ease;
+}
+
+
+.journey-modal__body--prev {
+    animation: journeySlidePrev .25s ease;
+}
+
+
+
+@keyframes journeySlideNext {
 
     from {
-        opacity: 0;
-        transform: translateY(12px) scale(.95);
+        opacity:0;
+        transform:translateX(20px);
     }
-
 
     to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-
-}
-
-
-<div class="journey-stepper__node journey-stepper__node--interactive"
-     style="animation-delay:@($"{i * 80}ms");"
-
-.journey-stepper__node--interactive:hover {
-
-    transform: translateY(-3px) scale(1.02);
-
-    filter: brightness(1.05);
-
-}
-
-.journey-stepper__arrow {
-
-    animation: journeyArrowMove 1.8s ease-in-out infinite;
-
-}
-
-
-@keyframes journeyArrowMove {
-
-    0%,100% {
-        transform: translateX(0);
-        opacity:.6;
-    }
-
-
-    50% {
-        transform: translateX(4px);
         opacity:1;
+        transform:translateX(0);
     }
 
 }
 
-class="journey-stepper__node journey-stepper__node--interactive @(node.IsCurrent ? "journey-stepper__node--current" : "")"
-
-.journey-stepper__node--current {
-
-    animation:
-        journeyNodeAppear .35s ease forwards,
-        journeyCurrentPulse 2s infinite;
-
-}
 
 
+@keyframes journeySlidePrev {
 
-@keyframes journeyCurrentPulse {
-
-    0%,100% {
-
-        box-shadow:
-        0 0 0 2px var(--bg-surface),
-        0 0 0 4px currentColor;
-
+    from {
+        opacity:0;
+        transform:translateX(-20px);
     }
 
-
-    50% {
-
-        box-shadow:
-        0 0 0 2px var(--bg-surface),
-        0 0 0 7px currentColor;
-
+    to {
+        opacity:1;
+        transform:translateX(0);
     }
 
 }
+
