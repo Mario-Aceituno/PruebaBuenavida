@@ -1,126 +1,299 @@
-@page "/dashboard"
+CS
+----------------
+using CorpWiki.Domain.Entities;
+
+namespace CorpWiki.Web.Components.Pages
+{
+    public partial class Actividad
+    {
+        private string _activeTab = "Ultimas Acciones";
+
+        // Listas maestras (Data sin filtrar)
+        private List<ActivityItem> _allActivity = new();
+        private List<Article> _allRecent = new();
+
+        // Listas filtradas
+        private List<ActivityItem> _filteredActivity = new();
+        private List<Article> _filteredRecent = new();
+
+        // Listas paginadas (Lo que se dibuja en pantalla)
+        private List<ActivityItem> _activityPageItems = new();
+        private List<Article> _recentPageItems = new();
+
+        // Variables de filtro para "Últimas Acciones"
+        private string _activityQuery = string.Empty;
+        private string _activityTypeFilter = string.Empty;
+
+        // Variables de filtro para "Artículos Recientes"
+        private string _recentQuery = string.Empty;
+
+        // Paginación independiente por pestaña
+        private int _activityPage = 1;
+        private int _recentPage = 1;
+
+        // Tamaño de página configurable
+        private int _pageSize = 10;
+
+        protected override void OnInitialized()
+        {
+            // Opcional: Cargar sin límite fijo para controlar la paginación desde el cliente
+            _allActivity = Data.GetRecentActivity(100).ToList();
+            _allRecent = Data.GetRecentArticles(100).ToList();
+
+            ApplyActivityFilters();
+            ApplyRecentFilters();
+        }
+
+        private void SetTab(string tab)
+        {
+            _activeTab = tab;
+        }
+
+        // --- FILTROS Y PAGINACIÓN PARA ÚLTIMAS ACCIONES ---
+        private void ApplyActivityFilters()
+        {
+            IEnumerable<ActivityItem> result = _allActivity;
+
+            if (!string.IsNullOrWhiteSpace(_activityQuery))
+            {
+                result = result.Where(x => x.Description != null && 
+                    x.Description.Contains(_activityQuery, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (Enum.TryParse<ActivityType>(_activityTypeFilter, out var type))
+            {
+                result = result.Where(x => x.Type == type);
+            }
+
+            _filteredActivity = result.ToList();
+            _activityPage = 1;
+            ApplyActivityPageItems();
+        }
+
+        private void ApplyActivityPageItems()
+        {
+            _activityPageItems = _filteredActivity
+                .Skip((_activityPage - 1) * _pageSize)
+                .Take(_pageSize)
+                .ToList();
+        }
+
+        private void OnActivityPageChanged(int page)
+        {
+            _activityPage = page;
+            ApplyActivityPageItems();
+        }
+
+        // --- FILTROS Y PAGINACIÓN PARA ARTÍCULOS RECIENTES ---
+        private void ApplyRecentFilters()
+        {
+            IEnumerable<Article> result = _allRecent;
+
+            if (!string.IsNullOrWhiteSpace(_recentQuery))
+            {
+                result = result.Where(a => 
+                    (a.Title != null && a.Title.Contains(_recentQuery, StringComparison.OrdinalIgnoreCase)) ||
+                    (a.Summary != null && a.Summary.Contains(_recentQuery, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            _filteredRecent = result.ToList();
+            _recentPage = 1;
+            ApplyRecentPageItems();
+        }
+
+        private void ApplyRecentPageItems()
+        {
+            _recentPageItems = _filteredRecent
+                .Skip((_recentPage - 1) * _pageSize)
+                .Take(_pageSize)
+                .ToList();
+        }
+
+        private void OnRecentPageChanged(int page)
+        {
+            _recentPage = page;
+            ApplyRecentPageItems();
+        }
+
+        // --- MANEJO DE CAMBIO DE TAMAÑO DE PÁGINA ---
+        private void OnPageSizeChanged()
+        {
+            ApplyActivityFilters();
+            ApplyRecentFilters();
+        }
+
+        // Métodos Helper de UI
+        private static string TypeLabel(ActivityType t) => t switch
+        {
+            ActivityType.ArticleCreated => "Nuevo",
+            ActivityType.ArticleUpdated => "Actualizado",
+            ActivityType.CommentAdded => "Comentario",
+            ActivityType.FileUploaded => "Archivo",
+            ActivityType.CategoryCreated => "Categoría",
+            _ => "Acción"
+        };
+
+        private static string Relative(DateTime d)
+        {
+            var diff = DateTime.UtcNow - d;
+            if (diff.TotalHours < 1) return "hace minutos";
+            if (diff.TotalHours < 24) return $"hace {(int)diff.TotalHours}h";
+            if (diff.TotalDays < 30) return $"hace {(int)diff.TotalDays}d";
+            return d.ToString("d MMM yyyy");
+        }
+    }
+}
+
+
+HTML
+----------
+@page "/actividad"
 @inject IWikiDataService Data
 
-<PageTitle>DaviWiki - Dashboard</PageTitle>
+<PageTitle>DaviWiki - Actividad</PageTitle>
 
 <div class="page-header">
     <div>
-        <h1>Dashboard</h1>
-        <p>Un resumen de lo que pasa en la DaviWiki.</p>
+        <h1>Actividad del equipo</h1>
+        <p>Últimas publicaciones, actualizaciones y cargas de archivos en la Wiki.</p>
     </div>
 </div>
 
-<div class="stat-grid">
-    @foreach (var stat in _statCards)
-    {
-        <StatCard Dto="stat" />
-    }
-</div>
-
-<!-- BARRA DE NAVEGACIÓN POR PESTAÑAS -->
 <div class="detail-tabs" role="tablist">
-    <button class="detail-tabs__item @(_activeTab == "Artículos" ? "detail-tabs__item--active" : "")"
-            role="tab" 
-            aria-selected="@(_activeTab == "Artículos")" 
-            @onclick='() => SetTab("Artículos")'>
-        <Icon Name="file-text" /> Artículos
+    <button class="detail-tabs__item @(_activeTab == "Ultimas Acciones" ? "detail-tabs__item--active" : "")"
+            role="tab" aria-selected="@(_activeTab == "Ultimas Acciones")" @onclick='() => SetTab("Ultimas Acciones")'>
+        <Icon Name="file-text" /> Ultimas Acciones
     </button>
-    <button class="detail-tabs__item @(_activeTab == "Actividad" ? "detail-tabs__item--active" : "")"
-            role="tab" 
-            aria-selected="@(_activeTab == "Actividad")" 
-            @onclick='() => SetTab("Actividad")'>
-        <Icon Name="activity" /> Actividad
+    <button class="detail-tabs__item @(_activeTab == "Articulos Recientes" ? "detail-tabs__item--active" : "")"
+            role="tab" aria-selected="@(_activeTab == "Articulos Recientes")" @onclick='() => SetTab("Articulos Recientes")'>
+        <Icon Name="activity" /> Artículos Recientes
     </button>
 </div>
 
-<!-- CONTENIDO DE LA PESTAÑA 1: ARTÍCULOS -->
-@if (_activeTab == "Artículos")
+<!-- ==================== PESTAÑA 1: ÚLTIMAS ACCIONES ==================== -->
+@if (_activeTab == "Ultimas Acciones")
 {
     <div>
         <section class="section">
-            <SectionHeader Title="Artículos recientes" Subtitle="Lo último publicado o actualizado" LinkHref="/explorar" />
-            <div class="widget card">
-                @foreach (var a in _recent)
-                {
-                    <ArticleListItem Article="a" Icon="clock" MetaText="@($"Actualizado {FormatRelative(a.UpdatedAt)}")" />
-                }
-            </div>
-        </section>
+            <SectionHeader Title="Últimas acciones" />
 
-        <section class="section">
-            <SectionHeader Title="Artículos populares" Subtitle="Los más vistos por el equipo" LinkHref="/explorar" />
-            <div class="widget card">
-                @foreach (var a in _popular)
-                {
-                    <ArticleListItem Article="a" Icon="eye" MetaText="@($" {a.ViewCount} vistas")" />
-                }
-            </div>
-        </section>
+            <!-- Toolbar de Filtros + Tamaño de Página -->
+            <div class="explorer-toolbar mb-3">
+                <div class="explorer-search">
+                    <Icon Name="search" />
+                    <input class="explorer-search__input" type="text" placeholder="Buscar por descripción..."
+                           @bind="_activityQuery" @bind:event="oninput" @bind:after="ApplyActivityFilters" />
+                </div>
 
-        <section class="section">
-            <SectionHeader Title="Pendientes de leer" Subtitle="Sugerencias basadas en tu actividad" />
-            <div class="widget card">
-                @foreach (var a in _pending)
-                {
-                    <ArticleListItem Article="a" Icon="inbox" MetaText="@($" {a.ReadingTimeMinutes} min de lectura")" />
-                }
-            </div>
-        </section>
-    </div>
-}
+                <select class="input explorer-sort" @bind="_activityTypeFilter" @bind:after="ApplyActivityFilters">
+                    <option value="">Todas las acciones</option>
+                    <option value="ArticleCreated">Nuevo</option>
+                    <option value="ArticleUpdated">Actualizado</option>
+                    <option value="CommentAdded">Comentario</option>
+                    <option value="FileUploaded">Archivo</option>
+                    <option value="CategoryCreated">Categoría</option>
+                </select>
 
-<!-- CONTENIDO DE LA PESTAÑA 2: ACTIVIDAD Y SECUNDARIOS -->
-@if (_activeTab == "Actividad")
-{
-    <div>
-        <section class="section">
-            <h4 class="widget__title"><Icon Name="activity" /> Actividad reciente</h4>
+                <!-- Selector de Items por Página -->
+                <select class="input explorer-sort" @bind="_pageSize" @bind:after="OnPageSizeChanged">
+                    <option value="5">Mostrar 5</option>
+                    <option value="10">Mostrar 10</option>
+                    <option value="20">Mostrar 20</option>
+                </select>
+            </div>
+
+            <!-- Lista de Resultados -->
             <div class="widget card">
-                @foreach (var activity in _activity)
+                @if (_filteredActivity.Count == 0)
                 {
-                    <div class="activity-row">
-                        <span class="activity-row__avatar">@GetAuthorInitials(activity.AuthorId)</span>
-                        <div>
-                            <p class="activity-row__text">@activity.Description</p>
-                            <p class="activity-row__time">@FormatRelative(activity.OccurredAt)</p>
-                        </div>
+                    <div class="empty-state">
+                        <Icon Name="file-text" Class="empty-state__icon" />
+                        <h3>No hay actividad registrada</h3>
+                        <p>Intenta cambiar los filtros de búsqueda.</p>
                     </div>
                 }
+                else
+                {
+                    @foreach (var item in _activityPageItems)
+                    {
+                        var author = Data.GetAuthorById(item.AuthorId);
+                        <div class="activity-row">
+                            <span class="avatar avatar--sm"
+                                  style="background:linear-gradient(135deg,@(author?.AvatarColorFrom ?? "#C41230"),@(author?.AvatarColorTo ?? "#8B0E25"))">
+                                @(author?.Initials ?? "??")
+                            </span>
+                            <div style="flex:1; min-width:0">
+                                <p class="activity-row__text">@item.Description</p>
+                                <p class="activity-row__time">@Relative(item.OccurredAt)</p>
+                            </div>
+                            <span class="badge">@TypeLabel(item.Type)</span>
+                        </div>
+                    }
+                }
             </div>
-        </section>
 
-        <section class="section">
-            <h4 class="widget__title"><Icon Name="folder-tree" /> Categorías con más actividad</h4>
-            <div class="widget card">
-                @foreach (var cat in _topCategories)
-                {
-                    <a class="category-row" href="@($"/categorias/{cat.Slug}")">
-                        <span class="category-row__icon" style="background:@($"{cat.Color}1a"); color:@cat.Color;"><Icon Name="@cat.Icon" /></span>
-                        <span class="category-row__name">@cat.Name</span>
-                        <span class="badge">@cat.ArticlesCount</span>
-                    </a>
-                }
-            </div>
-        </section>
-
-        <section class="section">
-            <h4 class="widget__title"><Icon Name="star" /> Tus favoritos</h4>
-            <div class="widget card">
-                @if (_favorites.Count == 0)
-                {
-                    <p style="color:var(--text-tertiary); font-size:var(--fs-sm);">Aún no tienes artículos favoritos.</p>
-                }
-                @foreach (var a in _favorites.Take(4))
-                {
-                    <ArticleListItem Article="a" Icon="star" MetaText="Guardado en favoritos" ShowChevron="false" />
-                }
-            </div>
+            <!-- Paginador -->
+            @if (_filteredActivity.Count > 0)
+            {
+                <Pagination TotalItems="_filteredActivity.Count"
+                            PageSize="_pageSize"
+                            CurrentPage="_activityPage"
+                            CurrentPageChanged="OnActivityPageChanged" />
+            }
         </section>
     </div>
 }
 
-@code {
-    private string _activeTab = "Artículos";
+<!-- ==================== PESTAÑA 2: ARTÍCULOS RECIENTES ==================== -->
+@if (_activeTab == "Articulos Recientes")
+{
+    <div>
+        <section class="section">
+            <SectionHeader Title="Artículos recientes" />
 
-    private void SetTab(string tab) => _activeTab = tab;
+            <!-- Toolbar de Filtros + Tamaño de Página -->
+            <div class="explorer-toolbar mb-3">
+                <div class="explorer-search">
+                    <Icon Name="search" />
+                    <input class="explorer-search__input" type="text" placeholder="Buscar por título o resumen..."
+                           @bind="_recentQuery" @bind:event="oninput" @bind:after="ApplyRecentFilters" />
+                </div>
+
+                <!-- Selector de Items por Página -->
+                <select class="input explorer-sort" @bind="_pageSize" @bind:after="OnPageSizeChanged">
+                    <option value="5">Mostrar 5</option>
+                    <option value="10">Mostrar 10</option>
+                    <option value="20">Mostrar 20</option>
+                </select>
+            </div>
+
+            <!-- Lista de Resultados -->
+            <div class="widget card">
+                @if (_filteredRecent.Count == 0)
+                {
+                    <div class="empty-state">
+                        <Icon Name="file-text" Class="empty-state__icon" />
+                        <h3>No se encontraron artículos</h3>
+                        <p>Intenta con otros términos de búsqueda.</p>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var a in _recentPageItems)
+                    {
+                        <ArticleListItem Article="a" Icon="file-text" MetaText="@Relative(a.UpdatedAt)" />
+                    }
+                }
+            </div>
+
+            <!-- Paginador -->
+            @if (_filteredRecent.Count > 0)
+            {
+                <Pagination TotalItems="_filteredRecent.Count"
+                            PageSize="_pageSize"
+                            CurrentPage="_recentPage"
+                            CurrentPageChanged="OnRecentPageChanged" />
+            }
+        </section>
+    </div>
 }
