@@ -1,152 +1,60 @@
-private string BuildJourneyRoute()
-{
-    if (_journey.Count == 0)
-        return string.Empty;
-
-    return string.Join(" → ", _journey.Select(j => j.AreaName));
-}
-
-
-private double GetActivePercentage()
-{
-    if (_journeyStep is null)
-        return 0;
-
-    var total = _journeyStep.ActiveHours + _journeyStep.DeadHours;
-
-    if (total <= 0)
-        return 0;
-
-    return Math.Round((_journeyStep.ActiveHours / total) * 100, 0);
-}
-
-
-private double GetWaitingPercentage()
-{
-    if (_journeyStep is null)
-        return 0;
-
-    var total = _journeyStep.ActiveHours + _journeyStep.DeadHours;
-
-    if (total <= 0)
-        return 0;
-
-    return Math.Round((_journeyStep.DeadHours / total) * 100, 0);
-}
-
-
-private string BuildStageConclusion()
-{
-    if (_journeyStep is null)
-        return string.Empty;
-
-    var activity = _journeyStep.Activity.Count;
-    var users = _journeyStep.Users.Count;
-
-    if (_journeyStepIndex == _journey.Count - 1)
-    {
-        return $"Esta área mantiene actualmente el seguimiento del incidente. " +
-               $"Participaron {users} personas y se registraron {activity} actividades.";
-    }
-
-    if (_journeyStep.Transfers.Count > 0)
-    {
-        var transfer = _journeyStep.Transfers.First();
-
-        return $"El equipo trabajó esta etapa y posteriormente transfirió " +
-               $"el incidente hacia {transfer.ToAreaName}.";
-    }
-
-    return $"Esta etapa contó con {users} participantes " +
-           $"y {activity} actividades registradas.";
-}
-
-
-private string GetResponsibleSince()
-{
-    if (_detail is null || _journeyStep is null)
-        return string.Empty;
-
-    var responsible = _journeyStep.Users
-        .FirstOrDefault(u => u.Id == _detail.ResponsibleId);
-
-    if (responsible is null)
-        return string.Empty;
-
-    var activity = _journeyStep.Activity
-        .Where(a => a.ActorName == responsible.FullName)
-        .OrderBy(a => a.OccurredAt)
-        .FirstOrDefault();
-
-    return activity is null
-        ? string.Empty
-        : activity.OccurredAt.ToRelativeLabel();
-}
-
-
 <div class="journey-context">
 
-    <div class="journey-context__item">
-        <span>Recorrido</span>
-        <strong>@BuildJourneyRoute()</strong>
+    <div class="journey-context__block">
+
+        <span class="journey-context__label">
+            Recorrido del incidente
+        </span>
+
+        <div class="journey-context__route">
+            @foreach (var area in _journey)
+            {
+                <span class="journey-context__area 
+                    @(area.AreaName == _journeyStep.AreaName ? "journey-context__area--active" : "")">
+
+                    @area.AreaName
+
+                </span>
+
+                @if (area != _journey.Last())
+                {
+                    <Icon Name="chevron-right" />
+                }
+            }
+        </div>
+
     </div>
 
-    <div class="journey-context__item">
-        <span>Estado</span>
-        <strong>@GetJourneyStageLabel()</strong>
+
+    <div class="journey-context__block journey-context__status">
+
+        <span class="journey-context__label">
+            Estado actual
+        </span>
+
+        <span class="journey-stage-badge">
+            @GetJourneyStageLabel()
+        </span>
+
     </div>
 
 </div>
 
-
-
-<div class="journey-metric journey-metric--distribution">
-
-    <Icon Name="pie-chart" />
-
-    <div>
-        <span class="journey-metric__value">
-            @GetActivePercentage()%
-        </span>
-
-        <span class="journey-metric__label">
-            Trabajo efectivo
-        </span>
-
-        <small>
-            @GetWaitingPercentage()% espera
-        </small>
-    </div>
-
-</div>
-
-
-
-
-<span class="badge badge--brand">
-    <Icon Name="star" />
-    Responsable actual
-</span>
-
-@if (!string.IsNullOrEmpty(GetResponsibleSince()))
-{
-    <p class="journey-responsible-time">
-        Desde @GetResponsibleSince()
-    </p>
-}
 
 
 
 <div class="journey-conclusion">
 
-    <Icon Name="sparkles" />
+    <div class="journey-conclusion__icon">
+        <Icon Name="sparkles" />
+    </div>
 
     <div>
-        <strong>
-            Conclusión de esta etapa
-        </strong>
+        <p class="journey-conclusion__title">
+            Conclusión de la etapa
+        </p>
 
-        <p>
+        <p class="journey-conclusion__text">
             @BuildStageConclusion()
         </p>
     </div>
@@ -155,63 +63,204 @@ private string GetResponsibleSince()
 
 
 
-.journey-context {
-    display:flex;
-    gap:var(--space-4);
-    padding:var(--space-3) var(--space-6);
-    border-bottom:1px solid var(--border-subtle);
-    flex-wrap:wrap;
-}
 
-.journey-context__item {
+<div class="journey-modal__controls">
+
+    <button 
+        class="btn btn--ghost btn--sm"
+        @onclick="() => GoToJourneyStep(_journeyStepIndex - 1)"
+        disabled="@(_journeyStepIndex == 0)">
+
+        <Icon Name="chevron-left" />
+        Anterior
+
+    </button>
+
+
+    <span class="journey-controls__position">
+        @(_journeyStepIndex + 1) / @_journey.Count
+    </span>
+
+
+    <button 
+        class="btn btn--ghost btn--sm"
+        @onclick="() => GoToJourneyStep(_journeyStepIndex + 1)"
+        disabled="@(_journeyStepIndex == _journey.Count - 1)">
+
+        Siguiente
+        <Icon Name="chevron-right" />
+
+    </button>
+
+</div>
+
+
+.journey-context {
+
     display:flex;
     flex-direction:column;
-    gap:2px;
+
+    gap:var(--space-4);
+
+    padding:var(--space-4) var(--space-6);
+
+    border-bottom:1px solid var(--border-subtle);
+
 }
 
-.journey-context__item span {
+
+.journey-context__block {
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:var(--space-2);
+
+}
+
+
+.journey-context__label {
+
     font-size:var(--fs-xs);
+
     color:var(--text-tertiary);
+
+    text-transform:uppercase;
+
+    letter-spacing:.05em;
+
 }
 
-.journey-context__item strong {
+
+.journey-context__route {
+
+    display:flex;
+
+    align-items:center;
+
+    flex-wrap:wrap;
+
+    gap:var(--space-2);
+
     font-size:var(--fs-sm);
-    color:var(--text-primary);
+
 }
 
 
-.journey-metric--distribution small {
-    font-size:var(--fs-xs);
-    color:var(--text-tertiary);
+.journey-context__route .icon {
+
+    width:14px;
+    opacity:.5;
+
 }
 
 
-.journey-responsible-time {
-    margin-top:4px;
-    font-size:var(--fs-xs);
-    color:var(--text-tertiary);
+.journey-context__area {
+
+    padding:4px 10px;
+
+    border-radius:999px;
+
+    background:var(--bg-surface-2);
+
+    color:var(--text-secondary);
+
 }
+
+
+.journey-context__area--active {
+
+    background:var(--brand-100);
+
+    color:var(--brand-600);
+
+    font-weight:600;
+
+}
+
+
+.journey-context__status {
+
+    flex-direction:row;
+
+    align-items:center;
+
+    gap:var(--space-3);
+
+}
+
+
 
 
 .journey-conclusion {
 
     display:flex;
+
     gap:var(--space-3);
 
-    margin-top:var(--space-6);
-    padding:var(--space-4);
+    margin-top:var(--space-5);
 
-    background:var(--bg-surface-2);
-    border:1px solid var(--border-subtle);
-    border-radius:var(--radius-md);
+    padding-top:var(--space-4);
+
+    border-top:1px solid var(--border-subtle);
 
 }
 
-.journey-conclusion p {
 
-    margin-top:var(--space-1);
+.journey-conclusion__icon {
+
+    color:var(--brand-500);
+
+    margin-top:3px;
+
+}
+
+
+.journey-conclusion__title {
+
     font-size:var(--fs-sm);
+
+    font-weight:700;
+
+    margin:0;
+
+}
+
+
+.journey-conclusion__text {
+
+    margin-top:4px;
+
+    font-size:var(--fs-sm);
+
     color:var(--text-secondary);
+
     line-height:1.5;
+
+}
+
+
+
+.journey-modal__controls {
+
+    display:flex;
+
+    justify-content:space-between;
+
+    align-items:center;
+
+    padding:var(--space-3) var(--space-6);
+
+    border-top:1px solid var(--border-subtle);
+
+}
+
+
+.journey-controls__position {
+
+    font-size:var(--fs-xs);
+
+    color:var(--text-tertiary);
 
 }
