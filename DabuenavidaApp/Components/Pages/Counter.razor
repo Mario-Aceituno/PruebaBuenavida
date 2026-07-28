@@ -1,33 +1,33 @@
 /* ----------- Tab Gestión: jerarquía visual entre acciones ----------- */
 
-.management-grid .widget--quick .widget__title {
+.gestion-tab .management-grid .widget--quick .widget__title {
     font-size: 13px;
     color: var(--text-secondary);
 }
 
 /* Transferir: card destacada con fondo tintado + badge de ícono */
-.widget--transfer {
+.gestion-tab .widget--transfer {
     position: relative;
-    background: linear-gradient(135deg, rgba(238,0,0,0.06), rgba(238,0,0,0.015));
-    border: 1px solid rgba(238,0,0,0.18);
+    background: linear-gradient(135deg, rgba(238,0,0,0.16), rgba(238,0,0,0.05));
+    border: 2px solid rgba(238,0,0,0.45);
     border-radius: var(--radius-lg, 12px);
     padding: var(--space-5);
-    box-shadow: 0 1px 3px rgba(238,0,0,0.06);
+    box-shadow: 0 2px 8px rgba(238,0,0,0.18);
 }
 
-.widget--transfer .widget__title {
+.gestion-tab .widget--transfer .widget__title {
     display: flex;
     align-items: center;
     gap: 10px;
     font-size: 15px;
-    font-weight: 700;
-    color: #b80000;
+    font-weight: 800;
+    color: #8a0000;
     margin-bottom: var(--space-4);
 }
 
 /* Badge circular alrededor del ícono del título */
-.widget--transfer .widget__title svg,
-.widget--transfer .widget__title .icon {
+.gestion-tab .widget--transfer .widget__title svg,
+.gestion-tab .widget--transfer .widget__title .icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -35,54 +35,55 @@
     height: 28px;
     padding: 6px;
     border-radius: var(--radius-full, 999px);
-    background: rgba(238,0,0,0.12);
-    color: #EE0000;
+    background: #EE0000;
+    color: #ffffff;
+    box-shadow: 0 2px 5px rgba(238,0,0,0.4);
 }
 
-.widget--transfer .form-group {
+.gestion-tab .widget--transfer .form-group {
     margin-bottom: var(--space-4);
 }
 
-.widget--transfer .form-group__label {
-    color: #8a1f1f;
-    font-weight: 500;
+.gestion-tab .widget--transfer .form-group__label {
+    color: #6e1717;
+    font-weight: 700;
 }
 
-.widget--transfer + .widget {
+.gestion-tab .widget--transfer + .widget {
     margin-top: var(--space-6);
     padding-top: var(--space-5);
     border-top: 1px dashed var(--border-subtle, rgba(255,255,255,0.08));
 }
 
 /* Botón Transferir: rojo sólido, con leve elevación al pasar el mouse */
-.btn--transfer {
+.gestion-tab .btn--transfer {
     background: #EE0000;
     border: none;
     color: #ffffff;
-    font-weight: 600;
+    font-weight: 700;
     padding: 10px 22px;
     border-radius: var(--radius-md, 8px);
-    box-shadow: 0 2px 6px rgba(238,0,0,0.28);
+    box-shadow: 0 3px 8px rgba(238,0,0,0.4);
     transition: transform var(--transition-fast, 0.15s), box-shadow var(--transition-fast, 0.15s), background 0.15s;
 }
-.btn--transfer:hover:not(:disabled) {
+.gestion-tab .btn--transfer:hover:not(:disabled) {
     background: #c40000;
     transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(238,0,0,0.35);
+    box-shadow: 0 5px 12px rgba(238,0,0,0.5);
 }
-.btn--transfer:active:not(:disabled) {
+.gestion-tab .btn--transfer:active:not(:disabled) {
     transform: translateY(0);
-    box-shadow: 0 1px 3px rgba(238,0,0,0.3);
+    box-shadow: 0 1px 4px rgba(238,0,0,0.4);
 }
-.btn--transfer:disabled {
-    background: #f3b8b8;
+.gestion-tab .btn--transfer:disabled {
+    background: #e88888;
     color: #ffffff;
     box-shadow: none;
     opacity: 1;
     cursor: not-allowed;
 }
 
-.form-group__label {
+.gestion-tab .form-group__label {
     display: block;
     font-size: 12px;
     color: var(--text-tertiary);
@@ -90,9 +91,9 @@
 }
 
 /* Historial: filas limpias, más legibles */
-.widget--history .activity-row {
+.gestion-tab .widget--history .activity-row {
     padding-block: 10px;
 }
-.widget--history .activity-row + .activity-row {
+.gestion-tab .widget--history .activity-row + .activity-row {
     border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
 }
