@@ -1,45 +1,71 @@
-@if (_allCards.Count == 0)
-{
-    <div class="empty-state">
-        <Icon Name="history" Class="empty-state_icon" />
-        <h3>Sin historial</h3>
-        <p>Los artículos que visites aparecerán aquí.</p>
-        <a class="btn btn--primary" href="/explorar">Explorar documentación</a>
-    </div>
+CSS SEPARADO
+---------------
+/* Modificador para expandir el modal casi a pantalla completa */
+.journey-modal.journey-modal--expanded {
+    max-width: 92vw; /* Cubre el 92% del ancho de la pantalla */
+    height: 90vh;    /* Ocupa el 90% del alto de la ventana */
+    max-height: 90vh;
 }
-else
-{
-    <!-- Toolbar de Búsqueda -->
-    <div class="explorer-toolbar mb-3">
-        <div class="explorer-search">
-            <Icon Name="search" />
-            <input class="explorer-search__input" type="text" placeholder="Buscar en historial por título..."
-                   @bind="_query" @bind:event="oninput" @bind:after="ApplyFilters" />
-        </div>
-    </div>
 
-    @if (_filteredCards.Count == 0)
+/* Estilo para el botón de expandir en la cabecera */
+.journey-modal__expand-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 4px;
+    color: inherit;
+    opacity: 0.7;
+    transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+.journey-modal__expand-btn:hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+CODE 
+----------
+private bool _isExpanded = false;
+
+private void ToggleExpandModal()
+{
+    _isExpanded = !_isExpanded;
+}
+
+
+
+ETIQUETA HTML
+------------------
+<div class="journey-modal @(_isExpanded ? "journey-modal--expanded" : "")" @onclick:stopPropagation="true">
+
+
+BOTÓN 1
+-----------
+<!-- Reemplaza o coloca junto al botón de cerrar existente -->
+<button class="journey-modal__expand-btn" @onclick="ToggleExpandModal" title="@(_isExpanded ? "Restaurar tamaño" : "Maximizar")">
+    <Icon Name="@(_isExpanded ? "minimize" : "maximize")" />
+</button>
+
+<button class="btn btn--ghost btn--sm" @onclick="CloseJourneyModal">
+    <Icon Name="x" />
+</button>
+
+
+BOTÓN 2
+-----------
+<button class="journey-modal__expand-btn" @onclick="ToggleExpandModal">
+    @if (_isExpanded)
     {
-        <div class="empty-state">
-            <Icon Name="file-text" Class="empty-state_icon" />
-            <h3>No se encontraron resultados</h3>
-            <p>Prueba buscando con otros términos.</p>
-        </div>
+        <!-- Ícono Contraer / Salir de pantalla completa -->
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
     }
     else
     {
-        <div class="widget card" style="max-width:100%">
-            @foreach (var dto in _pageItems)
-            {
-                <ArticleListItem Article="dto.Article"
-                                Icon="clock"
-                                MetaText="@($"Actualizado {Relative(dto.Article.UpdatedAt)}")" />
-            }
-        </div>
-
-        <Pagination TotalItems="_filteredCards.Count"
-                    PageSize="_pageSize"
-                    CurrentPage="_page"
-                    CurrentPageChanged="OnPageChanged" />
+        <!-- Ícono Expandir / Pantalla grande -->
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
     }
-}
+</button>
