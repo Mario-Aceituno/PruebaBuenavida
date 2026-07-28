@@ -1,71 +1,87 @@
-CSS SEPARADO
----------------
-/* Modificador para expandir el modal casi a pantalla completa */
-.journey-modal.journey-modal--expanded {
-    max-width: 92vw; /* Cubre el 92% del ancho de la pantalla */
-    height: 90vh;    /* Ocupa el 90% del alto de la ventana */
-    max-height: 90vh;
-}
-
-/* Estilo para el botón de expandir en la cabecera */
-.journey-modal__expand-btn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border-radius: 4px;
-    color: inherit;
-    opacity: 0.7;
-    transition: opacity 0.2s ease, background-color 0.2s ease;
-}
-
-.journey-modal__expand-btn:hover {
-    opacity: 1;
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-CODE 
-----------
-private bool _isExpanded = false;
-
-private void ToggleExpandModal()
-{
-    _isExpanded = !_isExpanded;
-}
-
-
-
-ETIQUETA HTML
-------------------
-<div class="journey-modal @(_isExpanded ? "journey-modal--expanded" : "")" @onclick:stopPropagation="true">
-
-
-BOTÓN 1
------------
-<!-- Reemplaza o coloca junto al botón de cerrar existente -->
-<button class="journey-modal__expand-btn" @onclick="ToggleExpandModal" title="@(_isExpanded ? "Restaurar tamaño" : "Maximizar")">
-    <Icon Name="@(_isExpanded ? "minimize" : "maximize")" />
-</button>
-
-<button class="btn btn--ghost btn--sm" @onclick="CloseJourneyModal">
-    <Icon Name="x" />
-</button>
-
-
-BOTÓN 2
------------
-<button class="journey-modal__expand-btn" @onclick="ToggleExpandModal">
+<div class="journey-modal_body journey-modal_body--@(_isExpanded ? "expanded" : "normal")">
+    
     @if (_isExpanded)
     {
-        <!-- Ícono Contraer / Salir de pantalla completa -->
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+        <!-- Columna Izquierda: Información de contexto y métricas -->
+        <div class="journey-modal__col">
+            <!-- Bloque 1: Recorrido y Estado -->
+            <div class="journey-context">
+                <!-- Tu código existente de .journey-context -->
+            </div>
+
+            <!-- Bloque 2: Resumen del incidente -->
+            <div class="journey-summary">
+                <!-- Tu código existente de .journey-summary -->
+            </div>
+
+            <!-- Bloque 3: Métricas -->
+            <div class="journey-metrics-wrapper">
+                <!-- Tu código existente de MÉTRICAS (Trabajo efectivo, espera, etc.) -->
+            </div>
+        </div>
+
+        <!-- Columna Derecha: Equipo, Actividad y Comentarios -->
+        <div class="journey-modal__col">
+            <!-- Bloque 4: Equipo -->
+            <div class="journey-team-wrapper">
+                <!-- Tu código existente de EQUIPO (Responsable y Otros participantes) -->
+            </div>
+
+            <!-- Bloque 5: Actividad y Timeline -->
+            <div class="journey-activity-wrapper">
+                <!-- Tu código existente de ACTIVIDAD y Qué hizo el equipo -->
+            </div>
+
+            <!-- Bloque 6: Transferencias / Comentarios -->
+            <!-- Tu código existente de TRANSFERENCIAS Y COMENTARIOS -->
+        </div>
     }
     else
     {
-        <!-- Ícono Expandir / Pantalla grande -->
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+        <!-- Vista normal de 1 columna para cuando NO está expandido -->
+        <!-- Tu código Razor tal como lo tenías originalmente sin dividir -->
     }
-</button>
+
+</div>
+
+
+
+/* Modal Expandido */
+.journey-modal.journey-modal--expanded {
+    max-width: 92vw;
+    width: 92vw;
+    height: 88vh;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Layout de 2 columnas cuando está expandido */
+.journey-modal_body--expanded {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr; /* Dos columnas de igual proporción */
+    gap: 24px;
+    padding: 20px 24px;
+    flex: 1;
+    overflow-y: auto; /* Scroll si el contenido vertical de alguna columna sobrepasa el alto */
+    min-height: 0;   /* Permite el scroll interno en Flexbox */
+}
+
+/* Columna individual */
+.journey-modal__col {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Tarjetas/Contenedores internos dentro de las columnas para darle mejor impacto visual */
+.journey-modal--expanded .journey-context,
+.journey-modal--expanded .journey-summary,
+.journey-modal--expanded .journey-metrics-wrapper,
+.journey-modal--expanded .journey-team-wrapper,
+.journey-modal--expanded .journey-activity-wrapper {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 8px;
+    padding: 16px;
+}
