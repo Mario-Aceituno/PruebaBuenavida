@@ -1,87 +1,421 @@
-<div class="journey-modal_body journey-modal_body--@(_isExpanded ? "expanded" : "normal")">
-    
+<div class="@($"journey-modal_body journey-modal_body--{_journeyDirection} @key={_journeyStepIndex}")">
     @if (_isExpanded)
     {
-        <!-- Columna Izquierda: Información de contexto y métricas -->
+        <!-- VISTA EXPANDIDA (2 COLUMNAS) -->
         <div class="journey-modal__col">
-            <!-- Bloque 1: Recorrido y Estado -->
+            <!-- RECORRIDO Y ESTADO ACTUAL -->
             <div class="journey-context">
-                <!-- Tu código existente de .journey-context -->
+                <div class="journey-context__block">
+                    <span class="journey-context__label">Recorrido del incidente</span>
+                    <div class="journey-context__route">
+                        @for (var i = 0; i < _journey.Count; i++)
+                        {
+                            var idx = i;
+                            var area = _journey[idx];
+                            var isReturn = _journey.Take(idx).Any(x => x.AreaName == area.AreaName);
+
+                            <span class="journey-context__area @(idx == _journeyStepIndex ? "journey-context__area--active" : "")"
+                                  @onclick="() => GoToJourneyStep(idx)"
+                                  title="Paso @(idx+1): @area.AreaName">
+                                @(idx+1).@area.AreaName
+                                @if (isReturn)
+                                {
+                                    <span class="journey-return">Retorno</span>
+                                }
+                            </span>
+
+                            @if (idx < _journey.Count - 1)
+                            {
+                                <Icon Name="chevron-right" />
+                            }
+                        }
+                    </div>
+                </div>
+
+                <div class="journey-context__block journey-context__status">
+                    <span class="journey-context__label">Estado actual</span>
+                    <span class="journey-stage-badge">@GetJourneyStageLabel()</span>
+                </div>
             </div>
 
-            <!-- Bloque 2: Resumen del incidente -->
+            <!-- RESUMEN DE LA NARRATIVA -->
             <div class="journey-summary">
-                <!-- Tu código existente de .journey-summary -->
+                <Icon Name="info" Class="journey-summary__icon" />
+                <p class="journey-summary__text">@BuildJourneySummary()</p>
             </div>
 
-            <!-- Bloque 3: Métricas -->
+            <!-- MÉTRICAS -->
             <div class="journey-metrics-wrapper">
-                <!-- Tu código existente de MÉTRICAS (Trabajo efectivo, espera, etc.) -->
+                <h4 class="widget_title journey-section journey-section--delay-1">Métricas</h4>
+                <div class="journey-metrics">
+                    <div class="journey-metric journey-metric--work">
+                        <Icon Name="activity" />
+                        <div>
+                            <span class="journey-metric__value">@_journeyStep.ActiveHours.ToString("0.#") h</span>
+                            <span class="journey-metric__label">Trabajo efectivo</span>
+                        </div>
+                    </div>
+
+                    <div class="journey-metric journey-metric--wait">
+                        <Icon Name="clock" />
+                        <div>
+                            <span class="journey-metric__value">@_journeyStep.DeadHours.ToString("0.#") h</span>
+                            <span class="journey-metric__label">Tiempo en espera</span>
+                        </div>
+                    </div>
+
+                    <div class="journey-metric journey-metric--distribution">
+                        <Icon Name="pie-chart" />
+                        <div>
+                            <span class="journey-metric__value">@GetActivePercentage()%</span>
+                            <span class="journey-metric__label">Trabajo efectivo</span>
+                            <small>@GetWaitingPercentage()% espera</small>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Columna Derecha: Equipo, Actividad y Comentarios -->
         <div class="journey-modal__col">
-            <!-- Bloque 4: Equipo -->
+            <!-- EQUIPO -->
             <div class="journey-team-wrapper">
-                <!-- Tu código existente de EQUIPO (Responsable y Otros participantes) -->
+                <h4 class="widget_title journey-section journey-section--delay-2">
+                    <Icon Name="users" /> Personas del equipo
+                    <span class="journey-section__count">@_journeyStep.Users.Count</span>
+                </h4>
+
+                @{
+                    var responsible = _detail != null 
+                        ? _journeyStep.Users.FirstOrDefault(u => u.Id == _detail.ResponsibleId) 
+                        : null;
+                    var others = _journeyStep.Users.Where(u => responsible == null || u.Id != responsible.Id).ToList();
+                }
+
+                @if (_journeyStep.Users.Count == 0)
+                {
+                    <div class="journey-empty">
+                        <Icon Name="users" />
+                        <p class="journey-empty__title">Sin participantes registrados</p>
+                        <p class="journey-empty__desc">Esta área todavía no tiene usuarios asociados.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="person-row-list">
+                        @if (responsible != null)
+                        {
+                            <div class="activity-row activity-row--highlight">
+                                <span class="avatar avatar--sm">@InitialsOf(responsible.FullName)</span>
+                                <div style="flex:1; min-width:0;">
+                                    <p class="activity-row__text">
+                                        <span class="badge badge--brand">
+                                            <Icon Name="star" /> Responsable actual
+                                        </span>
+                                        @if (!string.IsNullOrEmpty(GetResponsibleSince()))
+                                        {
+                                            <p class="journey-responsible-time">Desde @GetResponsibleSince()</p>
+                                        }
+                                        <br />
+                                        <strong>@responsible.FullName</strong>
+                                    </p>
+                                    <p class="activity-row_time">@responsible.Role</p>
+                                </div>
+                            </div>
+                        }
+
+                        @if (others.Count > 0)
+                        {
+                            <p class="journey-subheading">Otros participantes</p>
+                            @foreach (var u in others)
+                            {
+                                <div class="activity-row">
+                                    <span class="avatar avatar--sm">@InitialsOf(u.FullName)</span>
+                                    <div style="flex:1; min-width:0;">
+                                        <p class="activity-row__text"><strong>@u.FullName</strong></p>
+                                        <p class="activity-row_time">@u.Role</p>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
             </div>
 
-            <!-- Bloque 5: Actividad y Timeline -->
+            <!-- ACTIVIDAD / TIMELINE -->
             <div class="journey-activity-wrapper">
-                <!-- Tu código existente de ACTIVIDAD y Qué hizo el equipo -->
+                <h4 class="widget_title journey-section journey-section--delay-3">
+                    <Icon Name="history" /> Qué hizo el equipo
+                    <span class="journey-section__count">@_journeyStep.Activity.Count</span>
+                </h4>
+
+                @if (_journeyStep.Activity.Count == 0)
+                {
+                    <div class="journey-empty">
+                        <Icon Name="inbox" />
+                        <p class="journey-empty__title">Sin actividad registrada</p>
+                        <p class="journey-empty__desc">Nadie de este equipo generó actividad todavía.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="journey-timeline">
+                        @foreach (var entry in _journeyStep.Activity)
+                        {
+                            var color = IncidentCssHelpers.ActivityColor(entry.Type);
+                            <div class="journey-timeline__item">
+                                <div class="journey-timeline__dot" style="background:@ColorUtils.ToRgba(color, 0.14); color:@color;">
+                                    <Icon Name="@IncidentCssHelpers.ActivityIcon(entry.Type)" />
+                                </div>
+                                <div class="journey-timeline__content">
+                                    <p class="activity-row__text"><strong>@entry.ActorName</strong> @entry.Description</p>
+                                    <p class="activity-row_time">@entry.OccurredAt.ToRelativeLabel()</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
             </div>
 
-            <!-- Bloque 6: Transferencias / Comentarios -->
-            <!-- Tu código existente de TRANSFERENCIAS Y COMENTARIOS -->
+            <!-- TRANSFERENCIAS -->
+            @if (_journeyStep.Transfers.Count > 0)
+            {
+                <h4 class="widget_title journey-section" style="margin-top:var(--space-5);">
+                    <Icon Name="arrow-right" /> Transferencias relacionadas
+                    <span class="journey-section__count">@_journeyStep.Transfers.Count</span>
+                </h4>
+                @foreach (var t in _journeyStep.Transfers)
+                {
+                    <div class="journey-transfer-card">
+                        <p class="journey-transfer-card__title">Transferencia realizada</p>
+                        <div class="journey-transfer-card__grid">
+                            <div><span class="journey-transfer-card__label">Origen</span><strong>@t.FromAreaName</strong></div>
+                            <div><span class="journey-transfer-card__label">Destino</span><strong>@t.ToAreaName</strong></div>
+                            <div><span class="journey-transfer-card__label">Responsable</span><strong>@t.ToUserName</strong></div>
+                            <div><span class="journey-transfer-card__label">Fecha</span><strong>@t.TransferredAt.ToRelativeLabel()</strong></div>
+                        </div>
+                    </div>
+                }
+            }
+
+            <!-- COMENTARIOS -->
+            @if (_journeyStep.Comments.Count > 0)
+            {
+                <h4 class="widget_title journey-section" style="margin-top:var(--space-5);">
+                    <Icon Name="message-circle" /> Comentarios del equipo
+                    <span class="journey-section__count">@_journeyStep.Comments.Count</span>
+                </h4>
+                @foreach (var c in _journeyStep.Comments)
+                {
+                    <div class="journey-comment">
+                        <span class="avatar avatar--sm">@InitialsOf(c.AuthorName)</span>
+                        <div style="flex:1; min-width:0;">
+                            <p class="journey-comment__meta"><strong>@c.AuthorName</strong> • @c.CreatedAt.ToRelativeLabel()</p>
+                            <p class="journey-comment__text">@c.Text</p>
+                        </div>
+                    </div>
+                }
+            }
         </div>
     }
     else
     {
-        <!-- Vista normal de 1 columna para cuando NO está expandido -->
-        <!-- Tu código Razor tal como lo tenías originalmente sin dividir -->
+        <!-- VISTA PEQUEÑA ORIGINAL (1 COLUMNA INTANCTA) -->
+        <div class="journey-context">
+            <div class="journey-context__block">
+                <span class="journey-context__label">Recorrido del incidente</span>
+                <div class="journey-context__route">
+                    @for (var i = 0; i < _journey.Count; i++)
+                    {
+                        var idx = i;
+                        var area = _journey[idx];
+                        var isReturn = _journey.Take(idx).Any(x => x.AreaName == area.AreaName);
+
+                        <span class="journey-context__area @(idx == _journeyStepIndex ? "journey-context__area--active" : "")"
+                              @onclick="() => GoToJourneyStep(idx)"
+                              title="Paso @(idx+1): @area.AreaName">
+                            @(idx+1).@area.AreaName
+                            @if (isReturn)
+                            {
+                                <span class="journey-return">Retorno</span>
+                            }
+                        </span>
+
+                        @if (idx < _journey.Count - 1)
+                        {
+                            <Icon Name="chevron-right" />
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="journey-context__block journey-context__status">
+                <span class="journey-context__label">Estado actual</span>
+                <span class="journey-stage-badge">@GetJourneyStageLabel()</span>
+            </div>
+        </div>
+
+        <div class="journey-summary">
+            <Icon Name="info" Class="journey-summary__icon" />
+            <p class="journey-summary__text">@BuildJourneySummary()</p>
+        </div>
+
+        <h4 class="widget_title journey-section journey-section--delay-1">Métricas</h4>
+        <div class="journey-metrics">
+            <div class="journey-metric journey-metric--work">
+                <Icon Name="activity" />
+                <div>
+                    <span class="journey-metric__value">@_journeyStep.ActiveHours.ToString("0.#") h</span>
+                    <span class="journey-metric__label">Trabajo efectivo</span>
+                </div>
+            </div>
+
+            <div class="journey-metric journey-metric--wait">
+                <Icon Name="clock" />
+                <div>
+                    <span class="journey-metric__value">@_journeyStep.DeadHours.ToString("0.#") h</span>
+                    <span class="journey-metric__label">Tiempo en espera</span>
+                </div>
+            </div>
+
+            <div class="journey-metric journey-metric--distribution">
+                <Icon Name="pie-chart" />
+                <div>
+                    <span class="journey-metric__value">@GetActivePercentage()%</span>
+                    <span class="journey-metric__label">Trabajo efectivo</span>
+                    <small>@GetWaitingPercentage()% espera</small>
+                </div>
+            </div>
+        </div>
+
+        <h4 class="widget_title journey-section journey-section--delay-2">
+            <Icon Name="users" /> Personas del equipo
+            <span class="journey-section__count">@_journeyStep.Users.Count</span>
+        </h4>
+
+        @{
+            var responsibleOrig = _detail != null 
+                ? _journeyStep.Users.FirstOrDefault(u => u.Id == _detail.ResponsibleId) 
+                : null;
+            var othersOrig = _journeyStep.Users.Where(u => responsibleOrig == null || u.Id != responsibleOrig.Id).ToList();
+        }
+
+        @if (_journeyStep.Users.Count == 0)
+        {
+            <div class="journey-empty">
+                <Icon Name="users" />
+                <p class="journey-empty__title">Sin participantes registrados</p>
+                <p class="journey-empty__desc">Esta área todavía no tiene usuarios asociados.</p>
+            </div>
+        }
+        else
+        {
+            <div class="person-row-list">
+                @if (responsibleOrig != null)
+                {
+                    <div class="activity-row activity-row--highlight">
+                        <span class="avatar avatar--sm">@InitialsOf(responsibleOrig.FullName)</span>
+                        <div style="flex:1; min-width:0;">
+                            <p class="activity-row__text">
+                                <span class="badge badge--brand">
+                                    <Icon Name="star" /> Responsable actual
+                                </span>
+                                @if (!string.IsNullOrEmpty(GetResponsibleSince()))
+                                {
+                                    <p class="journey-responsible-time">Desde @GetResponsibleSince()</p>
+                                }
+                                <br />
+                                <strong>@responsibleOrig.FullName</strong>
+                            </p>
+                            <p class="activity-row_time">@responsibleOrig.Role</p>
+                        </div>
+                    </div>
+                }
+
+                @if (othersOrig.Count > 0)
+                {
+                    <p class="journey-subheading">Otros participantes</p>
+                    @foreach (var u in othersOrig)
+                    {
+                        <div class="activity-row">
+                            <span class="avatar avatar--sm">@InitialsOf(u.FullName)</span>
+                            <div style="flex:1; min-width:0;">
+                                <p class="activity-row__text"><strong>@u.FullName</strong></p>
+                                <p class="activity-row_time">@u.Role</p>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        }
+
+        <h4 class="widget_title journey-section journey-section--delay-3">
+            <Icon Name="history" /> Qué hizo el equipo
+            <span class="journey-section__count">@_journeyStep.Activity.Count</span>
+        </h4>
+
+        @if (_journeyStep.Activity.Count == 0)
+        {
+            <div class="journey-empty">
+                <Icon Name="inbox" />
+                <p class="journey-empty__title">Sin actividad registrada</p>
+                <p class="journey-empty__desc">Nadie de este equipo generó actividad todavía.</p>
+            </div>
+        }
+        else
+        {
+            <div class="journey-timeline">
+                @foreach (var entry in _journeyStep.Activity)
+                {
+                    var color = IncidentCssHelpers.ActivityColor(entry.Type);
+                    <div class="journey-timeline__item">
+                        <div class="journey-timeline__dot" style="background:@ColorUtils.ToRgba(color, 0.14); color:@color;">
+                            <Icon Name="@IncidentCssHelpers.ActivityIcon(entry.Type)" />
+                        </div>
+                        <div class="journey-timeline__content">
+                            <p class="activity-row__text"><strong>@entry.ActorName</strong> @entry.Description</p>
+                            <p class="activity-row_time">@entry.OccurredAt.ToRelativeLabel()</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_journeyStep.Transfers.Count > 0)
+        {
+            <h4 class="widget_title journey-section" style="margin-top:var(--space-5);">
+                <Icon Name="arrow-right" /> Transferencias relacionadas
+                <span class="journey-section__count">@_journeyStep.Transfers.Count</span>
+            </h4>
+            @foreach (var t in _journeyStep.Transfers)
+            {
+                <div class="journey-transfer-card">
+                    <p class="journey-transfer-card__title">Transferencia realizada</p>
+                    <div class="journey-transfer-card__grid">
+                        <div><span class="journey-transfer-card__label">Origen</span><strong>@t.FromAreaName</strong></div>
+                        <div><span class="journey-transfer-card__label">Destino</span><strong>@t.ToAreaName</strong></div>
+                        <div><span class="journey-transfer-card__label">Responsable</span><strong>@t.ToUserName</strong></div>
+                        <div><span class="journey-transfer-card__label">Fecha</span><strong>@t.TransferredAt.ToRelativeLabel()</strong></div>
+                    </div>
+                </div>
+            }
+        }
+
+        @if (_journeyStep.Comments.Count > 0)
+        {
+            <h4 class="widget_title journey-section" style="margin-top:var(--space-5);">
+                <Icon Name="message-circle" /> Comentarios del equipo
+                <span class="journey-section__count">@_journeyStep.Comments.Count</span>
+            </h4>
+            @foreach (var c in _journeyStep.Comments)
+            {
+                <div class="journey-comment">
+                    <span class="avatar avatar--sm">@InitialsOf(c.AuthorName)</span>
+                    <div style="flex:1; min-width:0;">
+                        <p class="journey-comment__meta"><strong>@c.AuthorName</strong> • @c.CreatedAt.ToRelativeLabel()</p>
+                        <p class="journey-comment__text">@c.Text</p>
+                    </div>
+                </div>
+            }
+        }
     }
-
 </div>
-
-
-
-/* Modal Expandido */
-.journey-modal.journey-modal--expanded {
-    max-width: 92vw;
-    width: 92vw;
-    height: 88vh;
-    max-height: 88vh;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Layout de 2 columnas cuando está expandido */
-.journey-modal_body--expanded {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr; /* Dos columnas de igual proporción */
-    gap: 24px;
-    padding: 20px 24px;
-    flex: 1;
-    overflow-y: auto; /* Scroll si el contenido vertical de alguna columna sobrepasa el alto */
-    min-height: 0;   /* Permite el scroll interno en Flexbox */
-}
-
-/* Columna individual */
-.journey-modal__col {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-/* Tarjetas/Contenedores internos dentro de las columnas para darle mejor impacto visual */
-.journey-modal--expanded .journey-context,
-.journey-modal--expanded .journey-summary,
-.journey-modal--expanded .journey-metrics-wrapper,
-.journey-modal--expanded .journey-team-wrapper,
-.journey-modal--expanded .journey-activity-wrapper {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-    border-radius: 8px;
-    padding: 16px;
-}
