@@ -1,90 +1,98 @@
-@if (_activeTab == "gestion")
-{
-    <div class="detail-tabs__panel">
-        <div class="management-grid">
+/* ----------- Tab Gestión: jerarquía visual entre acciones ----------- */
 
-            <div class="widget card widget--quick">
-                <h4 class="widget__title"><Icon Name="user-check" />Asignar responsable</h4>
-                <div class="form-group">
-                    <label class="form-group__label" for="assignUser">Responsable</label>
-                    <select id="assignUser" class="input" @bind="_assignUserId">
-                        <option value="">Seleccioná un responsable</option>
-                        @foreach (var u in _currentAreaUsers)
-                        {
-                            <option value="@u.Id">@u.FullName - @u.Role</option>
-                        }
-                    </select>
-                </div>
-                <button class="btn btn--secondary btn--sm" @onclick="AssignAction" disabled="@(!_assignUserId.HasValue)">
-                    Asignar
-                </button>
-            </div>
+.management-grid .widget--quick .widget__title {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
 
-            <div class="widget card widget--quick">
-                <h4 class="widget__title"><Icon Name="refresh-cw" />Cambiar estado</h4>
-                <div class="form-group">
-                    <label class="form-group__label" for="newStatus">Nuevo estado</label>
-                    <select id="newStatus" class="input" @bind="_newStatus">
-                        @foreach (var s in Enum.GetValues<IncidentStatus>())
-                        {
-                            <option value="@s">@IncidentLabels.Status(s)</option>
-                        }
-                    </select>
-                </div>
-                <button class="btn btn--secondary btn--sm" @onclick="ChangeStatusAction">Actualizar estado</button>
-            </div>
+/* Transferir: card destacada con fondo tintado + badge de ícono */
+.widget--transfer {
+    position: relative;
+    background: linear-gradient(135deg, rgba(238,0,0,0.06), rgba(238,0,0,0.015));
+    border: 1px solid rgba(238,0,0,0.18);
+    border-radius: var(--radius-lg, 12px);
+    padding: var(--space-5);
+    box-shadow: 0 1px 3px rgba(238,0,0,0.06);
+}
 
-        </div>
+.widget--transfer .widget__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #b80000;
+    margin-bottom: var(--space-4);
+}
 
-        <div class="widget card widget--transfer" style="margin-bottom: var(--space-5);">
-            <h4 class="widget__title"><Icon Name="arrow-right" />Transferir a otra área</h4>
-            <div class="form-group">
-                <label class="form-group__label" for="transferArea">Área destino</label>
-                <select id="transferArea" class="input" value="@(_transferAreaId?.ToString() ?? "")" @onchange="OnTransferAreaChanged">
-                    <option value="">Área destino</option>
-                    @foreach (var area in _areas.Where(a => a.Id != _detail.CurrentAreaId))
-                    {
-                        <option value="@area.Id">@area.Name</option>
-                    }
-                </select>
-            </div>
-            <div class="form-group">
-                <label class="form-group__label" for="transferUser">Responsable destino</label>
-                <select id="transferUser" class="input" @bind="_transferUserId" disabled="@(!_transferAreaId.HasValue)">
-                    <option value="">Responsable destino</option>
-                    @foreach (var u in _transferUserOptions)
-                    {
-                        <option value="@u.Id">@u.FullName</option>
-                    }
-                </select>
-            </div>
-            <div class="form-group">
-                <label class="form-group__label" for="transferReason">Motivo de la transferencia</label>
-                <textarea id="transferReason" class="input" rows="2" placeholder="Motivo de la transferencia" @bind="_transferReason"></textarea>
-            </div>
-            <button class="btn btn--transfer btn--sm" @onclick="TransferAction"
-                    disabled="@(!_transferAreaId.HasValue || !_transferUserId.HasValue)">
-                Transferir
-            </button>
-        </div>
+/* Badge circular alrededor del ícono del título */
+.widget--transfer .widget__title svg,
+.widget--transfer .widget__title .icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 6px;
+    border-radius: var(--radius-full, 999px);
+    background: rgba(238,0,0,0.12);
+    color: #EE0000;
+}
 
-        @if (_detail.Transfers.Count > 0)
-        {
-            <div class="widget card widget--history">
-                <h4 class="widget__title"><Icon Name="arrow-right" />Historial de transferencias (@_detail.Transfers.Count)</h4>
-                @foreach (var t in _detail.Transfers.OrderByDescending(t => t.TransferredAt))
-                {
-                    <div class="activity-row">
-                        <div class="activity-row__icon" style="background:rgba(236,72,153,0.14); color:#ec4899;">
-                            <Icon Name="arrow-right" />
-                        </div>
-                        <div style="flex:1; min-width:0;">
-                            <p class="activity-row__text">@t.FromAreaName → <strong>@t.ToAreaName</strong> (@t.ToUserName)</p>
-                            <p class="activity-row__time">@t.Reason · @t.TransferredAt.ToRelativeLabel()</p>
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-    </div>
+.widget--transfer .form-group {
+    margin-bottom: var(--space-4);
+}
+
+.widget--transfer .form-group__label {
+    color: #8a1f1f;
+    font-weight: 500;
+}
+
+.widget--transfer + .widget {
+    margin-top: var(--space-6);
+    padding-top: var(--space-5);
+    border-top: 1px dashed var(--border-subtle, rgba(255,255,255,0.08));
+}
+
+/* Botón Transferir: rojo sólido, con leve elevación al pasar el mouse */
+.btn--transfer {
+    background: #EE0000;
+    border: none;
+    color: #ffffff;
+    font-weight: 600;
+    padding: 10px 22px;
+    border-radius: var(--radius-md, 8px);
+    box-shadow: 0 2px 6px rgba(238,0,0,0.28);
+    transition: transform var(--transition-fast, 0.15s), box-shadow var(--transition-fast, 0.15s), background 0.15s;
+}
+.btn--transfer:hover:not(:disabled) {
+    background: #c40000;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(238,0,0,0.35);
+}
+.btn--transfer:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(238,0,0,0.3);
+}
+.btn--transfer:disabled {
+    background: #f3b8b8;
+    color: #ffffff;
+    box-shadow: none;
+    opacity: 1;
+    cursor: not-allowed;
+}
+
+.form-group__label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+}
+
+/* Historial: filas limpias, más legibles */
+.widget--history .activity-row {
+    padding-block: 10px;
+}
+.widget--history .activity-row + .activity-row {
+    border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
 }
