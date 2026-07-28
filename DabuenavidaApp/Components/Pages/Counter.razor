@@ -1,55 +1,90 @@
-/* ----------- Tab Gestión: jerarquía visual entre acciones ----------- */
+@if (_activeTab == "gestion")
+{
+    <div class="detail-tabs__panel">
+        <div class="management-grid">
 
-/* Las acciones rápidas (asignar / cambiar estado) quedan más "livianas" */
-.management-grid .widget--quick .widget__title {
-    font-size: 13px;
-    color: var(--text-secondary);
-}
+            <div class="widget card widget--quick">
+                <h4 class="widget__title"><Icon Name="user-check" />Asignar responsable</h4>
+                <div class="form-group">
+                    <label class="form-group__label" for="assignUser">Responsable</label>
+                    <select id="assignUser" class="input" @bind="_assignUserId">
+                        <option value="">Seleccioná un responsable</option>
+                        @foreach (var u in _currentAreaUsers)
+                        {
+                            <option value="@u.Id">@u.FullName - @u.Role</option>
+                        }
+                    </select>
+                </div>
+                <button class="btn btn--secondary btn--sm" @onclick="AssignAction" disabled="@(!_assignUserId.HasValue)">
+                    Asignar
+                </button>
+            </div>
 
-/* Transferir es la acción de mayor impacto: se separa del grid rápido
-   y se destaca con un borde de advertencia sutil */
-.widget--transfer {
-    border-left: 3px solid var(--warning-500, #e0a020);
-    padding-left: var(--space-4);
-}
+            <div class="widget card widget--quick">
+                <h4 class="widget__title"><Icon Name="refresh-cw" />Cambiar estado</h4>
+                <div class="form-group">
+                    <label class="form-group__label" for="newStatus">Nuevo estado</label>
+                    <select id="newStatus" class="input" @bind="_newStatus">
+                        @foreach (var s in Enum.GetValues<IncidentStatus>())
+                        {
+                            <option value="@s">@IncidentLabels.Status(s)</option>
+                        }
+                    </select>
+                </div>
+                <button class="btn btn--secondary btn--sm" @onclick="ChangeStatusAction">Actualizar estado</button>
+            </div>
 
-.widget--transfer .widget__title {
-    color: var(--warning-600, #b8860b);
-}
+        </div>
 
-/* Separación clara entre el form de transferencia y el historial debajo */
-.widget--transfer + .widget {
-    margin-top: var(--space-6);
-    padding-top: var(--space-5);
-    border-top: 1px dashed var(--border-subtle, rgba(255,255,255,0.08));
-}
+        <div class="widget card widget--transfer" style="margin-bottom: var(--space-5);">
+            <h4 class="widget__title"><Icon Name="arrow-right" />Transferir a otra área</h4>
+            <div class="form-group">
+                <label class="form-group__label" for="transferArea">Área destino</label>
+                <select id="transferArea" class="input" value="@(_transferAreaId?.ToString() ?? "")" @onchange="OnTransferAreaChanged">
+                    <option value="">Área destino</option>
+                    @foreach (var area in _areas.Where(a => a.Id != _detail.CurrentAreaId))
+                    {
+                        <option value="@area.Id">@area.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-group__label" for="transferUser">Responsable destino</label>
+                <select id="transferUser" class="input" @bind="_transferUserId" disabled="@(!_transferAreaId.HasValue)">
+                    <option value="">Responsable destino</option>
+                    @foreach (var u in _transferUserOptions)
+                    {
+                        <option value="@u.Id">@u.FullName</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-group__label" for="transferReason">Motivo de la transferencia</label>
+                <textarea id="transferReason" class="input" rows="2" placeholder="Motivo de la transferencia" @bind="_transferReason"></textarea>
+            </div>
+            <button class="btn btn--transfer btn--sm" @onclick="TransferAction"
+                    disabled="@(!_transferAreaId.HasValue || !_transferUserId.HasValue)">
+                Transferir
+            </button>
+        </div>
 
-/* Botón de transferir con más peso que los btn--secondary comunes */
-.btn--transfer {
-    background: var(--warning-500, #e0a020);
-    border-color: var(--warning-500, #e0a020);
-    color: #1a1a1a;
-    font-weight: 600;
-}
-.btn--transfer:hover:not(:disabled) {
-    filter: brightness(1.08);
-}
-.btn--transfer:disabled {
-    opacity: 0.5;
-}
-
-/* Labels para los selects (accesibilidad) */
-.form-group__label {
-    display: block;
-    font-size: 12px;
-    color: var(--text-tertiary);
-    margin-bottom: 4px;
-}
-
-/* Historial de transferencias: filas más compactas y legibles */
-.widget--history .activity-row {
-    padding-block: 10px;
-}
-.widget--history .activity-row + .activity-row {
-    border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+        @if (_detail.Transfers.Count > 0)
+        {
+            <div class="widget card widget--history">
+                <h4 class="widget__title"><Icon Name="arrow-right" />Historial de transferencias (@_detail.Transfers.Count)</h4>
+                @foreach (var t in _detail.Transfers.OrderByDescending(t => t.TransferredAt))
+                {
+                    <div class="activity-row">
+                        <div class="activity-row__icon" style="background:rgba(236,72,153,0.14); color:#ec4899;">
+                            <Icon Name="arrow-right" />
+                        </div>
+                        <div style="flex:1; min-width:0;">
+                            <p class="activity-row__text">@t.FromAreaName → <strong>@t.ToAreaName</strong> (@t.ToUserName)</p>
+                            <p class="activity-row__time">@t.Reason · @t.TransferredAt.ToRelativeLabel()</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
 }
