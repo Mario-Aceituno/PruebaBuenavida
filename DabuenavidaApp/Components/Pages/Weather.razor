@@ -1,56 +1,56 @@
-@{
-    var responsible = _detail != null 
-        ? _journeyStep.Users.FirstOrDefault(u => u.Id == _detail.ResponsibleId) 
-        : null;
-} 
+<h4 class="widget_title journey-section journey-section--delay-2">
+    <Icon Name="users" /> Personas del equipo
+    <span class="journey-section__count">@_journeyStep.Users.Count</span>
+</h4>
 
 @if (_journeyStep.Users.Count == 0)
 {
-    <div class="journey-empty">
-        <Icon Name="users" />
-        <p class="journey-empty__title">Sin participantes registrados</p>
-        <p class="journey-empty__desc">Esta área todavía no tiene usuarios asociados.</p>
-    </div>
+    <div class="journey-empty">
+        <Icon Name="users" />
+        <p class="journey-empty__title">Sin participantes registrados</p>
+        <p class="journey-empty__desc">Esta área todavía no tiene usuarios asociados.</p>
+    </div>
 }
 else
 {
-    var others = _journeyStep.Users.Where(u => responsible == null || u.Id != responsible.Id).ToList(); 
+    <div class="person-row-list">
+        @* Renderizado del Responsable Actual si existe *@
+        @if (_detail != null && _journeyStep.Users.Any(u => u.Id == _detail.ResponsibleId))
+        {
+            var resp = _journeyStep.Users.First(u => u.Id == _detail.ResponsibleId);
+            <div class="activity-row activity-row--highlight">
+                <span class="avatar avatar--sm">@InitialsOf(resp.FullName)</span>
+                <div style="flex:1; min-width:0;">
+                    <p class="activity-row__text">
+                        <span class="badge badge--brand">
+                            <Icon Name="star" /> Responsable actual
+                        </span>
+                        @if (!string.IsNullOrEmpty(GetResponsibleSince()))
+                        {
+                            <p class="journey-responsible-time">Desde @GetResponsibleSince()</p>
+                        }
+                        <br />
+                        <strong>@resp.FullName</strong>
+                    </p>
+                    <p class="activity-row_time">@resp.Role</p>
+                </div>
+            </div>
+        }
 
-    <div class="person-row-list">
-        @if (responsible != null)
-        {
-            <div class="activity-row activity-row--highlight">
-                <span class="avatar avatar--sm">@InitialsOf(responsible.FullName)</span>
-                <div style="flex:1; min-width:0;">
-                    <p class="activity-row__text">
-                        <span class="badge badge--brand">
-                            <Icon Name="star" /> Responsable actual
-                        </span>
-                        @if (!string.IsNullOrEmpty(GetResponsibleSince()))
-                        {
-                            <p class="journey-responsible-time">Desde @GetResponsibleSince()</p>
-                        }
-                        <br />
-                        <strong>@responsible.FullName</strong>
-                    </p>
-                    <p class="activity-row_time">@responsible.Role</p>
-                </div>
-            </div>
-        } 
-
-        @if (others.Count > 0)
-        {
-            <p class="journey-subheading">Otros participantes</p>
-            @foreach (var u in others)
-            {
-                <div class="activity-row">
-                    <span class="avatar avatar--sm">@InitialsOf(u.FullName)</span>
-                    <div style="flex:1; min-width:0;">
-                        <p class="activity-row__text"><strong>@u.FullName</strong></p>
-                        <p class="activity-row_time">@u.Role</p>
-                    </div>
-                </div>
-            }
-        }
-    </div>
+        @* Renderizado de Otros Participantes *@
+        @if (_journeyStep.Users.Any(u => _detail == null || u.Id != _detail.ResponsibleId))
+        {
+            <p class="journey-subheading">Otros participantes</p>
+            @foreach (var u in _journeyStep.Users.Where(u => _detail == null || u.Id != _detail.ResponsibleId))
+            {
+                <div class="activity-row">
+                    <span class="avatar avatar--sm">@InitialsOf(u.FullName)</span>
+                    <div style="flex:1; min-width:0;">
+                        <p class="activity-row__text"><strong>@u.FullName</strong></p>
+                        <p class="activity-row_time">@u.Role</p>
+                    </div>
+                </div>
+            }
+        }
+    </div>
 }
