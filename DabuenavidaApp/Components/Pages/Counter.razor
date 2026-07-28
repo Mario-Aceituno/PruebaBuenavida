@@ -1,126 +1,55 @@
-<div class="journey-context__route">
+/* ----------- Tab Gestión: jerarquía visual entre acciones ----------- */
 
-    @for (var i = 0; i < _journey.Count; i++)
-    {
-        var area = _journey[i];
-
-        <span class="journey-context__area
-            @(i == _journeyStepIndex ? "journey-context__area--active" : "")"
-              
-              @onclick="() => GoToJourneyStep(i)"
-              title="Paso @(i + 1): @area.AreaName">
-
-            @(i + 1). @area.AreaName
-
-        </span>
-
-
-        @if (i < _journey.Count - 1)
-        {
-            <Icon Name="chevron-right" />
-        }
-    }
-
-</div>
-
-
-
-
-
-
-.journey-context__area {
-    cursor: pointer;
-    transition:
-        transform .18s ease,
-        background .18s ease,
-        box-shadow .18s ease;
+/* Las acciones rápidas (asignar / cambiar estado) quedan más "livianas" */
+.management-grid .widget--quick .widget__title {
+    font-size: 13px;
+    color: var(--text-secondary);
 }
 
-
-.journey-context__area:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-sm);
+/* Transferir es la acción de mayor impacto: se separa del grid rápido
+   y se destaca con un borde de advertencia sutil */
+.widget--transfer {
+    border-left: 3px solid var(--warning-500, #e0a020);
+    padding-left: var(--space-4);
 }
 
-
-.journey-context__area--active {
-    transform: scale(1.04);
+.widget--transfer .widget__title {
+    color: var(--warning-600, #b8860b);
 }
 
-
-
-
-
-
-var isReturn = _journey.Take(i)
-    .Any(x => x.AreaName == area.AreaName);
-
-
-
-
-
-
-.journey-return {
-
-    margin-left:6px;
-
-    font-size:var(--fs-xs);
-
-    color:var(--text-tertiary);
-
-    font-weight:600;
-
+/* Separación clara entre el form de transferencia y el historial debajo */
+.widget--transfer + .widget {
+    margin-top: var(--space-6);
+    padding-top: var(--space-5);
+    border-top: 1px dashed var(--border-subtle, rgba(255,255,255,0.08));
 }
 
-
-
-
-
-.journey-modal__body {
-    animation-duration: .25s;
+/* Botón de transferir con más peso que los btn--secondary comunes */
+.btn--transfer {
+    background: var(--warning-500, #e0a020);
+    border-color: var(--warning-500, #e0a020);
+    color: #1a1a1a;
+    font-weight: 600;
+}
+.btn--transfer:hover:not(:disabled) {
+    filter: brightness(1.08);
+}
+.btn--transfer:disabled {
+    opacity: 0.5;
 }
 
-
-.journey-modal__body--next {
-    animation-name: journeySlideNext;
+/* Labels para los selects (accesibilidad) */
+.form-group__label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
 }
 
-
-.journey-modal__body--prev {
-    animation-name: journeySlidePrev;
+/* Historial de transferencias: filas más compactas y legibles */
+.widget--history .activity-row {
+    padding-block: 10px;
 }
-
-
-@keyframes journeySlideNext {
-
-    from {
-        opacity:0;
-        transform:translateX(20px);
-    }
-
-    to {
-        opacity:1;
-        transform:translateX(0);
-    }
-
+.widget--history .activity-row + .activity-row {
+    border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
 }
-
-
-@keyframes journeySlidePrev {
-
-    from {
-        opacity:0;
-        transform:translateX(-20px);
-    }
-
-    to {
-        opacity:1;
-        transform:translateX(0);
-    }
-
-}
-
-
-
-
-
