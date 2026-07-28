@@ -1,99 +1,17 @@
-/* ----------- Tab Gestión: jerarquía visual entre acciones ----------- */
-
-.gestion-tab .management-grid .widget--quick .widget__title {
-    font-size: 13px;
-    color: var(--text-secondary);
-}
-
-/* Transferir: card destacada con fondo tintado + badge de ícono */
-.gestion-tab .widget--transfer {
-    position: relative;
-    background: linear-gradient(135deg, rgba(238,0,0,0.16), rgba(238,0,0,0.05));
-    border: 2px solid rgba(238,0,0,0.45);
-    border-radius: var(--radius-lg, 12px);
-    padding: var(--space-5);
-    box-shadow: 0 2px 8px rgba(238,0,0,0.18);
-}
-
-.gestion-tab .widget--transfer .widget__title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 15px;
-    font-weight: 800;
-    color: #8a0000;
-    margin-bottom: var(--space-4);
-}
-
-/* Badge circular alrededor del ícono del título */
-.gestion-tab .widget--transfer .widget__title svg,
-.gestion-tab .widget--transfer .widget__title .icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    padding: 6px;
-    border-radius: var(--radius-full, 999px);
-    background: #EE0000;
-    color: #ffffff;
-    box-shadow: 0 2px 5px rgba(238,0,0,0.4);
-}
-
-.gestion-tab .widget--transfer .form-group {
-    margin-bottom: var(--space-4);
-}
-
-.gestion-tab .widget--transfer .form-group__label {
-    color: #6e1717;
-    font-weight: 700;
-}
-
-.gestion-tab .widget--transfer + .widget {
-    margin-top: var(--space-6);
-    padding-top: var(--space-5);
-    border-top: 1px dashed var(--border-subtle, rgba(255,255,255,0.08));
-}
-
-/* Botón Transferir: rojo sólido, con leve elevación al pasar el mouse */
-.gestion-tab .btn--transfer {
-    background: #EE0000;
-    border: none;
-    color: #ffffff;
-    font-weight: 700;
-    padding: 10px 22px;
-    border-radius: var(--radius-md, 8px);
-    box-shadow: 0 3px 8px rgba(238,0,0,0.4);
-    transition: transform var(--transition-fast, 0.15s), box-shadow var(--transition-fast, 0.15s), background 0.15s;
-}
-.gestion-tab .btn--transfer:hover:not(:disabled) {
-    background: #c40000;
-    transform: translateY(-1px);
-    box-shadow: 0 5px 12px rgba(238,0,0,0.5);
-}
-.gestion-tab .btn--transfer:active:not(:disabled) {
-    transform: translateY(0);
-    box-shadow: 0 1px 4px rgba(238,0,0,0.4);
-}
-.gestion-tab .btn--transfer:disabled {
-    background: #e88888;
-    color: #ffffff;
-    box-shadow: none;
-    opacity: 1;
-    cursor: not-allowed;
-}
-
-.gestion-tab .form-group__label {
-    display: block;
-    font-size: 12px;
-    color: var(--text-tertiary);
-    margin-bottom: 4px;
-}
-
-/* Historial: filas limpias, más legibles */
-.gestion-tab .widget--history .activity-row {
-    padding-block: 10px;
-}
-.gestion-tab .widget--history .activity-row + .activity-row {
-    border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+@if (_showConfirmModal)
+{
+    <div class="modal-overlay">
+        <div class="modal">
+            <div class="modal__header">
+                <h3>@_confirmTitle</h3>
+            </div>
+            <div class="modal__body">
+                <p>@_confirmMessage</p>
+            </div>
+            <div class="modal__footer">
+                <button class="btn btn--ghost btn--sm" @onclick="CloseConfirmModal">No, cancelar</button>
+                <button class="btn @_confirmButtonClass btn--sm" @onclick="ConfirmPendingAction">@_confirmButtonText</button>
+            </div>
+        </div>
+    </div>
 }
