@@ -1,17 +1,29 @@
-@if (_showConfirmModal)
+if (tagIds != null)
 {
-    <div class="modal-overlay">
-        <div class="modal">
-            <div class="modal__header">
-                <h3>@_confirmTitle</h3>
-            </div>
-            <div class="modal__body">
-                <p>@_confirmMessage</p>
-            </div>
-            <div class="modal__footer">
-                <button class="btn btn--ghost btn--sm" @onclick="CloseConfirmModal">No, cancelar</button>
-                <button class="btn @_confirmButtonClass btn--sm" @onclick="ConfirmPendingAction">@_confirmButtonText</button>
-            </div>
-        </div>
-    </div>
+    var incomingTags = tagIds.ToHashSet();
+
+    var existingTagLinks = await _db.ArticleTags
+        .Where(at => at.ArticleId == id)
+        .ToListAsync();
+
+    var toRemove = existingTagLinks
+        .Where(at => !incomingTags.Contains(at.TagId))
+        .ToList();
+
+    if (toRemove.Count > 0)
+    {
+        _db.ArticleTags.RemoveRange(toRemove);
+    }
+
+    var existingTagIds = existingTagLinks.Select(at => at.TagId).ToHashSet();
+    var newTags = incomingTags
+        .Except(existingTagIds)
+        .Select(tId => new ArticleTag { ArticleId = id, TagId = tId });
+
+    if (newTags.Any())
+    {
+        await _db.ArticleTags.AddRangeAsync(newTags);
+    }
+
+    await _db.SaveChangesAsync();
 }
