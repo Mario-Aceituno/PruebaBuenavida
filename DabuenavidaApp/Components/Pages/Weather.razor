@@ -1,34 +1,66 @@
-@inject NavigationManager Navigation
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f6f9; padding: 20px 10px; font-family: 'Segoe UI', Arial, sans-serif;">
+  <tr>
+    <td align="center">
+      <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+        
+        <!-- Encabezado / Header -->
+        <tr>
+          <td style="background-color: #911004; background: linear-gradient(135deg, #911004 0%, #c01300 100%); padding: 25px 30px; text-align: left;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 20px; font-weight: 600;">
+              Sistema de Cronogramas de Pago
+            </h1>
+            <p style="color: #f8fafc; margin: 5px 0 0 0; font-size: 13px;">
+              Notificación de Generación Exitosa
+            </p>
+          </td>
+        </tr>
 
-<div class="category-card card card--interactive" @onclick="NavigateToCategory">
-    @if (OnEdit.HasDelegate)
-    {
-        <button type="button" 
-                class="card-edit-btn" 
-                title="Editar categoría" 
-                @onclick="HandleEdit" 
-                @onclick:stopPropagation>
-            <Icon Name="pencil" />
-        </button>
-    }
+        <!-- Cuerpo / Body -->
+        <tr>
+          <td style="padding: 30px; color: #333333;">
+            <p style="margin: 0 0 15px 0; font-size: 15px; line-height: 1.5; color: #2c3e50;">
+              Estimado(a) usuario(a),
+            </p>
+            <p style="margin: 0 0 25px 0; font-size: 14px; line-height: 1.5; color: #555555;">
+              Le informamos que el proceso de generación de cronogramas de pago de préstamos ha finalizado correctamente. A continuación se detallan los datos del lote procesado:
+            </p>
 
-    <div class="category-card__icon style-init category-card__icon-dynamic" style="--user-cat-color: @Category.Color;">
-        <Icon Name="@Category.Icon" />
-    </div>
-    <div class="category-card__info">
-        <h4 class="category-card__name">@Category.Name</h4>
-        <p class="category-card__count">@Category.ArticlesCount artículos</p>
-    </div>
-</div>
+            <!-- Tabla de Detalles / Variables -->
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-bottom: 25px;">
+              <tr>
+                <td style="padding: 8px 10px; font-size: 13px; color: #64748b; font-weight: bold; width: 40%;">
+                  Nombre del Lote / Archivo:
+                </td>
+                <td style="padding: 8px 10px; font-size: 14px; color: #0f172a; font-weight: 600;">
+                  [ARCHIVO]
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 10px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; font-weight: bold;">
+                  Fecha de Generación:
+                </td>
+                <td style="padding: 8px 10px; border-top: 1px solid #e2e8f0; font-size: 14px; color: #0f172a; font-weight: 600;">
+                  [FECHA]
+                </td>
+              </tr>
+            </table>
 
-@code {
-    [Parameter, EditorRequired] public Category Category { get; set; } = default!;
-    [Parameter] public EventCallback<Category> OnEdit { get; set; }
+            <!-- Mensaje Informativo -->
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f0fdf4; border-left: 4px solid #22c55e; border-radius: 4px; margin-bottom: 20px;">
+              <tr>
+                <td style="padding: 12px 15px; font-size: 13px; color: #15803d;">
+                  ✔ El archivo generado ya se encuentra disponible para envío a la ruta compartida o para su descarga.
+                </td>
+              </tr>
+            </table>
 
-    private Task HandleEdit() => OnEdit.InvokeAsync(Category);
+            <p style="margin: 20px 0 0 0; font-size: 13px; color: #64748b; line-height: 1.4;">
+              Este es un mensaje generado automáticamente por el sistema, por favor no responda a este correo.
+            </p>
+          </td>
+        </tr>
 
-    private void NavigateToCategory()
-    {
-        Navigation.NavigateTo($"/categorias/{Category.Slug}");
-    }
-}
+      </table>
+    </td>
+  </tr>
+</table>
