@@ -1,31 +1,34 @@
-// Modificado a async Task para permitir interoperabilidad con JS
-private async Task OpenJourneyModal(int startIndex = 0)
-{
-    if (_journey.Count == 0) return;
-    
-    _journeyStepIndex = Math.Clamp(startIndex, 0, _journey.Count - 1);
-    _journeyStep = BuildAreaStory(_journey[_journeyStepIndex].AreaName);
-    _showJourneyModal = true;
+@inject NavigationManager Navigation
 
-    // 1. Mueve el scroll del navegador al inicio
-    await JSRuntime.InvokeVoidAsync("window.scrollTo", 0, 0);
+<div class="category-card card card--interactive" @onclick="NavigateToCategory">
+    @if (OnEdit.HasDelegate)
+    {
+        <button type="button" 
+                class="card-edit-btn" 
+                title="Editar categoría" 
+                @onclick="HandleEdit" 
+                @onclick:stopPropagation>
+            <Icon Name="pencil" />
+        </button>
+    }
 
-    // 2. Bloquea el scroll del body agregando la clase
-    await JSRuntime.InvokeVoidAsync("document.body.classList.add", "modal-open");
-}
+    <div class="category-card__icon style-init category-card__icon-dynamic" style="--user-cat-color: @Category.Color;">
+        <Icon Name="@Category.Icon" />
+    </div>
+    <div class="category-card__info">
+        <h4 class="category-card__name">@Category.Name</h4>
+        <p class="category-card__count">@Category.ArticlesCount artículos</p>
+    </div>
+</div>
 
-// Modificado a async Task para quitar la clase al cerrar
-private async Task CloseJourneyModal()
-{
-    _showJourneyModal = false;
+@code {
+    [Parameter, EditorRequired] public Category Category { get; set; } = default!;
+    [Parameter] public EventCallback<Category> OnEdit { get; set; }
 
-    // Devuelve el scroll a la página al cerrar
-    await JSRuntime.InvokeVoidAsync("document.body.classList.remove", "modal-open");
-}
+    private Task HandleEdit() => OnEdit.InvokeAsync(Category);
 
-// Modificado a async Task porque invoca a OpenJourneyModal
-private async Task OpenAreaModal(string areaName)
-{
-    var idx = _journey.FindIndex(j => j.AreaName == areaName);
-    await OpenJourneyModal(idx >= 0 ? idx : 0);
+    private void NavigateToCategory()
+    {
+        Navigation.NavigateTo($"/categorias/{Category.Slug}");
+    }
 }
