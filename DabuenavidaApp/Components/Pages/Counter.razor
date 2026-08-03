@@ -1,10 +1,113 @@
-// Al construir la URL pública devuelta en FileUploadResult:
-var relativePath = relativeFilePath.Replace("\\", "/");
+using CorpWiki.Application.DTOs;
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Infrastructure.Options;
+using Microsoft.Extensions.Options;
 
-// Si la ruta contiene wwwroot/, la limpiamos para el navegador
-if (relativePath.StartsWith("wwwroot/"))
+namespace CorpWiki.Infrastructure.Services;
+
+/// <summary>
+/// Implementación local para almacenamiento de archivos en el sistema de archivos del servidor (wwwroot).
+/// </summary>
+public class LocalFileStorageService : IFileStorageService
 {
-    relativePath = relativePath.Substring("wwwroot".Length);
-}
+    private readonly FileStorageOptions _options;
 
-var publicUrl = $"{_options.CdnBaseUrl.TrimEnd('/')}/{relativePath.TrimStart('/')}";
+    public LocalFileStorageService(IOptions<FileStorageOptions> options)
+    {
+        _options = options.Value;
+    }
+
+    public async Task<FileUploadResult> UploadAsync(FileUploadRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.FileStream == null || request.FileStream.Length == 0)
+        {
+            throw new ArgumentException("El archivo está vacío o no es válido.");
+        }
+
+        // 1. Validar extensión permitida
+        var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
+        if (_options.AllowedExtensions.Count > 0 && !_options.AllowedExtensions.Contains(extension))
+        {
+            throw new InvalidOperationException($"La extensión de archivo '{extension}' no está permitida.");
+        }
+
+        // 2. Validar tamaño máximo
+        if (request.Size > _options.MaxFileSizeInBytes)
+        {
+            throw new InvalidOperationException($"El archivo supera el tamaño máximo permitido ({_options.MaxFileSizeInBytes / (1024 * 1024)} MB).");
+        }
+
+        // 3. Generar un nombre único para evitar colisiones
+        var uniqueFileName = $"{Path.GetFileNameWithoutExtension(request.FileName)}_{Guid.NewGuid():N}{extension}";
+
+        // 4. Organizar en subcarpetas por fecha (ej: wwwroot/uploads/portadas/2026/08)
+        var folderCategory = string.IsNullOrWhiteSpace(request.Folder) ? "general" : request.Folder;
+        var datePath = Path.Combine(DateTime.UtcNow.ToString("yyyy"), DateTime.UtcNow.ToString("MM"));
+        
+        // Carpeta física completa donde se guardará en disco
+        var relativeFolderPath = Path.Combine(_options.LocalStoragePath, folderCategory, datePath);
+        var absoluteFolderPath = Path.Combine(Directory.GetCurrentDirectory(), relativeFolderPath);
+
+        if (!Directory.Exists(absoluteFolderPath))
+        {
+            Directory.CreateDirectory(absoluteFolderPath);
+        }
+
+        var absoluteFilePath = Path.Combine(absoluteFolderPath, uniqueFileName);
+
+        // 5. Guardar el archivo en el disco
+        await using (var destinationStream = new FileStream(absoluteFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            await request.FileStream.CopyToAsync(destinationStream, cancellationToken);
+        }
+
+        // 6. Construir la URL pública limpiando 'wwwroot' y formateando separadores
+        var relativePathForUrl = Path.Combine(folderCategory, datePath, uniqueFileName)
+                                    .Replace("\\", "/");
+
+        // Normalizar CdnBaseUrl quitando la barra final si existe
+        var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
+
+        // URL final accesible desde el navegador
+        // Ejemplo resultado: https://localhost:61108/uploads/portadas/2026/08/imagen_abc123.png
+        var publicUrl = $"{baseUrl}/uploads/{relativePathForUrl}";
+
+        return new FileUploadResult
+        {
+            PublicUrl = publicUrl,
+            StoredFileName = uniqueFileName,
+            ContentType = request.ContentType,
+            SizeInBytes = request.Size
+        };
+    }
+
+    public Task<bool> DeleteAsync(string fileUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(fileUrl))
+        {
+            return Task.FromResult(false);
+        }
+
+        try
+        {
+            // Extraer la ruta relativa desde la URL pública
+            var uri = new Uri(fileUrl);
+            var relativePath = uri.AbsolutePath.TrimStart('/'); // Ejemplo: "uploads/portadas/2026/08/foto.png"
+
+            var absoluteFilePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", relativePath);
+
+            if (File.Exists(absoluteFilePath))
+            {
+                File.Delete(absoluteFilePath);
+                return Task.FromResult(true);
+            }
+
+            return Task.FromResult(false);
+        }
+        catch
+        {
+            // Si la URL no tiene formato válido o falla la eliminación
+            return Task.FromResult(false);
+        }
+    }
+}
