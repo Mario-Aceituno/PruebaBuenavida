@@ -1,35 +1,96 @@
-namespace Infrastructure.Storage.Options;
+using Application.Common.Models;
+using Application.Interfaces;
+using Infrastructure.Storage.Options;
+using Microsoft.Extensions.Options;
+
+namespace Infrastructure.Storage.Services;
 
 /// <summary>
-/// Opciones de configuración para el almacenamiento de archivos.
-/// Mapea la sección "FileStorage" de appsettings.json.
+/// Implementación de IFileStorageService para desarrollo local:
+/// guarda los archivos en disco, dentro de wwwroot/uploads.
 /// </summary>
-public sealed class FileStorageOptions
+public sealed class LocalFileStorageService : IFileStorageService
 {
-    public const string SectionName = "FileStorage";
+    private readonly FileStorageOptions _options;
+
+    public LocalFileStorageService(IOptions<FileStorageOptions> options)
+    {
+        _options = options.Value;
+    }
+
+    public async Task<FileUploadResult> UploadAsync(
+        FileUploadRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var extension = Path.GetExtension(request.FileName);
+            var key = $"{Guid.NewGuid()}{extension}";
+
+            var targetFolder = Path.Combine(Directory.GetCurrentDirectory(), _options.LocalStoragePath);
+            if (!Directory.Exists(targetFolder))
+                Directory.CreateDirectory(targetFolder);
+
+            var filePath = Path.Combine(targetFolder, key);
+
+            await using var destination = new FileStream(filePath, FileMode.CreateNew);
+            await request.Content.CopyToAsync(destination, cancellationToken);
+
+            return FileUploadResult.Success(key);
+        }
+        catch (Exception ex)
+        {
+            return FileUploadResult.Failure(ex.Message);
+        }
+    }
+
+    public Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return Task.FromResult(false);
+
+        try
+        {
+            var filePath = ResolveSafePath(key);
+            if (!File.Exists(filePath))
+                return Task.FromResult(false);
+
+            File.Delete(filePath);
+            return Task.FromResult(true);
+        }
+        catch
+        {
+            return Task.FromResult(false);
+        }
+    }
+
+    public string GetPublicUrl(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return string.Empty;
+
+        if (key.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            key.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return key; // dato legado (ver TODO de migración, paso 1)
+
+        var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
+        return $"{baseUrl}/uploads/{key.TrimStart('/')}";
+    }
 
     /// <summary>
-    /// Proveedor activo: "Local" o "CloudflareR2" (u otro que se agregue después).
+    /// Resuelve la ruta física del archivo, garantizando que quede dentro
+    /// de la carpeta de almacenamiento configurada (previene path traversal).
     /// </summary>
-    public required string Provider { get; init; }
+    private string ResolveSafePath(string key)
+    {
+        var targetFolder = Path.GetFullPath(
+            Path.Combine(Directory.GetCurrentDirectory(), _options.LocalStoragePath));
 
-    /// <summary>
-    /// URL base pública desde la cual se sirven los archivos (CDN o localhost en dev).
-    /// </summary>
-    public required string CdnBaseUrl { get; init; }
+        var fullPath = Path.GetFullPath(Path.Combine(targetFolder, key));
 
-    /// <summary>
-    /// Ruta relativa en disco donde se guardan los archivos cuando Provider = "Local".
-    /// </summary>
-    public string LocalStoragePath { get; init; } = "wwwroot/uploads";
+        if (!fullPath.StartsWith(targetFolder, StringComparison.OrdinalIgnoreCase))
+            throw new UnauthorizedAccessException("Ruta de archivo fuera del área de almacenamiento permitida.");
 
-    public long MaxFileSizeInBytes { get; init; } = 20 * 1024 * 1024;
-
-    public string[] AllowedExtensions { get; init; } = [];
-
-    // --- Configuración específica de Cloudflare R2 / S3-compatible ---
-    public string? ServiceUrl { get; init; }
-    public string? AccessKey { get; init; }
-    public string? SecretKey { get; init; }
-    public string? BucketName { get; init; }
+        return fullPath;
+    }
 }
