@@ -1,15 +1,20 @@
-var updated = await Data.UpdateArticleAsync(
-    id: ArticleId,
-    title: _model.Title,
-    summary: _model.Summary,
-    categoryId: _model.CategoryId,
-    authorId: _model.AuthorId,
-    coverImageMediaId: null,
-    isFeatured: _model.IsFeatured,
-    status: status,
-    coverImageUrl: _model.CoverImageUrl, // <--- Correcto: coverImageUrl
-    content: _model.Content,
-    tagIds: _model.TagIds,
-    relatedArticleIds: null,
-    attachmentMediaIds: null
-);
+namespace Domain.ValueObjects;
+
+public sealed record StoredFileUrl
+{
+    public string Value { get; }
+
+    public StoredFileUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException("La URL del archivo no puede estar vacía.", nameof(value));
+
+        if (!Uri.IsWellFormedUriString(value, UriKind.Absolute))
+            throw new ArgumentException("La URL provista no tiene un formato absoluto válido.", nameof(value));
+
+        Value = value;
+    }
+
+    public static implicit operator string(StoredFileUrl fileUrl) => fileUrl.Value;
+    public override string ToString() => Value;
+}
