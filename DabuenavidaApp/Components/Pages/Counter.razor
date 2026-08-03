@@ -1,70 +1,10 @@
-<div class="form-row">
-    <div class="form-group">
-        <label class="form-label" for="art-cover">Portada del Artículo</label>
-        
-        <!-- Opción A: Subir archivo desde la PC -->
-        <div class="mb-2">
-            <InputFile OnChange="HandleCoverSelected" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.webp" />
-            @if (isUploadingCover)
-            {
-                <small class="text-primary">Subiendo portada...</small>
-            }
-        </div>
+// Al construir la URL pública devuelta en FileUploadResult:
+var relativePath = relativeFilePath.Replace("\\", "/");
 
-        <!-- Opción B: O pegar la URL manual como ya lo tenías -->
-        <input id="art-cover" class="input" type="text" @bind="_model.CoverImageUrl" placeholder="O pega una URL https://..." />
-
-        <!-- Vista previa rápida de la portada si ya existe una URL -->
-        @if (!string.IsNullOrWhiteSpace(_model.CoverImageUrl))
-        {
-            <div class="mt-2">
-                <img src="@_model.CoverImageUrl" alt="Vista previa" style="max-height: 100px; border-radius: 4px;" />
-            </div>
-        }
-    </div>
-</div>
-
-
-
-
-@code {
-    private bool isUploadingCover = false;
-
-    private async Task HandleCoverSelected(InputFileChangeEventArgs e)
-    {
-        isUploadingCover = true;
-        try
-        {
-            var file = e.File;
-            
-            // Límite de 5 MB para portadas, por ejemplo
-            long maxFileSize = 5 * 1024 * 1024; 
-
-            await using var stream = file.OpenReadStream(maxFileSize);
-
-            var request = new FileUploadRequest
-            {
-                FileStream = stream,
-                FileName = file.Name,
-                ContentType = file.ContentType,
-                Size = file.Size,
-                Folder = "portadas" // Se guardará en una subcarpeta organizada en tu almacenamiento
-            };
-
-            // Se ejecuta el servicio que sube el archivo local o a la nube
-            var result = await StorageService.UploadAsync(request);
-
-            // Asignamos la URL pública resultante directamente a tu modelo mapeado en la BD
-            _model.CoverImageUrl = result.PublicUrl;
-        }
-        catch (Exception ex)
-        {
-            // Opcional: Mostrar un Toast o mensaje de error
-            Console.WriteLine($"Error al subir la portada: {ex.Message}");
-        }
-        finally
-        {
-            isUploadingCover = false;
-        }
-    }
+// Si la ruta contiene wwwroot/, la limpiamos para el navegador
+if (relativePath.StartsWith("wwwroot/"))
+{
+    relativePath = relativePath.Substring("wwwroot".Length);
 }
+
+var publicUrl = $"{_options.CdnBaseUrl.TrimEnd('/')}/{relativePath.TrimStart('/')}";
