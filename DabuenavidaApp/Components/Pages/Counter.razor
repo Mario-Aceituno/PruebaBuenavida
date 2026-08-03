@@ -1,27 +1,44 @@
 using Application.Common.Models;
+using Application.Interfaces;
 
-namespace Application.Interfaces;
+namespace Application.UseCases.Files;
 
 /// <summary>
-/// Contrato para el servicio de almacenamiento de archivos (local, Cloudflare R2, S3, etc).
-/// Las implementaciones concretas viven en la capa de Infraestructura.
+/// Orquesta la subida de un archivo: valida tamaño y extensión permitida
+/// antes de delegar al IFileStorageService configurado.
 /// </summary>
-public interface IFileStorageService
+public sealed class UploadFileUseCase
 {
-    /// <summary>
-    /// Sube un archivo al storage configurado y devuelve la clave (key) generada.
-    /// </summary>
-    Task<FileUploadResult> UploadAsync(FileUploadRequest request, CancellationToken cancellationToken = default);
+    private readonly IFileStorageService _storageService;
+    private readonly long _maxFileSizeInBytes;
+    private readonly IReadOnlySet<string> _allowedExtensions;
 
-    /// <summary>
-    /// Elimina un archivo del storage a partir de su clave (key).
-    /// Devuelve false si la clave no existe o la eliminación falla.
-    /// </summary>
-    Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default);
+    public UploadFileUseCase(
+        IFileStorageService storageService,
+        long maxFileSizeInBytes,
+        IReadOnlySet<string> allowedExtensions)
+    {
+        _storageService = storageService;
+        _maxFileSizeInBytes = maxFileSizeInBytes;
+        _allowedExtensions = allowedExtensions;
+    }
 
-    /// <summary>
-    /// Resuelve la URL pública accesible desde la CDN a partir de una clave (key)
-    /// interna. Si el valor ya es una URL absoluta (datos legados), la devuelve tal cual.
-    /// </summary>
-    string GetPublicUrl(string? key);
+    public async Task<FileUploadResult> ExecuteAsync(
+        FileUploadRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.SizeInBytes <= 0)
+            return FileUploadResult.Failure("El archivo está vacío.");
+
+        if (request.SizeInBytes > _maxFileSizeInBytes)
+            return FileUploadResult.Failure(
+                $"El archivo excede el tamaño máximo permitido ({_maxFileSizeInBytes / (1024 * 1024)} MB).");
+
+        var extension = Path.GetExtension(request.FileName);
+        if (string.IsNullOrWhiteSpace(extension) || !_allowedExtensions.Contains(extension.ToLowerInvariant()))
+            return FileUploadResult.Failure(
+                $"Extensión de archivo no permitida: '{extension}'.");
+
+        return await _storageService.UploadAsync(request, cancellationToken);
+    }
 }
