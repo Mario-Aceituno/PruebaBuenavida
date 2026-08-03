@@ -1,49 +1,190 @@
-namespace CorpWiki.Application.DTOs;
+namespace CorpWiki.Infrastructure.Options;
 
-public class FileUploadRequest
+public class FileStorageOptions
 {
-    public required Stream FileStream { get; get; set; }
-    public required string FileName { get; set; }
-    public required string ContentType { get; set; }
-    public required long Size { get; set; }
-    
+    public const string SectionName = "FileStorage";
+
     /// <summary>
-    /// Carpeta o subdirectorio destino (ej: "incidencias", "articulos", "usuarios")
+    /// Tipo de proveedor a utilizar: "Local", "CloudflareR2", "S3", etc.
     /// </summary>
-    public string Folder { get; set; } = string.Empty;
+    public string Provider { get; set; } = "Local";
+
+    /// <summary>
+    /// URL base del CDN o servidor público. Ej: "https://cdn.midominio.com" o "https://localhost:7031"
+    /// </summary>
+    public string CdnBaseUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Ruta física donde se guardarán los archivos si se usa el proveedor "Local".
+    /// </summary>
+    public string LocalStoragePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Tamaño máximo permitido en Bytes (Por defecto: 20 MB).
+    /// </summary>
+    public long MaxFileSizeInBytes { get; set; } = 20 * 1024 * 1024;
+
+    /// <summary>
+    /// Lista de extensiones permitidas.
+    /// </summary>
+    public string[] AllowedExtensions { get; set; } = 
+    [
+        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".mp4", ".mp3", ".zip"
+    ];
+
+    // Configuración para Cloud Storage (Cloudflare R2 / AWS S3)
+    public string ServiceUrl { get; set; } = string.Empty;
+    public string AccessKey { get; set; } = string.Empty;
+    public string SecretKey { get; set; } = string.Empty;
+    public string BucketName { get; set; } = string.Empty;
 }
 
 
-
-namespace CorpWiki.Application.DTOs;
-
-public class FileUploadResult
-{
-    public required string PublicUrl { get; set; }
-    public required string UniqueFileName { get; set; }
-    public required string RelativePath { get; set; }
-}
 
 
 
 using CorpWiki.Application.DTOs;
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Infrastructure.Options;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
-namespace CorpWiki.Application.Interfaces;
+namespace CorpWiki.Infrastructure.Services;
 
-public interface IFileStorageService
+public class LocalFileStorageService : IFileStorageService
 {
-    /// <summary>
-    /// Sube un archivo al almacenamiento (Local o Nube) de forma asíncrona y segura.
-    /// </summary>
-    Task<FileUploadResult> UploadAsync(FileUploadRequest request, CancellationToken cancellationToken = default);
+    private readonly FileStorageOptions _options;
+    private readonly ILogger<LocalFileStorageService> _logger;
 
-    /// <summary>
-    /// Elimina un archivo utilizando su URL pública o su ruta relativa.
-    /// </summary>
-    Task<bool> DeleteAsync(string fileUrlOrRelativePath, CancellationToken cancellationToken = default);
+    public LocalFileStorageService(
+        IOptions<FileStorageOptions> options, 
+        ILogger<LocalFileStorageService> logger)
+    {
+        _options = options.Value;
+        _logger = logger;
+    }
 
-    /// <summary>
-    /// Genera la URL pública dada una ruta relativa.
-    /// </summary>
-    string GetPublicUrl(string relativePath);
+    public async Task<FileUploadResult> UploadAsync(FileUploadRequest request, CancellationToken cancellationToken = default)
+    {
+        ValidateFile(request);
+
+        var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
+        var rawFileName = Path.GetFileNameWithoutExtension(request.FileName);
+        
+        // Sanitizar el nombre para evitar caracteres no válidos o inseguros
+        var cleanFileName = SanitizeFileName(rawFileName);
+        
+        // Nombre único conservando la estructura del proyecto original
+        var uniqueFileName = $"{cleanFileName}_{Guid.NewGuid():N}{extension}";
+
+        // Estructura de carpetas: RUTA_BASE / FOLDER_DESTINO / AAAA / MM
+        var dateFolder = Path.Combine(DateTime.UtcNow.ToString("yyyy"), DateTime.UtcNow.ToString("MM"));
+        var relativeFolder = string.IsNullOrWhiteSpace(request.Folder) 
+            ? dateFolder 
+            : Path.Combine(request.Folder, dateFolder);
+
+        var targetPhysicalPath = Path.Combine(_options.LocalStoragePath, relativeFolder);
+
+        if (!Directory.Exists(targetPhysicalPath))
+        {
+            Directory.CreateDirectory(targetPhysicalPath);
+        }
+
+        var fullFilePath = Path.Combine(targetPhysicalPath, uniqueFileName);
+
+        _logger.LogInformation("Guardando archivo localmente en: {Path}", fullFilePath);
+
+        // Copia asíncrona optimizada por bloques (Stream)
+        await using (var destinationStream = new FileStream(
+            fullFilePath, 
+            FileMode.Create, 
+            FileAccess.Write, 
+            FileShare.None, 
+            bufferSize: 81920, 
+            useAsync: true))
+        {
+            await request.FileStream.CopyToAsync(destinationStream, cancellationToken);
+        }
+
+        var relativePath = Path.Combine(relativeFolder, uniqueFileName).Replace("\\", "/");
+        var publicUrl = GetPublicUrl(relativePath);
+
+        return new FileUploadResult
+        {
+            PublicUrl = publicUrl,
+            UniqueFileName = uniqueFileName,
+            RelativePath = relativePath
+        };
+    }
+
+    public Task<bool> DeleteAsync(string fileUrlOrRelativePath, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(fileUrlOrRelativePath))
+        {
+            return Task.FromResult(false);
+        }
+
+        try
+        {
+            var relativePath = ExtractRelativePath(fileUrlOrRelativePath);
+            var fullPath = Path.Combine(_options.LocalStoragePath, relativePath.Replace("/", Path.DirectorySeparatorChar.ToString()));
+
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+                _logger.LogInformation("Archivo eliminado correctamente: {Path}", fullPath);
+                return Task.FromResult(true);
+            }
+
+            _logger.LogWarning("No se encontró el archivo a eliminar en la ruta: {Path}", fullPath);
+            return Task.FromResult(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al eliminar el archivo: {Path}", fileUrlOrRelativePath);
+            return Task.FromResult(false);
+        }
+    }
+
+    public string GetPublicUrl(string relativePath)
+    {
+        var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
+        var cleanPath = relativePath.TrimStart('/');
+        return $"{baseUrl}/{cleanPath}";
+    }
+
+    private void ValidateFile(FileUploadRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Size > _options.MaxFileSizeInBytes)
+        {
+            var maxMb = _options.MaxFileSizeInBytes / (1024 * 1024);
+            throw new InvalidOperationException($"El archivo excede el tamaño máximo permitido ({maxMb} MB).");
+        }
+
+        var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
+        if (!_options.AllowedExtensions.Contains(extension))
+        {
+            throw new InvalidOperationException($"La extensión de archivo '{extension}' no está permitida.");
+        }
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var clean = new string(fileName.Where(c => !invalidChars.Contains(c)).ToArray());
+        return clean.Replace(" ", "_");
+    }
+
+    private static string ExtractRelativePath(string urlOrPath)
+    {
+        if (Uri.TryCreate(urlOrPath, UriKind.Absolute, out var uri))
+        {
+            return uri.AbsolutePath.TrimStart('/');
+        }
+        return urlOrPath;
+    }
 }
