@@ -1,29 +1,49 @@
-if (tagIds != null)
+namespace CorpWiki.Application.DTOs;
+
+public class FileUploadRequest
 {
-    var incomingTags = tagIds.ToHashSet();
+    public required Stream FileStream { get; get; set; }
+    public required string FileName { get; set; }
+    public required string ContentType { get; set; }
+    public required long Size { get; set; }
+    
+    /// <summary>
+    /// Carpeta o subdirectorio destino (ej: "incidencias", "articulos", "usuarios")
+    /// </summary>
+    public string Folder { get; set; } = string.Empty;
+}
 
-    var existingTagLinks = await _db.ArticleTags
-        .Where(at => at.ArticleId == id)
-        .ToListAsync();
 
-    var toRemove = existingTagLinks
-        .Where(at => !incomingTags.Contains(at.TagId))
-        .ToList();
 
-    if (toRemove.Count > 0)
-    {
-        _db.ArticleTags.RemoveRange(toRemove);
-    }
+namespace CorpWiki.Application.DTOs;
 
-    var existingTagIds = existingTagLinks.Select(at => at.TagId).ToHashSet();
-    var newTags = incomingTags
-        .Except(existingTagIds)
-        .Select(tId => new ArticleTag { ArticleId = id, TagId = tId });
+public class FileUploadResult
+{
+    public required string PublicUrl { get; set; }
+    public required string UniqueFileName { get; set; }
+    public required string RelativePath { get; set; }
+}
 
-    if (newTags.Any())
-    {
-        await _db.ArticleTags.AddRangeAsync(newTags);
-    }
 
-    await _db.SaveChangesAsync();
+
+using CorpWiki.Application.DTOs;
+
+namespace CorpWiki.Application.Interfaces;
+
+public interface IFileStorageService
+{
+    /// <summary>
+    /// Sube un archivo al almacenamiento (Local o Nube) de forma asíncrona y segura.
+    /// </summary>
+    Task<FileUploadResult> UploadAsync(FileUploadRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Elimina un archivo utilizando su URL pública o su ruta relativa.
+    /// </summary>
+    Task<bool> DeleteAsync(string fileUrlOrRelativePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Genera la URL pública dada una ruta relativa.
+    /// </summary>
+    string GetPublicUrl(string relativePath);
 }
