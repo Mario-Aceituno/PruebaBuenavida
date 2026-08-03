@@ -1,24 +1,35 @@
-using Application.Interfaces;
-
-namespace Application.UseCases.Files;
+namespace Infrastructure.Storage.Options;
 
 /// <summary>
-/// Orquesta la eliminación de un archivo del storage configurado.
+/// Opciones de configuración para el almacenamiento de archivos.
+/// Mapea la sección "FileStorage" de appsettings.json.
 /// </summary>
-public sealed class DeleteFileUseCase
+public sealed class FileStorageOptions
 {
-    private readonly IFileStorageService _storageService;
+    public const string SectionName = "FileStorage";
 
-    public DeleteFileUseCase(IFileStorageService storageService)
-    {
-        _storageService = storageService;
-    }
+    /// <summary>
+    /// Proveedor activo: "Local" o "CloudflareR2" (u otro que se agregue después).
+    /// </summary>
+    public required string Provider { get; init; }
 
-    public async Task<bool> ExecuteAsync(string? key, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(key))
-            return false;
+    /// <summary>
+    /// URL base pública desde la cual se sirven los archivos (CDN o localhost en dev).
+    /// </summary>
+    public required string CdnBaseUrl { get; init; }
 
-        return await _storageService.DeleteAsync(key, cancellationToken);
-    }
+    /// <summary>
+    /// Ruta relativa en disco donde se guardan los archivos cuando Provider = "Local".
+    /// </summary>
+    public string LocalStoragePath { get; init; } = "wwwroot/uploads";
+
+    public long MaxFileSizeInBytes { get; init; } = 20 * 1024 * 1024;
+
+    public string[] AllowedExtensions { get; init; } = [];
+
+    // --- Configuración específica de Cloudflare R2 / S3-compatible ---
+    public string? ServiceUrl { get; init; }
+    public string? AccessKey { get; init; }
+    public string? SecretKey { get; init; }
+    public string? BucketName { get; init; }
 }
