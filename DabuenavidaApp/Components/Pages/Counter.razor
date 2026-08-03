@@ -1,132 +1,33 @@
-using CorpWiki.Application.DTOs;
-using CorpWiki.Application.Interfaces;
-using CorpWiki.Infrastructure.Options;
-using Microsoft.Extensions.Options;
-
-namespace CorpWiki.Infrastructure.Services;
-
-/// <summary>
-/// Implementación local para almacenamiento de archivos en el sistema de archivos del servidor (wwwroot).
-/// </summary>
-public class LocalFileStorageService : IFileStorageService
+private async Task Save()
 {
-    private readonly FileStorageOptions _options;
-
-    public LocalFileStorageService(IOptions<FileStorageOptions> options)
+    if (string.IsNullOrWhiteSpace(_model.Title) || string.IsNullOrWhiteSpace(_model.Summary))
     {
-        _options = options.Value;
+        _error = "El título y el resumen son obligatorios.";
+        return;
     }
 
-    public async Task<FileUploadResult> UploadAsync(FileUploadRequest request, CancellationToken cancellationToken = default)
+    var status = Enum.TryParse<ArticleStatus>(_model.Status, out var parsedStatus) 
+        ? parsedStatus 
+        : ArticleStatus.Draft;
+
+    var updated = await Data.UpdateArticleAsync(
+        id: ArticleId,
+        title: _model.Title,
+        summary: _model.Summary,
+        categoryId: _model.CategoryId,
+        authorId: _model.AuthorId,
+        coverImageMediaId: _model.CoverImageMediaId,
+        isFeatured: _model.IsFeatured,
+        status: status,
+        coverImageUrl: _model.CoverImageUrl, // <-- Pasamos directamente la propiedad por nombre
+        content: _model.Content,
+        tagIds: _model.TagIds,
+        relatedArticleIds: null,
+        attachmentMediaIds: null
+    );
+
+    if (updated != null)
     {
-        if (request.FileStream == null || request.FileStream.Length == 0)
-        {
-            throw new ArgumentException("El archivo está vacío o no es válido.");
-        }
-
-        // 1. Validar extensión permitida (Uso de .Any() de System.Linq)
-        var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
-        if (_options.AllowedExtensions != null && _options.AllowedExtensions.Any() && !_options.AllowedExtensions.Contains(extension))
-        {
-            throw new InvalidOperationException($"La extensión de archivo '{extension}' no está permitida.");
-        }
-
-        // 2. Validar tamaño máximo
-        if (request.Size > _options.MaxFileSizeInBytes)
-        {
-            throw new InvalidOperationException($"El archivo supera el tamaño máximo permitido ({_options.MaxFileSizeInBytes / (1024 * 1024)} MB).");
-        }
-
-        // 3. Generar nombre único
-        var uniqueFileName = $"{Path.GetFileNameWithoutExtension(request.FileName)}_{Guid.NewGuid():N}{extension}";
-
-        // 4. Organizar subcarpeta
-        var folderCategory = string.IsNullOrWhiteSpace(request.Folder) ? "general" : request.Folder;
-        var datePath = Path.Combine(DateTime.UtcNow.ToString("yyyy"), DateTime.UtcNow.ToString("MM"));
-        
-        var relativeFolderPath = Path.Combine(_options.LocalStoragePath, folderCategory, datePath);
-        var absoluteFolderPath = Path.Combine(Directory.GetCurrentDirectory(), relativeFolderPath);
-
-        if (!Directory.Exists(absoluteFolderPath))
-        {
-            Directory.CreateDirectory(absoluteFolderPath);
-        }
-
-        var absoluteFilePath = Path.Combine(absoluteFolderPath, uniqueFileName);
-
-        // 5. Guardar el archivo físicamente
-        await using (var destinationStream = new FileStream(absoluteFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
-        {
-            await request.FileStream.CopyToAsync(destinationStream, cancellationToken);
-        }
-
-        // 6. Construir ruta relativa limpia
-        var relativePath = Path.Combine("uploads", folderCategory, datePath, uniqueFileName)
-                               .Replace("\\", "/");
-
-        var publicUrl = GetPublicUrl(relativePath);
-
-        return new FileUploadResult
-        {
-            PublicUrl = publicUrl,
-            UniqueFileName = uniqueFileName,
-            RelativePath = relativePath
-        };
-    }
-
-    public string GetPublicUrl(string relativePath)
-    {
-        if (string.IsNullOrWhiteSpace(relativePath))
-        {
-            return string.Empty;
-        }
-
-        if (relativePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
-            relativePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            return relativePath;
-        }
-
-        var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
-        var cleanPath = relativePath.TrimStart('/');
-
-        if (cleanPath.StartsWith("wwwroot/", StringComparison.OrdinalIgnoreCase))
-        {
-            cleanPath = cleanPath.Substring("wwwroot/".Length);
-        }
-
-        return $"{baseUrl}/{cleanPath}";
-    }
-
-    public Task<bool> DeleteAsync(string fileUrl, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(fileUrl))
-        {
-            return Task.FromResult(false);
-        }
-
-        try
-        {
-            string relativePath = fileUrl;
-
-            if (Uri.TryCreate(fileUrl, UriKind.Absolute, out var uri))
-            {
-                relativePath = uri.AbsolutePath.TrimStart('/');
-            }
-
-            var absoluteFilePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", relativePath);
-
-            if (File.Exists(absoluteFilePath))
-            {
-                File.Delete(absoluteFilePath);
-                return Task.FromResult(true);
-            }
-
-            return Task.FromResult(false);
-        }
-        catch
-        {
-            return Task.FromResult(false);
-        }
+        Nav.NavigateTo($"/articulo/{updated.Id}");
     }
 }
