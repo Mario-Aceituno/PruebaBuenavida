@@ -24,9 +24,9 @@ public class LocalFileStorageService : IFileStorageService
             throw new ArgumentException("El archivo está vacío o no es válido.");
         }
 
-        // 1. Validar extensión permitida
+        // 1. Validar extensión permitida (Uso de .Any() de System.Linq)
         var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
-        if (_options.AllowedExtensions != null && _options.AllowedExtensions.Count > 0 && !_options.AllowedExtensions.Contains(extension))
+        if (_options.AllowedExtensions != null && _options.AllowedExtensions.Any() && !_options.AllowedExtensions.Contains(extension))
         {
             throw new InvalidOperationException($"La extensión de archivo '{extension}' no está permitida.");
         }
@@ -37,14 +37,13 @@ public class LocalFileStorageService : IFileStorageService
             throw new InvalidOperationException($"El archivo supera el tamaño máximo permitido ({_options.MaxFileSizeInBytes / (1024 * 1024)} MB).");
         }
 
-        // 3. Generar un nombre único para evitar colisiones
+        // 3. Generar nombre único
         var uniqueFileName = $"{Path.GetFileNameWithoutExtension(request.FileName)}_{Guid.NewGuid():N}{extension}";
 
         // 4. Organizar subcarpeta
         var folderCategory = string.IsNullOrWhiteSpace(request.Folder) ? "general" : request.Folder;
         var datePath = Path.Combine(DateTime.UtcNow.ToString("yyyy"), DateTime.UtcNow.ToString("MM"));
         
-        // Estructura de carpetas en disco
         var relativeFolderPath = Path.Combine(_options.LocalStoragePath, folderCategory, datePath);
         var absoluteFolderPath = Path.Combine(Directory.GetCurrentDirectory(), relativeFolderPath);
 
@@ -55,13 +54,13 @@ public class LocalFileStorageService : IFileStorageService
 
         var absoluteFilePath = Path.Combine(absoluteFolderPath, uniqueFileName);
 
-        // 5. Guardar el archivo en el disco
+        // 5. Guardar el archivo físicamente
         await using (var destinationStream = new FileStream(absoluteFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
         {
             await request.FileStream.CopyToAsync(destinationStream, cancellationToken);
         }
 
-        // 6. Construir ruta relativa limpia para la URL (ej: uploads/portadas/2026/08/imagen_guid.png)
+        // 6. Construir ruta relativa limpia
         var relativePath = Path.Combine("uploads", folderCategory, datePath, uniqueFileName)
                                .Replace("\\", "/");
 
@@ -82,7 +81,6 @@ public class LocalFileStorageService : IFileStorageService
             return string.Empty;
         }
 
-        // Si ya es una URL absoluta HTTP/HTTPS, la retornamos tal cual
         if (relativePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
             relativePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
@@ -92,7 +90,6 @@ public class LocalFileStorageService : IFileStorageService
         var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
         var cleanPath = relativePath.TrimStart('/');
 
-        // Si por alguna razón la ruta trae 'wwwroot/', la removemos para la URL pública
         if (cleanPath.StartsWith("wwwroot/", StringComparison.OrdinalIgnoreCase))
         {
             cleanPath = cleanPath.Substring("wwwroot/".Length);
@@ -112,7 +109,6 @@ public class LocalFileStorageService : IFileStorageService
         {
             string relativePath = fileUrl;
 
-            // Extraer la ruta relativa si se pasa la URL completa
             if (Uri.TryCreate(fileUrl, UriKind.Absolute, out var uri))
             {
                 relativePath = uri.AbsolutePath.TrimStart('/');
