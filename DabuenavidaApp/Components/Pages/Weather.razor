@@ -1,1 +1,76 @@
-<p style="color: #c01300; font-weight: bold;">Prueba de plantilla de correo</p>
+1
+--------------------
+var claims = new List<Claim>
+{
+    new(ClaimTypes.NameIdentifier, authResult.User.Id.ToString()),
+    new(ClaimTypes.Name, !string.IsNullOrEmpty(authResult.User.FullName) ? authResult.User.FullName : authResult.User.Username),
+    new("FullName", authResult.User.FullName ?? string.Empty),
+    new("PeopleSoftId", authResult.User.PeopleSoftId ?? string.Empty),
+    new("Email", authResult.User.Email ?? string.Empty),
+    new("Department", authResult.User.Department ?? string.Empty),
+    new("Position", authResult.User.Position ?? string.Empty)
+};
+
+foreach (var role in authResult.Roles)
+{
+    claims.Add(new Claim(ClaimTypes.Role, role));
+}
+
+
+----------------
+2
+----------------
+// Al realizar la consulta LDAP:
+searchRequest.Attributes.Add("displayName");
+searchRequest.Attributes.Add("mail");
+searchRequest.Attributes.Add("title");
+searchRequest.Attributes.Add("department");
+
+// Al mapear la respuesta del AD:
+string fullName = entry.Attributes["displayName"]?[0]?.ToString() ?? username;
+string email = entry.Attributes["mail"]?[0]?.ToString() ?? "";
+string position = entry.Attributes["title"]?[0]?.ToString() ?? "";
+string department = entry.Attributes["department"]?[0]?.ToString() ?? "";
+
+return AdValidationResult.Success(fullName, email, department, position);
+
+
+------------
+3
+------------
+// Ejemplo al auto-provisionar o actualizar el usuario en base de datos:
+var adResult = await _adValidator.ValidateAsync(username, password, peopleSoftId);
+
+if (adResult.IsValid)
+{
+    var user = await _userRepository.GetByUsernameAsync(username);
+    if (user == null)
+    {
+        user = new SecurityUser { Username = username };
+    }
+
+    // AQUÍ ES DONDE SE ACTUALIZAN LOS DATOS DEL AD
+    user.FullName = adResult.FullName;
+    user.Email = adResult.Email;
+    user.Department = adResult.Department;
+    user.Position = adResult.Position;
+    user.PeopleSoftId = peopleSoftId;
+    user.LastLoginAt = DateTime.UtcNow;
+
+    await _userRepository.SaveAsync(user);
+}
+
+
+
+----------
+4
+----------
+public static string ObtenerIniciales(string nombreCompleto)
+{
+    if (string.IsNullOrWhiteSpace(nombreCompleto)) return "U";
+
+    var partes = nombreCompleto.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    if (partes.Length == 1) return partes[0][..1].ToUpper();
+    
+    return $"{partes[0][0]}{partes[1][0]}".ToUpper();
+}
