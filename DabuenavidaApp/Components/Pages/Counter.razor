@@ -1,34 +1,27 @@
-namespace Domain.ValueObjects;
+namespace Application.Common.Models;
 
 /// <summary>
-/// Representa la clave interna (key) de un archivo almacenado en el storage
-/// configurado (local, R2, S3, etc). Nunca contiene una URL absoluta:
-/// la resolución a URL pública es responsabilidad de la capa de Infraestructura
-/// (IFileStorageService.GetPublicUrl).
+/// Categorías fijas de almacenamiento. Cada una mapea a una subcarpeta/prefijo
+/// controlado por la capa de infraestructura, nunca por input externo directo.
+/// Evita que un caller pueda inyectar rutas arbitrarias vía un string de carpeta.
 /// </summary>
-public sealed record StoredFileUrl
+public enum FileCategory
 {
-    public string Value { get; }
+    ArticleCover,
+    ArticleAttachment,
+    UserAvatar
+}
 
-    public StoredFileUrl(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            throw new ArgumentException("La clave del archivo no puede estar vacía.", nameof(value));
+namespace Application.Common.Models;
 
-        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException(
-                "StoredFileUrl representa una clave interna del storage, no una URL absoluta.",
-                nameof(value));
-
-        if (value.Contains("..") || value.StartsWith('/') || value.StartsWith('\\'))
-            throw new ArgumentException(
-                "La clave del archivo contiene segmentos de ruta inválidos o inseguros.",
-                nameof(value));
-
-        Value = value.Trim();
-    }
-
-    public static implicit operator string(StoredFileUrl fileUrl) => fileUrl.Value;
-    public override string ToString() => Value;
+/// <summary>
+/// Encapsula los datos necesarios para subir un archivo al storage configurado.
+/// </summary>
+public sealed record FileUploadRequest
+{
+    public required Stream Content { get; init; }
+    public required string FileName { get; init; }
+    public required string ContentType { get; init; }
+    public required long SizeInBytes { get; init; }
+    public required FileCategory Category { get; init; }
 }
