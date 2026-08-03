@@ -1,50 +1,5 @@
-namespace CorpWiki.Infrastructure.Options;
-
-public class FileStorageOptions
-{
-    public const string SectionName = "FileStorage";
-
-    /// <summary>
-    /// Tipo de proveedor a utilizar: "Local", "CloudflareR2", "S3", etc.
-    /// </summary>
-    public string Provider { get; set; } = "Local";
-
-    /// <summary>
-    /// URL base del CDN o servidor público. Ej: "https://cdn.midominio.com" o "https://localhost:7031"
-    /// </summary>
-    public string CdnBaseUrl { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Ruta física donde se guardarán los archivos si se usa el proveedor "Local".
-    /// </summary>
-    public string LocalStoragePath { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Tamaño máximo permitido en Bytes (Por defecto: 20 MB).
-    /// </summary>
-    public long MaxFileSizeInBytes { get; set; } = 20 * 1024 * 1024;
-
-    /// <summary>
-    /// Lista de extensiones permitidas.
-    /// </summary>
-    public string[] AllowedExtensions { get; set; } = 
-    [
-        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
-        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-        ".mp4", ".mp3", ".zip"
-    ];
-
-    // Configuración para Cloud Storage (Cloudflare R2 / AWS S3)
-    public string ServiceUrl { get; set; } = string.Empty;
-    public string AccessKey { get; set; } = string.Empty;
-    public string SecretKey { get; set; } = string.Empty;
-    public string BucketName { get; set; } = string.Empty;
-}
-
-
-
-
-
+using Amazon.S3;
+using Amazon.S3.Model;
 using CorpWiki.Application.DTOs;
 using CorpWiki.Application.Interfaces;
 using CorpWiki.Infrastructure.Options;
@@ -53,14 +8,14 @@ using Microsoft.Extensions.Options;
 
 namespace CorpWiki.Infrastructure.Services;
 
-public class LocalFileStorageService : IFileStorageService
+public class CloudflareR2StorageService : IFileStorageService
 {
     private readonly FileStorageOptions _options;
-    private readonly ILogger<LocalFileStorageService> _logger;
+    private readonly ILogger<CloudflareR2StorageService> _logger;
 
-    public LocalFileStorageService(
-        IOptions<FileStorageOptions> options, 
-        ILogger<LocalFileStorageService> logger)
+    public CloudflareR2StorageService(
+        IOptions<FileStorageOptions> options,
+        ILogger<CloudflareR2StorageService> logger)
     {
         _options = options.Value;
         _logger = logger;
@@ -72,79 +27,63 @@ public class LocalFileStorageService : IFileStorageService
 
         var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
         var rawFileName = Path.GetFileNameWithoutExtension(request.FileName);
-        
-        // Sanitizar el nombre para evitar caracteres no válidos o inseguros
         var cleanFileName = SanitizeFileName(rawFileName);
-        
-        // Nombre único conservando la estructura del proyecto original
         var uniqueFileName = $"{cleanFileName}_{Guid.NewGuid():N}{extension}";
 
-        // Estructura de carpetas: RUTA_BASE / FOLDER_DESTINO / AAAA / MM
-        var dateFolder = Path.Combine(DateTime.UtcNow.ToString("yyyy"), DateTime.UtcNow.ToString("MM"));
-        var relativeFolder = string.IsNullOrWhiteSpace(request.Folder) 
-            ? dateFolder 
-            : Path.Combine(request.Folder, dateFolder);
+        // Estructura de carpetas en el Bucket: FOLDER/AAAA/MM/archivo.ext
+        var dateFolder = $"{DateTime.UtcNow:yyyy}/{DateTime.UtcNow:MM}";
+        var relativeKey = string.IsNullOrWhiteSpace(request.Folder)
+            ? $"{dateFolder}/{uniqueFileName}"
+            : $"{request.Folder}/{dateFolder}/{uniqueFileName}";
 
-        var targetPhysicalPath = Path.Combine(_options.LocalStoragePath, relativeFolder);
+        using var client = CreateS3Client();
 
-        if (!Directory.Exists(targetPhysicalPath))
+        var putRequest = new PutObjectRequest
         {
-            Directory.CreateDirectory(targetPhysicalPath);
-        }
+            BucketName = _options.BucketName,
+            Key = relativeKey,
+            InputStream = request.FileStream,
+            ContentType = request.ContentType,
+            DisablePayloadSigning = true // Requerido para compatibilidad estricta con R2
+        };
 
-        var fullFilePath = Path.Combine(targetPhysicalPath, uniqueFileName);
+        _logger.LogInformation("Subiendo archivo a Cloud Storage (R2/S3): {Key}", relativeKey);
+        await client.PutObjectAsync(putRequest, cancellationToken);
 
-        _logger.LogInformation("Guardando archivo localmente en: {Path}", fullFilePath);
-
-        // Copia asíncrona optimizada por bloques (Stream)
-        await using (var destinationStream = new FileStream(
-            fullFilePath, 
-            FileMode.Create, 
-            FileAccess.Write, 
-            FileShare.None, 
-            bufferSize: 81920, 
-            useAsync: true))
-        {
-            await request.FileStream.CopyToAsync(destinationStream, cancellationToken);
-        }
-
-        var relativePath = Path.Combine(relativeFolder, uniqueFileName).Replace("\\", "/");
-        var publicUrl = GetPublicUrl(relativePath);
+        var publicUrl = GetPublicUrl(relativeKey);
 
         return new FileUploadResult
         {
             PublicUrl = publicUrl,
             UniqueFileName = uniqueFileName,
-            RelativePath = relativePath
+            RelativePath = relativeKey
         };
     }
 
-    public Task<bool> DeleteAsync(string fileUrlOrRelativePath, CancellationToken cancellationToken = default)
+    public async Task<bool> DeleteAsync(string fileUrlOrRelativePath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(fileUrlOrRelativePath))
-        {
-            return Task.FromResult(false);
-        }
+            return false;
 
         try
         {
-            var relativePath = ExtractRelativePath(fileUrlOrRelativePath);
-            var fullPath = Path.Combine(_options.LocalStoragePath, relativePath.Replace("/", Path.DirectorySeparatorChar.ToString()));
+            var key = ExtractKey(fileUrlOrRelativePath);
+            using var client = CreateS3Client();
 
-            if (File.Exists(fullPath))
+            var deleteRequest = new DeleteObjectRequest
             {
-                File.Delete(fullPath);
-                _logger.LogInformation("Archivo eliminado correctamente: {Path}", fullPath);
-                return Task.FromResult(true);
-            }
+                BucketName = _options.BucketName,
+                Key = key
+            };
 
-            _logger.LogWarning("No se encontró el archivo a eliminar en la ruta: {Path}", fullPath);
-            return Task.FromResult(false);
+            await client.DeleteObjectAsync(deleteRequest, cancellationToken);
+            _logger.LogInformation("Archivo eliminado de Cloud Storage: {Key}", key);
+            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error al eliminar el archivo: {Path}", fileUrlOrRelativePath);
-            return Task.FromResult(false);
+            _logger.LogError(ex, "Error al eliminar archivo de Cloud Storage: {Path}", fileUrlOrRelativePath);
+            return false;
         }
     }
 
@@ -153,6 +92,17 @@ public class LocalFileStorageService : IFileStorageService
         var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
         var cleanPath = relativePath.TrimStart('/');
         return $"{baseUrl}/{cleanPath}";
+    }
+
+    private AmazonS3Client CreateS3Client()
+    {
+        var config = new AmazonS3Config
+        {
+            ServiceURL = _options.ServiceUrl,
+            ForcePathStyle = true
+        };
+
+        return new AmazonS3Client(_options.AccessKey, _options.SecretKey, config);
     }
 
     private void ValidateFile(FileUploadRequest request)
@@ -179,12 +129,65 @@ public class LocalFileStorageService : IFileStorageService
         return clean.Replace(" ", "_");
     }
 
-    private static string ExtractRelativePath(string urlOrPath)
+    private static string ExtractKey(string urlOrPath)
     {
         if (Uri.TryCreate(urlOrPath, UriKind.Absolute, out var uri))
         {
             return uri.AbsolutePath.TrimStart('/');
         }
-        return urlOrPath;
+        return urlOrPath.TrimStart('/');
+    }
+}
+
+
+
+
+
+{
+  "FileStorage": {
+    "Provider": "Local",
+    "CdnBaseUrl": "https://localhost:7031",
+    "LocalStoragePath": "wwwroot/uploads",
+    "MaxFileSizeInBytes": 20971520,
+    "AllowedExtensions": [ ".jpg", ".jpeg", ".png", ".gif", ".pdf", ".docx", ".xlsx", ".zip" ],
+    
+    "ServiceUrl": "https://<ACCOUNT_ID>.r2.cloudflarestorage.com",
+    "AccessKey": "<TU_ACCESS_KEY>",
+    "SecretKey": "<TU_SECRET_KEY>",
+    "BucketName": "corpwiki-media"
+  }
+}
+
+
+
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Infrastructure.Options;
+using CorpWiki.Infrastructure.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace CorpWiki.Infrastructure;
+
+public static class InfrastructureServiceExtensions
+{
+    public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
+    {
+        // 1. Configurar las opciones desde appsettings.json
+        services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
+
+        // 2. Registrar el servicio según el proveedor seleccionado ("Local" o "CloudflareR2")
+        var provider = configuration.GetSection($"{FileStorageOptions.SectionName}:Provider").Value;
+
+        if (string.Equals(provider, "CloudflareR2", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(provider, "S3", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddScoped<IFileStorageService, CloudflareR2StorageService>();
+        }
+        else
+        {
+            services.AddScoped<IFileStorageService, LocalFileStorageService>();
+        }
+
+        return services;
     }
 }
