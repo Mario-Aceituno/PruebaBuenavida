@@ -1,44 +1,24 @@
-using Application.Common.Models;
 using Application.Interfaces;
 
 namespace Application.UseCases.Files;
 
 /// <summary>
-/// Orquesta la subida de un archivo: valida tamaño y extensión permitida
-/// antes de delegar al IFileStorageService configurado.
+/// Orquesta la eliminación de un archivo del storage configurado.
 /// </summary>
-public sealed class UploadFileUseCase
+public sealed class DeleteFileUseCase
 {
     private readonly IFileStorageService _storageService;
-    private readonly long _maxFileSizeInBytes;
-    private readonly IReadOnlySet<string> _allowedExtensions;
 
-    public UploadFileUseCase(
-        IFileStorageService storageService,
-        long maxFileSizeInBytes,
-        IReadOnlySet<string> allowedExtensions)
+    public DeleteFileUseCase(IFileStorageService storageService)
     {
         _storageService = storageService;
-        _maxFileSizeInBytes = maxFileSizeInBytes;
-        _allowedExtensions = allowedExtensions;
     }
 
-    public async Task<FileUploadResult> ExecuteAsync(
-        FileUploadRequest request,
-        CancellationToken cancellationToken = default)
+    public async Task<bool> ExecuteAsync(string? key, CancellationToken cancellationToken = default)
     {
-        if (request.SizeInBytes <= 0)
-            return FileUploadResult.Failure("El archivo está vacío.");
+        if (string.IsNullOrWhiteSpace(key))
+            return false;
 
-        if (request.SizeInBytes > _maxFileSizeInBytes)
-            return FileUploadResult.Failure(
-                $"El archivo excede el tamaño máximo permitido ({_maxFileSizeInBytes / (1024 * 1024)} MB).");
-
-        var extension = Path.GetExtension(request.FileName);
-        if (string.IsNullOrWhiteSpace(extension) || !_allowedExtensions.Contains(extension.ToLowerInvariant()))
-            return FileUploadResult.Failure(
-                $"Extensión de archivo no permitida: '{extension}'.");
-
-        return await _storageService.UploadAsync(request, cancellationToken);
+        return await _storageService.DeleteAsync(key, cancellationToken);
     }
 }
