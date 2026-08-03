@@ -1,33 +1,15 @@
-private async Task Save()
-{
-    if (string.IsNullOrWhiteSpace(_model.Title) || string.IsNullOrWhiteSpace(_model.Summary))
-    {
-        _error = "El título y el resumen son obligatorios.";
-        return;
-    }
-
-    var status = Enum.TryParse<ArticleStatus>(_model.Status, out var parsedStatus) 
-        ? parsedStatus 
-        : ArticleStatus.Draft;
-
-    var updated = await Data.UpdateArticleAsync(
-        id: ArticleId,
-        title: _model.Title,
-        summary: _model.Summary,
-        categoryId: _model.CategoryId,
-        authorId: _model.AuthorId,
-        coverImageMediaId: _model.CoverImageMediaId,
-        isFeatured: _model.IsFeatured,
-        status: status,
-        coverImageUrl: _model.CoverImageUrl, // <-- Pasamos directamente la propiedad por nombre
-        content: _model.Content,
-        tagIds: _model.TagIds,
-        relatedArticleIds: null,
-        attachmentMediaIds: null
-    );
-
-    if (updated != null)
-    {
-        Nav.NavigateTo($"/articulo/{updated.Id}");
-    }
-}
+var updated = await Data.UpdateArticleAsync(
+    id: ArticleId,
+    title: _model.Title,
+    summary: _model.Summary,
+    categoryId: _model.CategoryId,
+    authorId: _model.AuthorId,
+    coverImageMediaId: null,
+    isFeatured: _model.IsFeatured,
+    status: status,
+    coverImageUrl: _model.CoverImageUrl, // <--- Correcto: coverImageUrl
+    content: _model.Content,
+    tagIds: _model.TagIds,
+    relatedArticleIds: null,
+    attachmentMediaIds: null
+);
