@@ -1,17 +1,27 @@
-namespace Application.Common.Models;
+using Application.Common.Models;
+
+namespace Application.Interfaces;
 
 /// <summary>
-/// Resultado de una operación de subida de archivo al storage configurado.
+/// Contrato para el servicio de almacenamiento de archivos (local, Cloudflare R2, S3, etc).
+/// Las implementaciones concretas viven en la capa de Infraestructura.
 /// </summary>
-public sealed record FileUploadResult
+public interface IFileStorageService
 {
-    public required bool IsSuccess { get; init; }
-    public string? Key { get; init; }
-    public string? ErrorMessage { get; init; }
+    /// <summary>
+    /// Sube un archivo al storage configurado y devuelve la clave (key) generada.
+    /// </summary>
+    Task<FileUploadResult> UploadAsync(FileUploadRequest request, CancellationToken cancellationToken = default);
 
-    public static FileUploadResult Success(string key) =>
-        new() { IsSuccess = true, Key = key };
+    /// <summary>
+    /// Elimina un archivo del storage a partir de su clave (key).
+    /// Devuelve false si la clave no existe o la eliminación falla.
+    /// </summary>
+    Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default);
 
-    public static FileUploadResult Failure(string errorMessage) =>
-        new() { IsSuccess = false, ErrorMessage = errorMessage };
+    /// <summary>
+    /// Resuelve la URL pública accesible desde la CDN a partir de una clave (key)
+    /// interna. Si el valor ya es una URL absoluta (datos legados), la devuelve tal cual.
+    /// </summary>
+    string GetPublicUrl(string? key);
 }
