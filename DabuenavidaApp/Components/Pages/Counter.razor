@@ -26,7 +26,7 @@ public class LocalFileStorageService : IFileStorageService
 
         // 1. Validar extensión permitida
         var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
-        if (_options.AllowedExtensions.Count > 0 && !_options.AllowedExtensions.Contains(extension))
+        if (_options.AllowedExtensions != null && _options.AllowedExtensions.Count > 0 && !_options.AllowedExtensions.Contains(extension))
         {
             throw new InvalidOperationException($"La extensión de archivo '{extension}' no está permitida.");
         }
@@ -40,11 +40,11 @@ public class LocalFileStorageService : IFileStorageService
         // 3. Generar un nombre único para evitar colisiones
         var uniqueFileName = $"{Path.GetFileNameWithoutExtension(request.FileName)}_{Guid.NewGuid():N}{extension}";
 
-        // 4. Organizar en subcarpetas por fecha (ej: wwwroot/uploads/portadas/2026/08)
+        // 4. Organizar subcarpeta
         var folderCategory = string.IsNullOrWhiteSpace(request.Folder) ? "general" : request.Folder;
         var datePath = Path.Combine(DateTime.UtcNow.ToString("yyyy"), DateTime.UtcNow.ToString("MM"));
         
-        // Carpeta física completa donde se guardará en disco
+        // Estructura de carpetas en disco
         var relativeFolderPath = Path.Combine(_options.LocalStoragePath, folderCategory, datePath);
         var absoluteFolderPath = Path.Combine(Directory.GetCurrentDirectory(), relativeFolderPath);
 
@@ -61,24 +61,44 @@ public class LocalFileStorageService : IFileStorageService
             await request.FileStream.CopyToAsync(destinationStream, cancellationToken);
         }
 
-        // 6. Construir la URL pública limpiando 'wwwroot' y formateando separadores
-        var relativePathForUrl = Path.Combine(folderCategory, datePath, uniqueFileName)
-                                    .Replace("\\", "/");
+        // 6. Construir ruta relativa limpia para la URL (ej: uploads/portadas/2026/08/imagen_guid.png)
+        var relativePath = Path.Combine("uploads", folderCategory, datePath, uniqueFileName)
+                               .Replace("\\", "/");
 
-        // Normalizar CdnBaseUrl quitando la barra final si existe
-        var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
-
-        // URL final accesible desde el navegador
-        // Ejemplo resultado: https://localhost:61108/uploads/portadas/2026/08/imagen_abc123.png
-        var publicUrl = $"{baseUrl}/uploads/{relativePathForUrl}";
+        var publicUrl = GetPublicUrl(relativePath);
 
         return new FileUploadResult
         {
             PublicUrl = publicUrl,
-            StoredFileName = uniqueFileName,
-            ContentType = request.ContentType,
-            SizeInBytes = request.Size
+            UniqueFileName = uniqueFileName,
+            RelativePath = relativePath
         };
+    }
+
+    public string GetPublicUrl(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return string.Empty;
+        }
+
+        // Si ya es una URL absoluta HTTP/HTTPS, la retornamos tal cual
+        if (relativePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+            relativePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return relativePath;
+        }
+
+        var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
+        var cleanPath = relativePath.TrimStart('/');
+
+        // Si por alguna razón la ruta trae 'wwwroot/', la removemos para la URL pública
+        if (cleanPath.StartsWith("wwwroot/", StringComparison.OrdinalIgnoreCase))
+        {
+            cleanPath = cleanPath.Substring("wwwroot/".Length);
+        }
+
+        return $"{baseUrl}/{cleanPath}";
     }
 
     public Task<bool> DeleteAsync(string fileUrl, CancellationToken cancellationToken = default)
@@ -90,9 +110,13 @@ public class LocalFileStorageService : IFileStorageService
 
         try
         {
-            // Extraer la ruta relativa desde la URL pública
-            var uri = new Uri(fileUrl);
-            var relativePath = uri.AbsolutePath.TrimStart('/'); // Ejemplo: "uploads/portadas/2026/08/foto.png"
+            string relativePath = fileUrl;
+
+            // Extraer la ruta relativa si se pasa la URL completa
+            if (Uri.TryCreate(fileUrl, UriKind.Absolute, out var uri))
+            {
+                relativePath = uri.AbsolutePath.TrimStart('/');
+            }
 
             var absoluteFilePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", relativePath);
 
@@ -106,7 +130,6 @@ public class LocalFileStorageService : IFileStorageService
         }
         catch
         {
-            // Si la URL no tiene formato válido o falla la eliminación
             return Task.FromResult(false);
         }
     }
