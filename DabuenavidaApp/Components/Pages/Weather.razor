@@ -1,42 +1,54 @@
-connection.Bind();
-
-// 1. Definir la búsqueda en Active Directory
-var filtro = $"(sAMAccountName={username})";
-var baseDn = "DC=daviviendahn,DC=dvhn"; // O el BaseDN que use tu dominio
-
-var searchRequest = new SearchRequest(
-    baseDn,
-    filtro,
-    SearchScope.Subtree,
-    "displayName", "mail", "department", "title"
-);
-
-// 2. Ejecutar la consulta
-var searchResponse = (SearchResponse)connection.SendRequest(searchRequest);
-
-string fullName = username;
-string email = $"{username}@davivienda.com.hn";
-string department = "";
-string position = "";
-
-// 3. Extraer los datos si encontró el usuario
-if (searchResponse.Entries.Count > 0)
+protected override async Task OnInitializedAsync()
 {
-    var entry = searchResponse.Entries[0];
+    _unreadCount = await _wiki.GetUnreadNotificationsAsync();
+    _ui.OnChange += Refresh;
+    _selfRef = DotNetObjectReference.Create(this);
 
-    if (entry.Attributes["displayName"] != null && entry.Attributes["displayName"].Count > 0)
-        fullName = entry.Attributes["displayName"][0]!.ToString()!;
+    // --- LEER INFORMACIÓN DEL USUARIO LOGUEADO ---
+    var authState = await _authStateProvider.GetAuthenticationStateAsync();
+    var user = authState.User;
 
-    if (entry.Attributes["mail"] != null && entry.Attributes["mail"].Count > 0)
-        email = entry.Attributes["mail"][0]!.ToString()!;
+    if (user.Identity != null && user.Identity.IsAuthenticated)
+    {
+        _fullName = user.FindFirst("FullName")?.Value 
+                    ?? user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value 
+                    ?? "Usuario";
+                    
+        _email = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value 
+                 ?? user.FindFirst("Email")?.Value 
+                 ?? "";
 
-    if (entry.Attributes["department"] != null && entry.Attributes["department"].Count > 0)
-        department = entry.Attributes["department"][0]!.ToString()!;
+        _role = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value 
+                ?? "Usuario";
 
-    if (entry.Attributes["title"] != null && entry.Attributes["title"].Count > 0)
-        position = entry.Attributes["title"][0]!.ToString()!;
+        // Calcular iniciales dinámicas
+        _initials = GetInitials(_fullName);
+    }
 }
 
-_logger.LogInformation("Autenticación AD exitosa para: {Username}", username);
+// Función helper para calcular iniciales
+private string GetInitials(string name)
+{
+    if (string.IsNullOrWhiteSpace(name)) return "U";
 
-return Task.FromResult(AdValidationResult.Success(fullName, email, department, position));
+    var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    if (parts.Length == 1) return parts[0][..1].ToUpper();
+
+    return $"{parts[0][0]}{parts[1][0]}".ToUpper();
+}
+
+
+-----------------------
+<a class="avatar avatar--sm topbar__avatar" 
+   href="/perfil" 
+   style="background: linear-gradient(135deg, #C41230, #8B0E25)" 
+   title="@_fullName">
+    @_initials
+</a>
+
+<!-- Información adicional del usuario -->
+<div class="topbar__user-info" style="display: flex; flex-direction: column; font-size: 0.85rem; margin-left: 8px;">
+    <span class="topbar__user-name" style="font-weight: bold;">@_fullName</span>
+    <span class="topbar__user-role" style="opacity: 0.8; font-size: 0.75rem;">@_role</span>
+    <span class="topbar__user-email" style="opacity: 0.6; font-size: 0.7rem;">@_email</span>
+</div>
