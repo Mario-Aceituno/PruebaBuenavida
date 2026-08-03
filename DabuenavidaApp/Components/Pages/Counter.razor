@@ -1,5 +1,11 @@
 namespace Domain.ValueObjects;
 
+/// <summary>
+/// Representa la clave interna (key) de un archivo almacenado en el storage
+/// configurado (local, R2, S3, etc). Nunca contiene una URL absoluta:
+/// la resolución a URL pública es responsabilidad de la capa de Infraestructura
+/// (IFileStorageService.GetPublicUrl).
+/// </summary>
 public sealed record StoredFileUrl
 {
     public string Value { get; }
@@ -7,12 +13,20 @@ public sealed record StoredFileUrl
     public StoredFileUrl(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            throw new ArgumentException("La URL del archivo no puede estar vacía.", nameof(value));
+            throw new ArgumentException("La clave del archivo no puede estar vacía.", nameof(value));
 
-        if (!Uri.IsWellFormedUriString(value, UriKind.Absolute))
-            throw new ArgumentException("La URL provista no tiene un formato absoluto válido.", nameof(value));
+        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                "StoredFileUrl representa una clave interna del storage, no una URL absoluta.",
+                nameof(value));
 
-        Value = value;
+        if (value.Contains("..") || value.StartsWith('/') || value.StartsWith('\\'))
+            throw new ArgumentException(
+                "La clave del archivo contiene segmentos de ruta inválidos o inseguros.",
+                nameof(value));
+
+        Value = value.Trim();
     }
 
     public static implicit operator string(StoredFileUrl fileUrl) => fileUrl.Value;
