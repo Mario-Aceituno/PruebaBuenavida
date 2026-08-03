@@ -1,27 +1,17 @@
 namespace Application.Common.Models;
 
 /// <summary>
-/// Categorías fijas de almacenamiento. Cada una mapea a una subcarpeta/prefijo
-/// controlado por la capa de infraestructura, nunca por input externo directo.
-/// Evita que un caller pueda inyectar rutas arbitrarias vía un string de carpeta.
+/// Resultado de una operación de subida de archivo al storage configurado.
 /// </summary>
-public enum FileCategory
+public sealed record FileUploadResult
 {
-    ArticleCover,
-    ArticleAttachment,
-    UserAvatar
-}
+    public required bool IsSuccess { get; init; }
+    public string? Key { get; init; }
+    public string? ErrorMessage { get; init; }
 
-namespace Application.Common.Models;
+    public static FileUploadResult Success(string key) =>
+        new() { IsSuccess = true, Key = key };
 
-/// <summary>
-/// Encapsula los datos necesarios para subir un archivo al storage configurado.
-/// </summary>
-public sealed record FileUploadRequest
-{
-    public required Stream Content { get; init; }
-    public required string FileName { get; init; }
-    public required string ContentType { get; init; }
-    public required long SizeInBytes { get; init; }
-    public required FileCategory Category { get; init; }
+    public static FileUploadResult Failure(string errorMessage) =>
+        new() { IsSuccess = false, ErrorMessage = errorMessage };
 }
