@@ -1,185 +1,94 @@
-using Amazon.S3;
-using Amazon.S3.Model;
-using CorpWiki.Application.DTOs;
 using CorpWiki.Application.Interfaces;
 using CorpWiki.Infrastructure.Options;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-
-namespace CorpWiki.Infrastructure.Services;
-
-public class CloudflareR2StorageService : IFileStorageService
-{
-    private readonly FileStorageOptions _options;
-    private readonly ILogger<CloudflareR2StorageService> _logger;
-
-    public CloudflareR2StorageService(
-        IOptions<FileStorageOptions> options,
-        ILogger<CloudflareR2StorageService> logger)
-    {
-        _options = options.Value;
-        _logger = logger;
-    }
-
-    public async Task<FileUploadResult> UploadAsync(FileUploadRequest request, CancellationToken cancellationToken = default)
-    {
-        ValidateFile(request);
-
-        var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
-        var rawFileName = Path.GetFileNameWithoutExtension(request.FileName);
-        var cleanFileName = SanitizeFileName(rawFileName);
-        var uniqueFileName = $"{cleanFileName}_{Guid.NewGuid():N}{extension}";
-
-        // Estructura de carpetas en el Bucket: FOLDER/AAAA/MM/archivo.ext
-        var dateFolder = $"{DateTime.UtcNow:yyyy}/{DateTime.UtcNow:MM}";
-        var relativeKey = string.IsNullOrWhiteSpace(request.Folder)
-            ? $"{dateFolder}/{uniqueFileName}"
-            : $"{request.Folder}/{dateFolder}/{uniqueFileName}";
-
-        using var client = CreateS3Client();
-
-        var putRequest = new PutObjectRequest
-        {
-            BucketName = _options.BucketName,
-            Key = relativeKey,
-            InputStream = request.FileStream,
-            ContentType = request.ContentType,
-            DisablePayloadSigning = true // Requerido para compatibilidad estricta con R2
-        };
-
-        _logger.LogInformation("Subiendo archivo a Cloud Storage (R2/S3): {Key}", relativeKey);
-        await client.PutObjectAsync(putRequest, cancellationToken);
-
-        var publicUrl = GetPublicUrl(relativeKey);
-
-        return new FileUploadResult
-        {
-            PublicUrl = publicUrl,
-            UniqueFileName = uniqueFileName,
-            RelativePath = relativeKey
-        };
-    }
-
-    public async Task<bool> DeleteAsync(string fileUrlOrRelativePath, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(fileUrlOrRelativePath))
-            return false;
-
-        try
-        {
-            var key = ExtractKey(fileUrlOrRelativePath);
-            using var client = CreateS3Client();
-
-            var deleteRequest = new DeleteObjectRequest
-            {
-                BucketName = _options.BucketName,
-                Key = key
-            };
-
-            await client.DeleteObjectAsync(deleteRequest, cancellationToken);
-            _logger.LogInformation("Archivo eliminado de Cloud Storage: {Key}", key);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error al eliminar archivo de Cloud Storage: {Path}", fileUrlOrRelativePath);
-            return false;
-        }
-    }
-
-    public string GetPublicUrl(string relativePath)
-    {
-        var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
-        var cleanPath = relativePath.TrimStart('/');
-        return $"{baseUrl}/{cleanPath}";
-    }
-
-    private AmazonS3Client CreateS3Client()
-    {
-        var config = new AmazonS3Config
-        {
-            ServiceURL = _options.ServiceUrl,
-            ForcePathStyle = true
-        };
-
-        return new AmazonS3Client(_options.AccessKey, _options.SecretKey, config);
-    }
-
-    private void ValidateFile(FileUploadRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (request.Size > _options.MaxFileSizeInBytes)
-        {
-            var maxMb = _options.MaxFileSizeInBytes / (1024 * 1024);
-            throw new InvalidOperationException($"El archivo excede el tamaño máximo permitido ({maxMb} MB).");
-        }
-
-        var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
-        if (!_options.AllowedExtensions.Contains(extension))
-        {
-            throw new InvalidOperationException($"La extensión de archivo '{extension}' no está permitida.");
-        }
-    }
-
-    private static string SanitizeFileName(string fileName)
-    {
-        var invalidChars = Path.GetInvalidFileNameChars();
-        var clean = new string(fileName.Where(c => !invalidChars.Contains(c)).ToArray());
-        return clean.Replace(" ", "_");
-    }
-
-    private static string ExtractKey(string urlOrPath)
-    {
-        if (Uri.TryCreate(urlOrPath, UriKind.Absolute, out var uri))
-        {
-            return uri.AbsolutePath.TrimStart('/');
-        }
-        return urlOrPath.TrimStart('/');
-    }
-}
-
-
-
-
-
-{
-  "FileStorage": {
-    "Provider": "Local",
-    "CdnBaseUrl": "https://localhost:7031",
-    "LocalStoragePath": "wwwroot/uploads",
-    "MaxFileSizeInBytes": 20971520,
-    "AllowedExtensions": [ ".jpg", ".jpeg", ".png", ".gif", ".pdf", ".docx", ".xlsx", ".zip" ],
-    
-    "ServiceUrl": "https://<ACCOUNT_ID>.r2.cloudflarestorage.com",
-    "AccessKey": "<TU_ACCESS_KEY>",
-    "SecretKey": "<TU_SECRET_KEY>",
-    "BucketName": "corpwiki-media"
-  }
-}
-
-
-
-using CorpWiki.Application.Interfaces;
-using CorpWiki.Infrastructure.Options;
+using CorpWiki.Infrastructure.Persistence;
+using CorpWiki.Infrastructure.Security;
 using CorpWiki.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CorpWiki.Infrastructure;
 
+/// <summary>
+/// Registra todos los servicios de infraestructura: DbContext, proveedores de DB,
+/// Active Directory, servicios de seguridad y almacenamiento de archivos.
+/// </summary>
 public static class InfrastructureServiceExtensions
 {
-    public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddDaviWikiInfrastructure(
+        this IServiceCollection services, IConfiguration configuration)
     {
-        // 1. Configurar las opciones desde appsettings.json
+        // --- 1. Configurar DbContext con el proveedor de base de datos seleccionado ---
+        var provider = configuration["DatabaseProvider"] ?? "MySQL";
+        var connectionString = configuration.GetConnectionString(provider);
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                $"No se encontró ConnectionString para el proveedor '{provider}'. " +
+                $"Verificá la sección ConnectionStrings:{provider} en appsettings.json.");
+        }
+
+        services.AddDbContext<DaviWikiDbContext>(options =>
+        {
+            switch (provider.ToUpperInvariant())
+            {
+                case "MYSQL":
+                    var serverVersion = ServerVersion.AutoDetect(connectionString);
+                    options.UseMySql(connectionString, serverVersion, mysql =>
+                    {
+                        mysql.MigrationsAssembly(typeof(DaviWikiDbContext).Assembly.FullName);
+                        mysql.EnableRetryOnFailure(3);
+                    });
+                    break;
+
+                case "SQLSERVER":
+                    options.UseSqlServer(connectionString, sql =>
+                    {
+                        sql.MigrationsAssembly(typeof(DaviWikiDbContext).Assembly.FullName);
+                        sql.EnableRetryOnFailure(3);
+                    });
+                    break;
+
+                case "POSTGRESQL":
+                    options.UseNpgsql(connectionString, npg =>
+                    {
+                        npg.MigrationsAssembly(typeof(DaviWikiDbContext).Assembly.FullName);
+                        npg.EnableRetryOnFailure(3);
+                    });
+                    break;
+
+                default:
+                    throw new InvalidOperationException(
+                        $"Proveedor de base de datos no soportado: '{provider}'. " +
+                        "Valores válidos: MySQL, SQLServer, PostgreSQL.");
+            }
+        });
+
+        // --- 2. Registrar el validador de Active Directory (real o simulado) ---
+        var simulateAdString = configuration["Security:SimulateAD"];
+        var simulateAd = bool.TryParse(simulateAdString, out var parsed) && parsed;
+
+        if (simulateAd)
+        {
+            services.AddScoped<IActiveDirectoryValidator, SimulatedAdService>();
+        }
+        else
+        {
+            services.AddScoped<IActiveDirectoryValidator, ActiveDirectoryService>();
+        }
+
+        // --- 3. Registrar servicios de seguridad ---
+        services.AddScoped<ISecurityService, SecurityService>();
+        services.AddScoped<IAuthenticationService, AuthenticationService>();
+
+        // --- 4. Registrar servicio de almacenamiento de archivos ---
         services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
 
-        // 2. Registrar el servicio según el proveedor seleccionado ("Local" o "CloudflareR2")
-        var provider = configuration.GetSection($"{FileStorageOptions.SectionName}:Provider").Value;
+        var storageProvider = configuration.GetSection($"{FileStorageOptions.SectionName}:Provider").Value;
 
-        if (string.Equals(provider, "CloudflareR2", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(provider, "S3", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(storageProvider, "CloudflareR2", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(storageProvider, "S3", StringComparison.OrdinalIgnoreCase))
         {
             services.AddScoped<IFileStorageService, CloudflareR2StorageService>();
         }
