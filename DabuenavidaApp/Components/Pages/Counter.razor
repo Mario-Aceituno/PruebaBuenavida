@@ -1,102 +1,70 @@
-using CorpWiki.Application.Interfaces;
-using CorpWiki.Infrastructure.Options;
-using CorpWiki.Infrastructure.Persistence;
-using CorpWiki.Infrastructure.Security;
-using CorpWiki.Infrastructure.Services;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-
-namespace CorpWiki.Infrastructure;
-
-/// <summary>
-/// Registra todos los servicios de infraestructura: DbContext, proveedores de DB,
-/// Active Directory, servicios de seguridad y almacenamiento de archivos.
-/// </summary>
-public static class InfrastructureServiceExtensions
-{
-    public static IServiceCollection AddDaviWikiInfrastructure(
-        this IServiceCollection services, IConfiguration configuration)
-    {
-        // --- 1. Configurar DbContext con el proveedor de base de datos seleccionado ---
-        var provider = configuration["DatabaseProvider"] ?? "MySQL";
-        var connectionString = configuration.GetConnectionString(provider);
-
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException(
-                $"No se encontró ConnectionString para el proveedor '{provider}'. " +
-                $"Verificá la sección ConnectionStrings:{provider} en appsettings.json.");
-        }
-
-        services.AddDbContext<DaviWikiDbContext>(options =>
-        {
-            switch (provider.ToUpperInvariant())
+<div class="form-row">
+    <div class="form-group">
+        <label class="form-label" for="art-cover">Portada del Artículo</label>
+        
+        <!-- Opción A: Subir archivo desde la PC -->
+        <div class="mb-2">
+            <InputFile OnChange="HandleCoverSelected" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.webp" />
+            @if (isUploadingCover)
             {
-                case "MYSQL":
-                    var serverVersion = ServerVersion.AutoDetect(connectionString);
-                    options.UseMySql(connectionString, serverVersion, mysql =>
-                    {
-                        mysql.MigrationsAssembly(typeof(DaviWikiDbContext).Assembly.FullName);
-                        mysql.EnableRetryOnFailure(3);
-                    });
-                    break;
-
-                case "SQLSERVER":
-                    options.UseSqlServer(connectionString, sql =>
-                    {
-                        sql.MigrationsAssembly(typeof(DaviWikiDbContext).Assembly.FullName);
-                        sql.EnableRetryOnFailure(3);
-                    });
-                    break;
-
-                case "POSTGRESQL":
-                    options.UseNpgsql(connectionString, npg =>
-                    {
-                        npg.MigrationsAssembly(typeof(DaviWikiDbContext).Assembly.FullName);
-                        npg.EnableRetryOnFailure(3);
-                    });
-                    break;
-
-                default:
-                    throw new InvalidOperationException(
-                        $"Proveedor de base de datos no soportado: '{provider}'. " +
-                        "Valores válidos: MySQL, SQLServer, PostgreSQL.");
+                <small class="text-primary">Subiendo portada...</small>
             }
-        });
+        </div>
 
-        // --- 2. Registrar el validador de Active Directory (real o simulado) ---
-        var simulateAdString = configuration["Security:SimulateAD"];
-        var simulateAd = bool.TryParse(simulateAdString, out var parsed) && parsed;
+        <!-- Opción B: O pegar la URL manual como ya lo tenías -->
+        <input id="art-cover" class="input" type="text" @bind="_model.CoverImageUrl" placeholder="O pega una URL https://..." />
 
-        if (simulateAd)
+        <!-- Vista previa rápida de la portada si ya existe una URL -->
+        @if (!string.IsNullOrWhiteSpace(_model.CoverImageUrl))
         {
-            services.AddScoped<IActiveDirectoryValidator, SimulatedAdService>();
+            <div class="mt-2">
+                <img src="@_model.CoverImageUrl" alt="Vista previa" style="max-height: 100px; border-radius: 4px;" />
+            </div>
         }
-        else
+    </div>
+</div>
+
+
+
+
+@code {
+    private bool isUploadingCover = false;
+
+    private async Task HandleCoverSelected(InputFileChangeEventArgs e)
+    {
+        isUploadingCover = true;
+        try
         {
-            services.AddScoped<IActiveDirectoryValidator, ActiveDirectoryService>();
+            var file = e.File;
+            
+            // Límite de 5 MB para portadas, por ejemplo
+            long maxFileSize = 5 * 1024 * 1024; 
+
+            await using var stream = file.OpenReadStream(maxFileSize);
+
+            var request = new FileUploadRequest
+            {
+                FileStream = stream,
+                FileName = file.Name,
+                ContentType = file.ContentType,
+                Size = file.Size,
+                Folder = "portadas" // Se guardará en una subcarpeta organizada en tu almacenamiento
+            };
+
+            // Se ejecuta el servicio que sube el archivo local o a la nube
+            var result = await StorageService.UploadAsync(request);
+
+            // Asignamos la URL pública resultante directamente a tu modelo mapeado en la BD
+            _model.CoverImageUrl = result.PublicUrl;
         }
-
-        // --- 3. Registrar servicios de seguridad ---
-        services.AddScoped<ISecurityService, SecurityService>();
-        services.AddScoped<IAuthenticationService, AuthenticationService>();
-
-        // --- 4. Registrar servicio de almacenamiento de archivos ---
-        services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
-
-        var storageProvider = configuration.GetSection($"{FileStorageOptions.SectionName}:Provider").Value;
-
-        if (string.Equals(storageProvider, "CloudflareR2", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(storageProvider, "S3", StringComparison.OrdinalIgnoreCase))
+        catch (Exception ex)
         {
-            services.AddScoped<IFileStorageService, CloudflareR2StorageService>();
+            // Opcional: Mostrar un Toast o mensaje de error
+            Console.WriteLine($"Error al subir la portada: {ex.Message}");
         }
-        else
+        finally
         {
-            services.AddScoped<IFileStorageService, LocalFileStorageService>();
+            isUploadingCover = false;
         }
-
-        return services;
     }
 }
