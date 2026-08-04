@@ -1,17 +1,274 @@
-namespace Application.Common.Models;
+using CorpWiki.Application.Common.Models;
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Infrastructure.Options;
+using Microsoft.Extensions.Options;
+
+namespace CorpWiki.Infrastructure.Services;
 
 /// <summary>
-/// Resultado de una operación de subida de archivo al storage configurado.
+/// Implementación local para almacenamiento de archivos en el sistema
+/// de archivos del servidor (wwwroot/uploads).
 /// </summary>
-public sealed record FileUploadResult
+public class LocalFileStorageService : IFileStorageService
 {
-    public required bool IsSuccess { get; init; }
-    public string? Key { get; init; }
-    public string? ErrorMessage { get; init; }
+    private readonly FileStorageOptions _options;
 
-    public static FileUploadResult Success(string key) =>
-        new() { IsSuccess = true, Key = key };
+    public LocalFileStorageService(IOptions<FileStorageOptions> options)
+    {
+        _options = options.Value;
+    }
 
-    public static FileUploadResult Failure(string errorMessage) =>
-        new() { IsSuccess = false, ErrorMessage = errorMessage };
+    public async Task<FileUploadResult> UploadAsync(
+        FileUploadRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.Content is null || request.SizeInBytes == 0)
+            return FileUploadResult.Failure("El archivo está vacío o no es válido.");
+
+        // 1. Validar extensión permitida
+        var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
+        if (_options.AllowedExtensions is { Length: > 0 } &&
+            !_options.AllowedExtensions.Contains(extension))
+        {
+            return FileUploadResult.Failure($"La extensión de archivo '{extension}' no está permitida.");
+        }
+
+        // 2. Validar tamaño máximo
+        if (request.SizeInBytes > _options.MaxFileSizeInBytes)
+        {
+            return FileUploadResult.Failure(
+                $"El archivo supera el tamaño máximo permitido ({_options.MaxFileSizeInBytes / (1024 * 1024)} MB).");
+        }
+
+        try
+        {
+            var key = $"{CategoryFolder(request.Category)}/{Guid.NewGuid()}{extension}";
+            var filePath = ResolveSafePath(key, mustExist: false);
+
+            var directory = Path.GetDirectoryName(filePath)!;
+            if (!Directory.Exists(directory))
+                Directory.CreateDirectory(directory);
+
+            await using var destination = new FileStream(filePath, FileMode.CreateNew);
+            await request.Content.CopyToAsync(destination, cancellationToken);
+
+            return FileUploadResult.Success(key);
+        }
+        catch (Exception ex)
+        {
+            return FileUploadResult.Failure(ex.Message);
+        }
+    }
+
+    public Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return Task.FromResult(false);
+
+        try
+        {
+            var filePath = ResolveSafePath(key, mustExist: false);
+
+            if (!File.Exists(filePath))
+                return Task.FromResult(false);
+
+            File.Delete(filePath);
+            return Task.FromResult(true);
+        }
+        catch
+        {
+            return Task.FromResult(false);
+        }
+    }
+
+    public string GetPublicUrl(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return string.Empty;
+
+        if (key.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            key.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return key; // dato legado — pendiente de migración
+
+        var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
+        return $"{baseUrl}/uploads/{key.TrimStart('/')}";
+    }
+
+    /// <summary>
+    /// Mapea la categoría fija a una subcarpeta física controlada.
+    /// Nunca acepta un string de carpeta arbitrario desde el caller.
+    /// </summary>
+    private static string CategoryFolder(FileCategory category) => category switch
+    {
+        FileCategory.ArticleCover => "articulos/portadas",
+        FileCategory.ArticleAttachment => "articulos/adjuntos",
+        FileCategory.UserAvatar => "avatares",
+        _ => "otros"
+    };
+
+    /// <summary>
+    /// Resuelve la ruta física del archivo garantizando que quede dentro
+    /// de LocalStoragePath (previene path traversal).
+    /// </summary>
+    private string ResolveSafePath(string key, bool mustExist)
+    {
+        var rootFolder = Path.GetFullPath(
+            Path.Combine(Directory.GetCurrentDirectory(), _options.LocalStoragePath));
+
+        var fullPath = Path.GetFullPath(Path.Combine(rootFolder, key));
+
+        if (!fullPath.StartsWith(rootFolder, StringComparison.OrdinalIgnoreCase))
+            throw new UnauthorizedAccessException("Ruta de archivo fuera del área de almacenamiento permitida.");
+
+        if (mustExist && !File.Exists(fullPath))
+            throw new FileNotFoundException("El archivo no existe.", fullPath);
+
+        return fullPath;
+    }
+}
+
+
+
+
+
+using Amazon.S3;
+using Amazon.S3.Model;
+using CorpWiki.Application.Common.Models;
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Infrastructure.Options;
+using Microsoft.Extensions.Options;
+
+namespace CorpWiki.Infrastructure.Services;
+
+/// <summary>
+/// Implementación para producción: sube/borra/resuelve archivos en
+/// Cloudflare R2 (API compatible con S3).
+/// </summary>
+public class CloudflareR2StorageService : IFileStorageService
+{
+    private readonly IAmazonS3 _s3Client;
+    private readonly FileStorageOptions _options;
+
+    public CloudflareR2StorageService(IAmazonS3 s3Client, IOptions<FileStorageOptions> options)
+    {
+        _s3Client = s3Client;
+        _options = options.Value;
+    }
+
+    public async Task<FileUploadResult> UploadAsync(
+        FileUploadRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.Content is null || request.SizeInBytes == 0)
+            return FileUploadResult.Failure("El archivo está vacío o no es válido.");
+
+        var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
+        if (_options.AllowedExtensions is { Length: > 0 } &&
+            !_options.AllowedExtensions.Contains(extension))
+        {
+            return FileUploadResult.Failure($"La extensión de archivo '{extension}' no está permitida.");
+        }
+
+        if (request.SizeInBytes > _options.MaxFileSizeInBytes)
+        {
+            return FileUploadResult.Failure(
+                $"El archivo supera el tamaño máximo permitido ({_options.MaxFileSizeInBytes / (1024 * 1024)} MB).");
+        }
+
+        try
+        {
+            var key = $"{CategoryFolder(request.Category)}/{Guid.NewGuid()}{extension}";
+
+            var putRequest = new PutObjectRequest
+            {
+                BucketName = _options.BucketName,
+                Key = key,
+                InputStream = request.Content,
+                ContentType = request.ContentType,
+                DisablePayloadSigning = true // requerido por R2 en varias regiones
+            };
+
+            await _s3Client.PutObjectAsync(putRequest, cancellationToken);
+
+            return FileUploadResult.Success(key);
+        }
+        catch (Exception ex)
+        {
+            return FileUploadResult.Failure(ex.Message);
+        }
+    }
+
+    public async Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return false;
+
+        try
+        {
+            var deleteRequest = new DeleteObjectRequest
+            {
+                BucketName = _options.BucketName,
+                Key = key
+            };
+
+            await _s3Client.DeleteObjectAsync(deleteRequest, cancellationToken);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public string GetPublicUrl(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return string.Empty;
+
+        if (key.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            key.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return key;
+
+        var baseUrl = _options.CdnBaseUrl.TrimEnd('/');
+        return $"{baseUrl}/{key.TrimStart('/')}";
+    }
+
+    private static string CategoryFolder(FileCategory category) => category switch
+    {
+        FileCategory.ArticleCover => "articulos/portadas",
+        FileCategory.ArticleAttachment => "articulos/adjuntos",
+        FileCategory.UserAvatar => "avatares",
+        _ => "otros"
+    };
+}
+
+
+
+
+// --- 4. Registrar servicio de almacenamiento de archivos ---
+services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
+
+var storageOptions = configuration
+    .GetSection(FileStorageOptions.SectionName)
+    .Get<FileStorageOptions>();
+
+if (string.Equals(storageOptions?.Provider, "CloudflareR2", StringComparison.OrdinalIgnoreCase) ||
+    string.Equals(storageOptions?.Provider, "S3", StringComparison.OrdinalIgnoreCase))
+{
+    services.AddSingleton<IAmazonS3>(_ =>
+    {
+        var config = new AmazonS3Config
+        {
+            ServiceURL = storageOptions.ServiceUrl,
+            ForcePathStyle = true // requerido por R2
+        };
+
+        return new AmazonS3Client(storageOptions.AccessKey, storageOptions.SecretKey, config);
+    });
+
+    services.AddScoped<IFileStorageService, CloudflareR2StorageService>();
+}
+else
+{
+    services.AddScoped<IFileStorageService, LocalFileStorageService>();
 }
