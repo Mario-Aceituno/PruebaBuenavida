@@ -1,12 +1,61 @@
-// --- 5. Registrar casos de uso de archivos ---
-var allowedExtensions = new HashSet<string>(
-    storageOptions?.AllowedExtensions ?? Array.Empty<string>(),
-    StringComparer.OrdinalIgnoreCase);
+<div class="form-group">
+    <label class="form-label" for="art-cover">Portada</label>
+    <InputFile id="art-cover" class="input" accept="image/*" OnChange="OnCoverSelected" />
+    @if (_uploadingCover)
+    {
+        <span class="hint">Subiendo imagen...</span>
+    }
+    @if (!string.IsNullOrWhiteSpace(_coverPreviewUrl))
+    {
+        <img src="@_coverPreviewUrl" alt="Vista previa de portada" class="cover-preview" />
+    }
+</div>
 
-services.AddScoped<UploadFileUseCase>(sp =>
-    new UploadFileUseCase(
-        sp.GetRequiredService<IFileStorageService>(),
-        storageOptions?.MaxFileSizeInBytes ?? 20 * 1024 * 1024,
-        allowedExtensions));
 
-services.AddScoped<DeleteFileUseCase>();
+
+[Inject] private UploadFileUseCase UploadFile { get; set; } = default!;
+[Inject] private IFileStorageService Storage { get; set; } = default!;
+
+private bool _uploadingCover;
+private string? _coverPreviewUrl;
+
+private async Task OnCoverSelected(InputFileChangeEventArgs e)
+{
+    var file = e.File;
+    if (file is null) return;
+
+    _uploadingCover = true;
+    StateHasChanged();
+
+    try
+    {
+        // OJO: InputFile limita a 500KB por defecto si no pasas maxAllowedSize.
+        // Debe coincidir (o superar) tu MaxFileSizeInBytes real (20MB según tu options).
+        await using var stream = file.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+
+        var request = new FileUploadRequest
+        {
+            Content = stream,
+            FileName = file.Name,
+            ContentType = file.ContentType,
+            SizeInBytes = file.Size,
+            Category = FileCategory.ArticleCover
+        };
+
+        var result = await UploadFile.ExecuteAsync(request);
+
+        if (!result.IsSuccess)
+        {
+            _error = result.ErrorMessage;
+            return;
+        }
+
+        _model.CoverImageUrl = result.Key!;
+        _coverPreviewUrl = Storage.GetPublicUrl(result.Key);
+    }
+    finally
+    {
+        _uploadingCover = false;
+        StateHasChanged();
+    }
+}
