@@ -1,18 +1,3 @@
-<div class="form-group">
-    <label class="form-label" for="art-cover">Portada</label>
-    <InputFile id="art-cover" class="input" accept="image/*" OnChange="OnCoverSelected" />
-    @if (_uploadingCover)
-    {
-        <span class="hint">Subiendo imagen...</span>
-    }
-    @if (!string.IsNullOrWhiteSpace(_coverPreviewUrl))
-    {
-        <img src="@_coverPreviewUrl" alt="Vista previa de portada" class="cover-preview" />
-    }
-</div>
-
-
-
 [Inject] private UploadFileUseCase UploadFile { get; set; } = default!;
 [Inject] private IFileStorageService Storage { get; set; } = default!;
 
@@ -29,8 +14,6 @@ private async Task OnCoverSelected(InputFileChangeEventArgs e)
 
     try
     {
-        // OJO: InputFile limita a 500KB por defecto si no pasas maxAllowedSize.
-        // Debe coincidir (o superar) tu MaxFileSizeInBytes real (20MB según tu options).
         await using var stream = file.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
 
         var request = new FileUploadRequest
