@@ -1,5 +1,6 @@
 [Inject] private UploadFileUseCase UploadFile { get; set; } = default!;
 [Inject] private IFileStorageService Storage { get; set; } = default!;
+// Data (IWikiDataService) ya debe estar inyectado
 
 private bool _uploadingCover;
 private string? _coverPreviewUrl;
@@ -25,16 +26,29 @@ private async Task OnCoverSelected(InputFileChangeEventArgs e)
             Category = FileCategory.ArticleCover
         };
 
-        var result = await UploadFile.ExecuteAsync(request);
+        var uploadResult = await UploadFile.ExecuteAsync(request);
 
-        if (!result.IsSuccess)
+        if (!uploadResult.IsSuccess)
         {
-            _error = result.ErrorMessage;
+            _error = uploadResult.ErrorMessage;
             return;
         }
 
-        _model.CoverImageUrl = result.Key!;
-        _coverPreviewUrl = Storage.GetPublicUrl(result.Key);
+        var mediaFile = new MediaFile
+        {
+            Id = Guid.NewGuid(),
+            FileName = file.Name,
+            Type = MediaType.Image,
+            StorageUrl = uploadResult.Key!,
+            SizeInBytes = file.Size,
+            AuthorId = _model.AuthorId,
+            UploadedAt = DateTime.UtcNow
+        };
+
+        var createdMedia = await Data.CreateMediaFileAsync(mediaFile);
+
+        _model.CoverImageMediaId = createdMedia.Id;
+        _coverPreviewUrl = Storage.GetPublicUrl(createdMedia.StorageUrl);
     }
     finally
     {
@@ -42,3 +56,20 @@ private async Task OnCoverSelected(InputFileChangeEventArgs e)
         StateHasChanged();
     }
 }
+
+
+
+
+
+
+
+
+_model.CoverImageMediaId = _original.CoverImageMediaId;
+
+if (_original.CoverImageMediaId is Guid mediaId)
+{
+    var media = await Data.GetMediaFileAsync(mediaId);
+    if (media is not null)
+        _coverPreviewUrl = Storage.GetPublicUrl(media.StorageUrl);
+}
+
