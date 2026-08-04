@@ -1,75 +1,46 @@
-[Inject] private UploadFileUseCase UploadFile { get; set; } = default!;
-[Inject] private IFileStorageService Storage { get; set; } = default!;
-// Data (IWikiDataService) ya debe estar inyectado
-
-private bool _uploadingCover;
-private string? _coverPreviewUrl;
-
-private async Task OnCoverSelected(InputFileChangeEventArgs e)
+private async Task<Guid> GetOrCreateCurrentAuthorIdAsync()
 {
-    var file = e.File;
-    if (file is null) return;
+    var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+    var userName = authState.User.Identity?.Name ?? "Usuario Anónimo";
+    var userEmail = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "anonimo@corp.com";
 
-    _uploadingCover = true;
-    StateHasChanged();
-
-    try
+    var authors = await Data.GetAuthorsAsync();
+    var currentAuthor = authors.FirstOrDefault(a => a.FullName == userName);
+    if (currentAuthor is null)
     {
-        await using var stream = file.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
-
-        var request = new FileUploadRequest
-        {
-            Content = stream,
-            FileName = file.Name,
-            ContentType = file.ContentType,
-            SizeInBytes = file.Size,
-            Category = FileCategory.ArticleCover
-        };
-
-        var uploadResult = await UploadFile.ExecuteAsync(request);
-
-        if (!uploadResult.IsSuccess)
-        {
-            _error = uploadResult.ErrorMessage;
-            return;
-        }
-
-        var mediaFile = new MediaFile
-        {
-            Id = Guid.NewGuid(),
-            FileName = file.Name,
-            Type = MediaType.Image,
-            StorageUrl = uploadResult.Key!,
-            SizeInBytes = file.Size,
-            AuthorId = _model.AuthorId,
-            UploadedAt = DateTime.UtcNow
-        };
-
-        var createdMedia = await Data.CreateMediaFileAsync(mediaFile);
-
-        _model.CoverImageMediaId = createdMedia.Id;
-        _coverPreviewUrl = Storage.GetPublicUrl(createdMedia.StorageUrl);
+        currentAuthor = await Data.CreateAuthorAsync(userName, userEmail);
     }
-    finally
-    {
-        _uploadingCover = false;
-        StateHasChanged();
-    }
+
+    return currentAuthor.Id;
+}
+
+
+
+if (!Guid.TryParse(_model.AuthorId, out var authorId))
+{
+    authorId = await GetOrCreateCurrentAuthorIdAsync();
 }
 
 
 
 
 
+var authorId = Guid.TryParse(_model.AuthorId, out var parsedAuthorId)
+    ? parsedAuthorId
+    : await GetOrCreateCurrentAuthorIdAsync();
 
-
-
-_model.CoverImageMediaId = _original.CoverImageMediaId;
-
-if (_original.CoverImageMediaId is Guid mediaId)
+var mediaFile = new MediaFile
 {
-    var media = await Data.GetMediaFileAsync(mediaId);
-    if (media is not null)
-        _coverPreviewUrl = Storage.GetPublicUrl(media.StorageUrl);
-}
+    Id = Guid.NewGuid(),
+    FileName = file.Name,
+    Type = MediaType.Image,
+    StorageUrl = uploadResult.Key!,
+    SizeInBytes = file.Size,
+    AuthorId = authorId,
+    UploadedAt = DateTime.UtcNow
+};
 
+var createdMedia = await Data.CreateMediaFileAsync(mediaFile);
+
+_model.CoverImageMediaId = createdMedia.Id;
+_coverPreviewUrl = Storage.GetPublicUrl(createdMedia.StorageUrl);
