@@ -1,143 +1,382 @@
-private string GetMediaUrl(string? storageUrl)
-{
-    if (string.IsNullOrWhiteSpace(storageUrl))
-        return string.Empty;
+@page "/multimedia"
+@using Microsoft.AspNetCore.Components.Forms
+@using CorpWiki.Domain.Entities
+@using CorpWiki.Infrastructure.Models
+@using CorpWiki.Infrastructure.Services
 
-    // Si ya trae http/https o empieza por /uploads, lo retorna directamente
-    if (storageUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
-        storageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-    {
-        return storageUrl;
-    }
+@inject IFileStorageService StorageService
+@inject IDataService Data
 
-    // Asegura la barra inicial y el prefijo /uploads/
-    var cleanPath = storageUrl.TrimStart('/');
-    if (!cleanPath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
-    {
-        cleanPath = $"uploads/{cleanPath}";
-    }
-
-    return $"/{cleanPath}";
-}
-
-
-
-
-<div class="media-card__thumb">
-    @if (file.Type == MediaType.Image && !string.IsNullOrEmpty(file.StorageUrl))
-    {
-        <img src="@GetMediaUrl(file.StorageUrl)" alt="@file.FileName" class="media-card__img-preview" />
-    }
-    else
-    {
-        <MediaThumb Type="file.Type" FileName="file.FileName" />
-    }
-</div>
-
-
-
-
-@if (_editingId is null)
-{
-    <div class="form-group">
-        <label class="form-label">Seleccionar archivo <span class="form-required">*</span></label>
-        <InputFile OnChange="OnInputFileSelected" class="input" />
+<div class="page-header">
+    <div>
+        <h2>Biblioteca Multimedia</h2>
+        <p>@_filteredAll.Count() archivos técnicos disponibles: diagramas, manuales, presentaciones y más.</p>
     </div>
-}
-
-<div class="form-group">
-    <label class="form-label" for="file-name">Nombre de archivo <span class="form-required">*</span></label>
-    <InputText id="file-name" class="input" @bind-Value="_form.FileName" placeholder="Ej: manual-onboarding.pdf" />
+    <div class="page-header__actions">
+        <button class="icon-btn @(_view == "grid" ? "icon-btn--active" : "")" @onclick='() => _view = "grid"' title="Vista cuadrícula">
+            <Icon Name="layout-dashboard" />
+        </button>
+        <button class="icon-btn @(_view == "list" ? "icon-btn--active" : "")" @onclick='() => _view = "list"' title="Vista lista">
+            <Icon Name="activity" />
+        </button>
+        <button class="btn btn--primary" @onclick="OpenUploadModal">
+            <Icon Name="upload" /> Subir archivo
+        </button>
+    </div>
 </div>
 
+<div class="media-page">
+    <aside class="media-filters card">
+        <p class="search-filters__title">Tipo de archivo</p>
+        <div class="search-filters__types">
+            <button class="search-filter-btn @(_typeFilter is null ? "search-filter-btn--active" : "")" @onclick="() => SetTypeFilter(null)">
+                <Icon Name="layers-3" />
+                <span>Todos (@_all.Count())</span>
+            </button>
+            @foreach (var (type, icon, label) in _typeOptions)
+            {
+                var count = _all.Count(m => m.Type == type);
+                <button class="search-filter-btn @(_typeFilter == type ? "search-filter-btn--active" : "")" @onclick="() => SetTypeFilter(type)">
+                    <Icon Name="@icon" />
+                    <span>@label (@count)</span>
+                </button>
+            }
+        </div>
 
+        <p class="search-filters__title" style="margin-top: var(--space-4)">Buscar</p>
+        <div class="explorer-search" style="margin-top: 4px">
+            <Icon Name="search" />
+            <input class="explorer-search__input" type="text" placeholder="Nombre de archivo..." @bind="_query" @bind:event="oninput" @bind:after="ResetPage" />
+        </div>
+    </aside>
 
+    <div class="media-main">
+        <p class="explorer-results-count">@_filteredAll.Count() archivo(s)</p>
 
-private IBrowserFile? _selectedFile;
-
-private void OnInputFileSelected(InputFileChangeEventArgs e)
-{
-    _selectedFile = e.File;
-    
-    // Auto-completa el nombre del archivo con su nombre exacto
-    if (_selectedFile is not null && string.IsNullOrWhiteSpace(_form.FileName))
-    {
-        _form.FileName = _selectedFile.Name;
-    }
-}
-
-private async Task Save()
-{
-    if (string.IsNullOrWhiteSpace(_form.FileName))
-    {
-        _error = "El nombre del archivo es obligatorio.";
-        return;
-    }
-
-    var tags = (_form.TagsRaw ?? string.Empty)
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .ToList();
-
-    if (_editingId is null)
-    {
-        // Validación de archivo seleccionado
-        if (_selectedFile is null)
+        @if (_view == "grid")
         {
-            _error = "Debes seleccionar un archivo para subir.";
+            <div class="media-grid">
+                @foreach (var file in _pageItems)
+                {
+                    <div class="media-card card">
+                        <button class="card-edit-btn" title="Editar" @onclick="() => OpenEditModal(file)">
+                            <Icon Name="pencil" />
+                        </button>
+                        <div class="media-card__thumb">
+                            @if (file.Type == MediaType.Image && !string.IsNullOrEmpty(file.StorageUrl))
+                            {
+                                <img src="@GetMediaUrl(file.StorageUrl)" alt="@file.FileName" class="media-card__img-preview" />
+                            }
+                            else
+                            {
+                                <MediaThumb Type="file.Type" FileName="file.FileName" />
+                            }
+                        </div>
+                        <div class="media-card__info">
+                            <p class="media-card__name" title="@file.FileName">@file.FileName</p>
+                            <p class="media-card__meta">@file.SizeLabel • @file.UploadedAt.ToString("d MMM yyyy")</p>
+                            <div class="media-card__footer">
+                                <span class="badge">@file.Type.ToString()</span>
+                                <span class="avatar avatar--sm" style="background: linear-gradient(135deg, @GetAuthorColors(file.AuthorId))">
+                                    @GetAuthorInitials(file.AuthorId)
+                                </span>
+                                @if (!string.IsNullOrEmpty(file.StorageUrl))
+                                {
+                                    <a href="@GetMediaUrl(file.StorageUrl)" download="@file.FileName" target="_blank" class="icon-btn icon-btn--ghost" title="Descargar">
+                                        <Icon Name="download" />
+                                    </a>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="media-list card">
+                @foreach (var file in _pageItems)
+                {
+                    <div class="media-list-row">
+                        <MediaThumb Type="file.Type" FileName="file.FileName" />
+                        <span class="media-list-row__name">@file.FileName</span>
+                        <span class="media-list-row__meta">@string.Join(", ", file.Tags.Take(3))</span>
+                        <span class="badge">@file.Type.ToString()</span>
+                        <span class="media-list-row__size">@file.SizeLabel</span>
+                        <span class="media-list-row__date">@file.UploadedAt.ToString("d MMM yyyy")</span>
+                        <div class="row-actions">
+                            <button class="icon-btn icon-btn--ghost" title="Editar" @onclick="() => OpenEditModal(file)">
+                                <Icon Name="pencil" />
+                            </button>
+                            @if (!string.IsNullOrEmpty(file.StorageUrl))
+                            {
+                                <a href="@GetMediaUrl(file.StorageUrl)" download="@file.FileName" target="_blank" class="icon-btn icon-btn--ghost" title="Descargar">
+                                    <Icon Name="download" Class="media-list-row__dl" />
+                                </a>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (!_pageItems.Any())
+        {
+            <div class="empty-state">
+                <Icon Name="image" Class="empty-state__icon" />
+                <h3>Sin archivos</h3>
+                <p>Prueba con otro tipo o limpia la búsqueda.</p>
+            </div>
+        }
+
+        <Pagination TotalItems="_filteredAll.Count()" PageSize="_pageSize" CurrentPage="_page" CurrentPageChanged="OnPageChanged" />
+    </div>
+</div>
+
+<Modal IsOpen="_showModal" IsOpenChanged="OnModalOpenChanged" Title="@(_editingId is null ? "Subir archivo" : "Editar archivo")">
+    <EditForm Model="_form" OnValidSubmit="Save">
+        <DataAnnotationsValidator />
+
+        @if (_editingId is null)
+        {
+            <div class="form-group">
+                <label class="form-label">Seleccionar archivo <span class="form-required">*</span></label>
+                <InputFile OnChange="OnInputFileSelected" class="input" />
+            </div>
+        }
+
+        <div class="form-group">
+            <label class="form-label" for="file-name">Nombre de archivo <span class="form-required">*</span></label>
+            <InputText id="file-name" class="input" @bind-Value="_form.FileName" placeholder="Ej: manual-onboarding.pdf" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="file-type">Tipo</label>
+            <select id="file-type" class="input" @bind="_form.Type">
+                @foreach (var (type, _, label) in _typeOptions)
+                {
+                    <option value="@type">@label</option>
+                }
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="file-tags">Etiquetas (separadas por coma)</label>
+            <InputText id="file-tags" class="input" @bind-Value="_form.TagsRaw" placeholder="manual, onboarding" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="callout callout--danger">
+                <Icon Name="alert-triangle" />
+                <p>@_error</p>
+            </div>
+        }
+
+        <div class="form-actions">
+            <button type="button" class="btn btn--secondary" @onclick="CloseModal">Cancelar</button>
+            <button type="submit" class="btn btn--primary">
+                <Icon Name="@(_editingId is null ? "upload" : "check-circle")" />
+                @(_editingId is null ? "Subir archivo" : "Guardar cambios")
+            </button>
+        </div>
+    </EditForm>
+</Modal>
+
+@code {
+    private List<MediaFile> _all = new();
+    private int _page = 1;
+    private int _pageSize = 12;
+    private string _query = string.Empty;
+    private MediaType? _typeFilter = null;
+    private string _view = "grid";
+
+    private bool _showModal = false;
+    private Guid? _editingId = null;
+    private string? _error = null;
+    private IBrowserFile? _selectedFile = null;
+    private FileFormModel _form = new();
+
+    private readonly List<(MediaType Type, string Icon, string Label)> _typeOptions = new()
+    {
+        (MediaType.Image, "image", "Imágenes"),
+        (MediaType.Pdf, "file-text", "Documentos PDF"),
+        (MediaType.Word, "file-code", "Word"),
+        (MediaType.Excel, "sheet", "Excel"),
+        (MediaType.PowerPoint, "presentation", "Presentaciones"),
+        (MediaType.Video, "video", "Videos"),
+        (MediaType.Audio, "music", "Audio"),
+        (MediaType.Zip, "archive", "Archivos Zip")
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _all = (await Data.GetMediaFilesAsync()).ToList();
+    }
+
+    private IEnumerable<MediaFile> _filteredAll
+    {
+        get
+        {
+            var q = _all.AsEnumerable();
+            if (_typeFilter.HasValue) q = q.Where(m => m.Type == _typeFilter.Value);
+            if (!string.IsNullOrWhiteSpace(_query))
+                q = q.Where(m => m.FileName.Contains(_query, StringComparison.OrdinalIgnoreCase));
+            return q.OrderByDescending(m => m.UploadedAt);
+        }
+    }
+
+    private IEnumerable<MediaFile> _pageItems => _filteredAll.Skip((_page - 1) * _pageSize).Take(_pageSize);
+
+    private string GetMediaUrl(string? storageUrl)
+    {
+        return StorageService.GetPublicUrl(storageUrl ?? string.Empty);
+    }
+
+    private void OnInputFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        _error = null;
+
+        if (_selectedFile is not null && string.IsNullOrWhiteSpace(_form.FileName))
+        {
+            _form.FileName = _selectedFile.Name;
+        }
+    }
+
+    private void OnPageChanged(int page)
+    {
+        _page = page;
+    }
+
+    private void ResetPage()
+    {
+        _page = 1;
+    }
+
+    private void SetTypeFilter(MediaType? type)
+    {
+        _typeFilter = type;
+        ResetPage();
+    }
+
+    private void OpenUploadModal()
+    {
+        _editingId = null;
+        _form = new FileFormModel { Type = MediaType.Pdf };
+        _selectedFile = null;
+        _error = null;
+        _showModal = true;
+    }
+
+    private void OpenEditModal(MediaFile file)
+    {
+        _editingId = file.Id;
+        _form = new FileFormModel
+        {
+            FileName = file.FileName,
+            Type = file.Type,
+            TagsRaw = string.Join(", ", file.Tags)
+        };
+        _selectedFile = null;
+        _error = null;
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private void OnModalOpenChanged(bool isOpen) => _showModal = isOpen;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_form.FileName))
+        {
+            _error = "El nombre del archivo es obligatorio.";
             return;
         }
 
-        // Subida física al almacenamiento / CDN
-        using var stream = _selectedFile.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024); // 20 MB
-        
-        var uploadRequest = new FileUploadRequest
-        {
-            FileName = _selectedFile.Name,
-            Content = stream,
-            SizeBytes = _selectedFile.Size,
-            Category = FileCategory.ArticleAttachment // O la categoría correspondiente
-        };
+        var tags = (_form.TagsRaw ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
 
-        var uploadResult = await StorageService.UploadAsync(uploadRequest);
-
-        if (!uploadResult.IsSuccess)
+        if (_editingId is null)
         {
-            _error = uploadResult.ErrorMessage;
-            return;
+            if (_selectedFile is null)
+            {
+                _error = "Debes seleccionar un archivo para subir.";
+                return;
+            }
+
+            try
+            {
+                using var stream = _selectedFile.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+
+                var uploadRequest = new FileUploadRequest
+                {
+                    FileName = _selectedFile.Name,
+                    Content = stream,
+                    SizeBytes = _selectedFile.Size,
+                    Category = FileCategory.ArticleAttachment
+                };
+
+                var uploadResult = await StorageService.UploadAsync(uploadRequest);
+
+                if (!uploadResult.IsSuccess)
+                {
+                    _error = uploadResult.ErrorMessage;
+                    return;
+                }
+
+                var authorId = (await Data.GetAuthorsAsync()).FirstOrDefault()?.Id ?? Guid.Empty;
+
+                var newMedia = new MediaFile
+                {
+                    Id = Guid.NewGuid(),
+                    FileName = _form.FileName.Trim(),
+                    Type = _form.Type,
+                    StorageUrl = uploadResult.Key,
+                    ThumbnailUrl = string.Empty,
+                    SizeInBytes = _selectedFile.Size,
+                    AuthorId = authorId,
+                    UploadedAt = DateTime.Now,
+                    Tags = tags,
+                    CategoryId = null
+                };
+
+                await Data.InsertMediaFileAsync(newMedia);
+                _all.Insert(0, newMedia);
+            }
+            catch (Exception ex)
+            {
+                _error = $"Error al cargar archivo: {ex.Message}";
+                return;
+            }
+        }
+        else
+        {
+            var mediaFile = _all.FirstOrDefault(f => f.Id == _editingId.Value);
+            if (mediaFile != null)
+            {
+                mediaFile.FileName = _form.FileName.Trim();
+                mediaFile.Type = _form.Type;
+                mediaFile.Tags = tags;
+                await Data.UpdateMediaFileAsync(mediaFile);
+            }
         }
 
-        var authorId = (await Data.GetAuthorsAsync()).FirstOrDefault()?.Id ?? Guid.Empty;
-
-        // Registro en base de datos con la ruta devuelta por el servicio
-        var newMedia = new MediaFile
-        {
-            Id = Guid.NewGuid(),
-            FileName = _form.FileName.Trim(),
-            Type = _form.Type,
-            StorageUrl = uploadResult.Key, // Guarda la clave o ruta devuelta
-            ThumbnailUrl = string.Empty,
-            SizeInBytes = _selectedFile.Size,
-            AuthorId = authorId,
-            UploadedAt = DateTime.Now,
-            Tags = tags,
-            CategoryId = null
-        };
-
-        await Data.InsertMediaFileAsync(newMedia); // Inserción real en persistencia
+        ResetPage();
+        _showModal = false;
+        _selectedFile = null;
     }
-    else
+
+    private string GetAuthorInitials(Guid id) => "?";
+    private string GetAuthorColors(Guid id) => "#0C4123, #880E25";
+
+    private class FileFormModel
     {
-        var mediaFile = await Data.GetMediaFileAsync(_editingId.Value);
-        if (mediaFile != null)
-        {
-            mediaFile.FileName = _form.FileName;
-            mediaFile.Type = _form.Type;
-            mediaFile.Tags = tags;
-            await Data.UpdateMediaFileAsync(mediaFile);
-        }
+        [System.ComponentModel.DataAnnotations.Required]
+        public string FileName { get; set; } = string.Empty;
+        public MediaType Type { get; set; } = MediaType.Pdf;
+        public string TagsRaw { get; set; } = string.Empty;
     }
-
-    ResetPage();
-    _showModal = false;
-    _selectedFile = null;
 }
