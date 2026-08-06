@@ -1,46 +1,143 @@
-private async Task<Guid> GetOrCreateCurrentAuthorIdAsync()
+private string GetMediaUrl(string? storageUrl)
 {
-    var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-    var userName = authState.User.Identity?.Name ?? "Usuario Anónimo";
-    var userEmail = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "anonimo@corp.com";
+    if (string.IsNullOrWhiteSpace(storageUrl))
+        return string.Empty;
 
-    var authors = await Data.GetAuthorsAsync();
-    var currentAuthor = authors.FirstOrDefault(a => a.FullName == userName);
-    if (currentAuthor is null)
+    // Si ya trae http/https o empieza por /uploads, lo retorna directamente
+    if (storageUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+        storageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
     {
-        currentAuthor = await Data.CreateAuthorAsync(userName, userEmail);
+        return storageUrl;
     }
 
-    return currentAuthor.Id;
+    // Asegura la barra inicial y el prefijo /uploads/
+    var cleanPath = storageUrl.TrimStart('/');
+    if (!cleanPath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
+    {
+        cleanPath = $"uploads/{cleanPath}";
+    }
+
+    return $"/{cleanPath}";
 }
 
 
 
-if (!Guid.TryParse(_model.AuthorId, out var authorId))
+
+<div class="media-card__thumb">
+    @if (file.Type == MediaType.Image && !string.IsNullOrEmpty(file.StorageUrl))
+    {
+        <img src="@GetMediaUrl(file.StorageUrl)" alt="@file.FileName" class="media-card__img-preview" />
+    }
+    else
+    {
+        <MediaThumb Type="file.Type" FileName="file.FileName" />
+    }
+</div>
+
+
+
+
+@if (_editingId is null)
 {
-    authorId = await GetOrCreateCurrentAuthorIdAsync();
+    <div class="form-group">
+        <label class="form-label">Seleccionar archivo <span class="form-required">*</span></label>
+        <InputFile OnChange="OnInputFileSelected" class="input" />
+    </div>
 }
 
+<div class="form-group">
+    <label class="form-label" for="file-name">Nombre de archivo <span class="form-required">*</span></label>
+    <InputText id="file-name" class="input" @bind-Value="_form.FileName" placeholder="Ej: manual-onboarding.pdf" />
+</div>
 
 
 
 
-var authorId = Guid.TryParse(_model.AuthorId, out var parsedAuthorId)
-    ? parsedAuthorId
-    : await GetOrCreateCurrentAuthorIdAsync();
+private IBrowserFile? _selectedFile;
 
-var mediaFile = new MediaFile
+private void OnInputFileSelected(InputFileChangeEventArgs e)
 {
-    Id = Guid.NewGuid(),
-    FileName = file.Name,
-    Type = MediaType.Image,
-    StorageUrl = uploadResult.Key!,
-    SizeInBytes = file.Size,
-    AuthorId = authorId,
-    UploadedAt = DateTime.UtcNow
-};
+    _selectedFile = e.File;
+    
+    // Auto-completa el nombre del archivo con su nombre exacto
+    if (_selectedFile is not null && string.IsNullOrWhiteSpace(_form.FileName))
+    {
+        _form.FileName = _selectedFile.Name;
+    }
+}
 
-var createdMedia = await Data.CreateMediaFileAsync(mediaFile);
+private async Task Save()
+{
+    if (string.IsNullOrWhiteSpace(_form.FileName))
+    {
+        _error = "El nombre del archivo es obligatorio.";
+        return;
+    }
 
-_model.CoverImageMediaId = createdMedia.Id;
-_coverPreviewUrl = Storage.GetPublicUrl(createdMedia.StorageUrl);
+    var tags = (_form.TagsRaw ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToList();
+
+    if (_editingId is null)
+    {
+        // Validación de archivo seleccionado
+        if (_selectedFile is null)
+        {
+            _error = "Debes seleccionar un archivo para subir.";
+            return;
+        }
+
+        // Subida física al almacenamiento / CDN
+        using var stream = _selectedFile.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024); // 20 MB
+        
+        var uploadRequest = new FileUploadRequest
+        {
+            FileName = _selectedFile.Name,
+            Content = stream,
+            SizeBytes = _selectedFile.Size,
+            Category = FileCategory.ArticleAttachment // O la categoría correspondiente
+        };
+
+        var uploadResult = await StorageService.UploadAsync(uploadRequest);
+
+        if (!uploadResult.IsSuccess)
+        {
+            _error = uploadResult.ErrorMessage;
+            return;
+        }
+
+        var authorId = (await Data.GetAuthorsAsync()).FirstOrDefault()?.Id ?? Guid.Empty;
+
+        // Registro en base de datos con la ruta devuelta por el servicio
+        var newMedia = new MediaFile
+        {
+            Id = Guid.NewGuid(),
+            FileName = _form.FileName.Trim(),
+            Type = _form.Type,
+            StorageUrl = uploadResult.Key, // Guarda la clave o ruta devuelta
+            ThumbnailUrl = string.Empty,
+            SizeInBytes = _selectedFile.Size,
+            AuthorId = authorId,
+            UploadedAt = DateTime.Now,
+            Tags = tags,
+            CategoryId = null
+        };
+
+        await Data.InsertMediaFileAsync(newMedia); // Inserción real en persistencia
+    }
+    else
+    {
+        var mediaFile = await Data.GetMediaFileAsync(_editingId.Value);
+        if (mediaFile != null)
+        {
+            mediaFile.FileName = _form.FileName;
+            mediaFile.Type = _form.Type;
+            mediaFile.Tags = tags;
+            await Data.UpdateMediaFileAsync(mediaFile);
+        }
+    }
+
+    ResetPage();
+    _showModal = false;
+    _selectedFile = null;
+}
