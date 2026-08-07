@@ -1,125 +1,139 @@
-<div class="form-group">
-    <label class="form-label" for="file-input">
-        Archivo <span class="form-required">*</span>
-    </label>
-    <InputFile id="file-input" class="input" OnChange="OnFileSelected" />
-    @if (_selectedFile is not null)
-    {
-        <p class="form-hint">
-            <Icon Name="file" /> @_selectedFile.Name (@FormatSize(_selectedFile.Size))
-        </p>
-    }
-</div>
-
-<div class="form-group">
-    <label class="form-label" for="file-name">Nombre de archivo <span class="form-required">*</span></label>
-    <InputText id="file-name" class="input" @bind-Value="_form.FileName" placeholder="Ej: manual-onboarding.pdf" />
-</div>
-
-
-
-
-
-private IBrowserFile? _selectedFile;
-private bool _isUploading;
-
-private void OnFileSelected(InputFileChangeEventArgs e)
+private void OpenPreview(MediaFile file)
 {
-    _selectedFile = e.File;
-    if (_editingId is null && string.IsNullOrWhiteSpace(_form.FileName))
-        _form.FileName = e.File.Name; // pre-llena con el nombre real
+    _previewFile = file;
+    _showPreview = true;
 }
 
-private static string FormatSize(long bytes) =>
-    bytes >= 1024 * 1024 ? $"{bytes / (1024.0 * 1024.0):0.#} MB" : $"{bytes / 1024.0:0.#} KB";
+private void ClosePreview() => _showPreview = false;
 
-private async Task Save()
-{
-    if (string.IsNullOrWhiteSpace(_form.FileName))
-    {
-        _error = "El nombre de archivo es obligatorio.";
-        return;
-    }
+private void OnPreviewOpenChanged(bool isOpen) => _showPreview = isOpen;
 
-    if (_editingId is null && _selectedFile is null)
-    {
-        _error = "Debes seleccionar un archivo para subir.";
-        return;
-    }
+private void ConfirmDelete(MediaFile file) => _pendingDelete = file;
 
-    var tags = (_form.TagsRaw ?? string.Empty)
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .ToList();
+private void CancelDelete() => _pendingDelete = null;
 
-    _isUploading = true;
-    try
-    {
-        if (_editingId is null)
-        {
-            const long maxSize = 20 * 1024 * 1024; // ajustar a tu config real
-            await using var stream = _selectedFile!.OpenReadStream(maxAllowedSize: maxSize);
-
-            var uploadRequest = new FileUploadRequest
-            {
-                FileName = _form.FileName.Trim(),
-                Content = stream,
-                SizeInBytes = _selectedFile.Size,
-                Category = FileCategory.ArticleAttachment // ver nota arriba
-            };
-
-            var result = await UploadFile.ExecuteAsync(uploadRequest);
-            if (!result.Succeeded)
-            {
-                _error = result.Error;
-                return;
-            }
-
-            var authorId = (await Data.GetAuthorsAsync()).FirstOrDefault()?.Id ?? Guid.Empty;
-
-            await Data.CreateMediaFileAsync(new MediaFile
-            {
-                Id = Guid.NewGuid(),
-                FileName = _form.FileName.Trim(),
-                Type = _form.Type,
-                StorageUrl = result.Key!, // key devuelta por UploadAsync
-                ThumbnailUrl = string.Empty,
-                SizeInBytes = _selectedFile.Size,
-                AuthorId = authorId,
-                UploadedAt = DateTime.Now,
-                Tags = tags,
-                CategoryId = null
-            });
-
-            _all.Insert(0, (await Data.GetMediaFilesAsync()).First(m => m.StorageUrl == result.Key));
-        }
-        else
-        {
-            var mediaFile = await Data.GetMediaFileAsync(_editingId.Value);
-            if (mediaFile is null) return;
-
-            mediaFile.FileName = _form.FileName.Trim();
-            mediaFile.Type = _form.Type;
-            mediaFile.Tags = tags;
-            await Data.UpdateMediaFileAsync(mediaFile);
-        }
-
-        ResetPage();
-        _showModal = false;
-    }
-    finally
-    {
-        _isUploading = false;
-    }
-}
-
-
-private async Task DeleteFile(MediaFile file)
+private async Task DeleteMediaFile(MediaFile file)
 {
     var deleted = await DeleteFile.ExecuteAsync(file.StorageUrl);
     if (deleted)
     {
-        // asumiendo que agregas Data.DeleteMediaFileAsync(Guid id) a IWikiDataService
+        await Data.DeleteMediaFileAsync(file.Id);
         _all.Remove(file);
-        ResetPage();
+        ApplyPage();
     }
+    _pendingDelete = null;
 }
+
+
+
+
+
+<div class="media-card card">
+    <div class="card-actions">
+        <button class="card-edit-btn" title="Editar" @onclick="() => OpenEditModal(file)">
+            <Icon Name="pencil" />
+        </button>
+        <button class="card-delete-btn" title="Eliminar" @onclick="() => ConfirmDelete(file)">
+            <Icon Name="trash-2" />
+        </button>
+    </div>
+    <button class="media-card__thumb media-card__thumb--clickable" @onclick="() => OpenPreview(file)">
+        <MediaThumb Type="file.Type" FileName="file.FileName" />
+    </button>
+    <div class="media-card__info">
+        <p class="media-card__name" title="@file.FileName">@file.FileName</p>
+        <p class="media-card__meta">@file.SizeLabel · @file.UploadedAt.ToString("d MMM yyyy")</p>
+        <div class="media-card__footer">
+            <span class="badge">@file.Type.ToString()</span>
+            <span class="avatar avatar--sm" style="background:linear-gradient(135deg,@GetAuthorColors(file.AuthorId))">@GetAuthorInitials(file.AuthorId)</span>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+<div class="row-actions">
+    <button class="icon-btn icon-btn--ghost" title="Editar" @onclick="() => OpenEditModal(file)">
+        <Icon Name="pencil" />
+    </button>
+    <button class="icon-btn icon-btn--ghost" title="Eliminar" @onclick="() => ConfirmDelete(file)">
+        <Icon Name="trash-2" />
+    </button>
+    <Icon Name="download" Class="media-list-row__dl" />
+</div>
+
+
+
+<Modal IsOpen="@(_pendingDelete is not null)" IsOpenChanged="@((bool open) => { if (!open) CancelDelete(); })" Title="Eliminar archivo">
+    @if (_pendingDelete is not null)
+    {
+        <p>¿Seguro que deseas eliminar <strong>@_pendingDelete.FileName</strong>? Esta acción no se puede deshacer.</p>
+        <div class="form-actions">
+            <button type="button" class="btn btn--secondary" @onclick="CancelDelete">Cancelar</button>
+            <button type="button" class="btn btn--danger" @onclick="() => DeleteMediaFile(_pendingDelete)">
+                <Icon Name="trash-2" /> Eliminar
+            </button>
+        </div>
+    }
+</Modal>
+
+
+
+
+<Modal IsOpen="_showPreview" IsOpenChanged="OnPreviewOpenChanged" Title="@_previewFile?.FileName">
+    @if (_previewFile is not null)
+    {
+        <div class="preview-body">
+            @if (_previewFile.Type == MediaType.Image || _previewFile.Type == MediaType.Gif)
+            {
+                <img src="@FileStorage.GetPublicUrl(_previewFile.StorageUrl)" alt="@_previewFile.FileName" class="preview-image" />
+            }
+            else
+            {
+                <div class="preview-fallback">
+                    <MediaThumb Type="_previewFile.Type" FileName="_previewFile.FileName" />
+                    <p>Vista previa no disponible para este tipo de archivo.</p>
+                    <a class="btn btn--primary" href="@FileStorage.GetPublicUrl(_previewFile.StorageUrl)" target="_blank" rel="noopener">
+                        <Icon Name="external-link" /> Abrir archivo
+                    </a>
+                </div>
+            }
+            <p class="preview-meta">@_previewFile.SizeLabel · @_previewFile.UploadedAt.ToString("d MMM yyyy")</p>
+        </div>
+    }
+</Modal>
+
+
+
+
+
+.card-actions {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    z-index: 2;
+}
+.media-card__thumb--clickable {
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    width: 100%;
+}
+.preview-image {
+    max-width: 100%;
+    max-height: 70vh;
+    display: block;
+    margin: 0 auto;
+    border-radius: 8px;
+}
+.preview-fallback {
+    text-align: center;
+    padding: var(--space-6, 24px);
+}
+
+
