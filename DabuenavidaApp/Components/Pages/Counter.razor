@@ -1,16 +1,35 @@
 <div class="media-card card">
-    <button class="card-edit-btn" title="Editar" @onclick="() => OpenEditModal(file)">
-        <Icon Name="pencil" />
-    </button>
-    <div class="media-card__thumb">
-        <MediaThumb Type="file.Type" FileName="file.FileName" />
+    <div class="card-actions">
+        <button class="card-edit-btn" title="Editar" @onclick="() => OpenEditModal(file)">
+            <Icon Name="pencil" />
+        </button>
+
+        <button class="card-delete-btn" title="Eliminar" @onclick="() => ConfirmDelete(file)">
+            <Icon Name="trash-2" />
+        </button>
     </div>
+
+    <button class="media-card__thumb media-card__thumb--clickable"
+            @onclick="() => OpenPreview(file)">
+        <MediaThumb Type="@file.Type" FileName="@file.FileName" />
+    </button>
+
     <div class="media-card__info">
-        <p class="media-card__name" title="@file.FileName">@file.FileName</p>
-        <p class="media-card__meta">@file.SizeLabel · @file.UploadedAt.ToString("d MMM yyyy")</p>
+        <p class="media-card__name" title="@file.FileName">
+            @file.FileName
+        </p>
+
+        <p class="media-card__meta">
+            @file.SizeLabel · @file.UploadedAt.ToString("d MMM yyyy")
+        </p>
+
         <div class="media-card__footer">
             <span class="badge">@file.Type.ToString()</span>
-            <span class="avatar avatar--sm" style="background:linear-gradient(135deg,@GetAuthorColors(file.AuthorId))">@GetAuthorInitials(file.AuthorId)</span>
+
+            <span class="avatar avatar--sm"
+                  style="background:linear-gradient(135deg,@GetAuthorColors(file.AuthorId))">
+                @GetAuthorInitials(file.AuthorId)
+            </span>
         </div>
     </div>
 </div>
