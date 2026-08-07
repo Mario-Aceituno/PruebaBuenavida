@@ -1,45 +1,10 @@
-private void OpenPreview(MediaFile file)
-{
-    _previewFile = file;
-    _showPreview = true;
-}
-
-private void ClosePreview() => _showPreview = false;
-
-private void OnPreviewOpenChanged(bool isOpen) => _showPreview = isOpen;
-
-private void ConfirmDelete(MediaFile file) => _pendingDelete = file;
-
-private void CancelDelete() => _pendingDelete = null;
-
-private async Task DeleteMediaFile(MediaFile file)
-{
-    var deleted = await DeleteFile.ExecuteAsync(file.StorageUrl);
-    if (deleted)
-    {
-        await Data.DeleteMediaFileAsync(file.Id);
-        _all.Remove(file);
-        ApplyPage();
-    }
-    _pendingDelete = null;
-}
-
-
-
-
-
 <div class="media-card card">
-    <div class="card-actions">
-        <button class="card-edit-btn" title="Editar" @onclick="() => OpenEditModal(file)">
-            <Icon Name="pencil" />
-        </button>
-        <button class="card-delete-btn" title="Eliminar" @onclick="() => ConfirmDelete(file)">
-            <Icon Name="trash-2" />
-        </button>
-    </div>
-    <button class="media-card__thumb media-card__thumb--clickable" @onclick="() => OpenPreview(file)">
-        <MediaThumb Type="file.Type" FileName="file.FileName" />
+    <button class="card-edit-btn" title="Editar" @onclick="() => OpenEditModal(file)">
+        <Icon Name="pencil" />
     </button>
+    <div class="media-card__thumb">
+        <MediaThumb Type="file.Type" FileName="file.FileName" />
+    </div>
     <div class="media-card__info">
         <p class="media-card__name" title="@file.FileName">@file.FileName</p>
         <p class="media-card__meta">@file.SizeLabel · @file.UploadedAt.ToString("d MMM yyyy")</p>
@@ -49,91 +14,3 @@ private async Task DeleteMediaFile(MediaFile file)
         </div>
     </div>
 </div>
-
-
-
-
-
-<div class="row-actions">
-    <button class="icon-btn icon-btn--ghost" title="Editar" @onclick="() => OpenEditModal(file)">
-        <Icon Name="pencil" />
-    </button>
-    <button class="icon-btn icon-btn--ghost" title="Eliminar" @onclick="() => ConfirmDelete(file)">
-        <Icon Name="trash-2" />
-    </button>
-    <Icon Name="download" Class="media-list-row__dl" />
-</div>
-
-
-
-<Modal IsOpen="@(_pendingDelete is not null)" IsOpenChanged="@((bool open) => { if (!open) CancelDelete(); })" Title="Eliminar archivo">
-    @if (_pendingDelete is not null)
-    {
-        <p>¿Seguro que deseas eliminar <strong>@_pendingDelete.FileName</strong>? Esta acción no se puede deshacer.</p>
-        <div class="form-actions">
-            <button type="button" class="btn btn--secondary" @onclick="CancelDelete">Cancelar</button>
-            <button type="button" class="btn btn--danger" @onclick="() => DeleteMediaFile(_pendingDelete)">
-                <Icon Name="trash-2" /> Eliminar
-            </button>
-        </div>
-    }
-</Modal>
-
-
-
-
-<Modal IsOpen="_showPreview" IsOpenChanged="OnPreviewOpenChanged" Title="@_previewFile?.FileName">
-    @if (_previewFile is not null)
-    {
-        <div class="preview-body">
-            @if (_previewFile.Type == MediaType.Image || _previewFile.Type == MediaType.Gif)
-            {
-                <img src="@FileStorage.GetPublicUrl(_previewFile.StorageUrl)" alt="@_previewFile.FileName" class="preview-image" />
-            }
-            else
-            {
-                <div class="preview-fallback">
-                    <MediaThumb Type="_previewFile.Type" FileName="_previewFile.FileName" />
-                    <p>Vista previa no disponible para este tipo de archivo.</p>
-                    <a class="btn btn--primary" href="@FileStorage.GetPublicUrl(_previewFile.StorageUrl)" target="_blank" rel="noopener">
-                        <Icon Name="external-link" /> Abrir archivo
-                    </a>
-                </div>
-            }
-            <p class="preview-meta">@_previewFile.SizeLabel · @_previewFile.UploadedAt.ToString("d MMM yyyy")</p>
-        </div>
-    }
-</Modal>
-
-
-
-
-
-.card-actions {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    display: flex;
-    gap: 4px;
-    z-index: 2;
-}
-.media-card__thumb--clickable {
-    border: none;
-    background: none;
-    padding: 0;
-    cursor: pointer;
-    width: 100%;
-}
-.preview-image {
-    max-width: 100%;
-    max-height: 70vh;
-    display: block;
-    margin: 0 auto;
-    border-radius: 8px;
-}
-.preview-fallback {
-    text-align: center;
-    padding: var(--space-6, 24px);
-}
-
-
