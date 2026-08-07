@@ -1,84 +1,125 @@
-public async Task<FileUploadResult> UploadAsync(FileUploadRequest request, CancellationToken cancellationToken = default)
+<div class="form-group">
+    <label class="form-label" for="file-input">
+        Archivo <span class="form-required">*</span>
+    </label>
+    <InputFile id="file-input" class="input" OnChange="OnFileSelected" />
+    @if (_selectedFile is not null)
+    {
+        <p class="form-hint">
+            <Icon Name="file" /> @_selectedFile.Name (@FormatSize(_selectedFile.Size))
+        </p>
+    }
+</div>
+
+<div class="form-group">
+    <label class="form-label" for="file-name">Nombre de archivo <span class="form-required">*</span></label>
+    <InputText id="file-name" class="input" @bind-Value="_form.FileName" placeholder="Ej: manual-onboarding.pdf" />
+</div>
+
+
+
+
+
+private IBrowserFile? _selectedFile;
+private bool _isUploading;
+
+private void OnFileSelected(InputFileChangeEventArgs e)
 {
-    if (request.Content is null || request.SizeInBytes == 0)
-        return FileUploadResult.Failure("El archivo está vacío o no es válido.");
+    _selectedFile = e.File;
+    if (_editingId is null && string.IsNullOrWhiteSpace(_form.FileName))
+        _form.FileName = e.File.Name; // pre-llena con el nombre real
+}
 
-    var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
-    if (_options.AllowedExtensions is { Length: > 0 } &&
-        !_options.AllowedExtensions.Contains(extension))
-        return FileUploadResult.Failure($"La extensión de archivo '{extension}' no está permitida.");
+private static string FormatSize(long bytes) =>
+    bytes >= 1024 * 1024 ? $"{bytes / (1024.0 * 1024.0):0.#} MB" : $"{bytes / 1024.0:0.#} KB";
 
-    if (request.SizeInBytes > _options.MaxFileSizeInBytes)
-        return FileUploadResult.Failure(
-            $"El archivo excede el tamaño máximo permitido ({_options.MaxFileSizeInBytes / (1024 * 1024)} MB).");
+private async Task Save()
+{
+    if (string.IsNullOrWhiteSpace(_form.FileName))
+    {
+        _error = "El nombre de archivo es obligatorio.";
+        return;
+    }
 
+    if (_editingId is null && _selectedFile is null)
+    {
+        _error = "Debes seleccionar un archivo para subir.";
+        return;
+    }
+
+    var tags = (_form.TagsRaw ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToList();
+
+    _isUploading = true;
     try
     {
-        var safeFileName = SanitizeFileName(request.FileName);
-        var folder = CategoryFolder(request.Category);
-        var (key, filePath) = ResolveUniqueDestination(folder, safeFileName);
+        if (_editingId is null)
+        {
+            const long maxSize = 20 * 1024 * 1024; // ajustar a tu config real
+            await using var stream = _selectedFile!.OpenReadStream(maxAllowedSize: maxSize);
 
-        var directory = Path.GetDirectoryName(filePath)!;
-        if (!Directory.Exists(directory))
-            Directory.CreateDirectory(directory);
+            var uploadRequest = new FileUploadRequest
+            {
+                FileName = _form.FileName.Trim(),
+                Content = stream,
+                SizeInBytes = _selectedFile.Size,
+                Category = FileCategory.ArticleAttachment // ver nota arriba
+            };
 
-        await using var destination = new FileStream(filePath, FileMode.CreateNew);
-        await request.Content.CopyToAsync(destination, cancellationToken);
+            var result = await UploadFile.ExecuteAsync(uploadRequest);
+            if (!result.Succeeded)
+            {
+                _error = result.Error;
+                return;
+            }
 
-        return FileUploadResult.Success(key);
+            var authorId = (await Data.GetAuthorsAsync()).FirstOrDefault()?.Id ?? Guid.Empty;
+
+            await Data.CreateMediaFileAsync(new MediaFile
+            {
+                Id = Guid.NewGuid(),
+                FileName = _form.FileName.Trim(),
+                Type = _form.Type,
+                StorageUrl = result.Key!, // key devuelta por UploadAsync
+                ThumbnailUrl = string.Empty,
+                SizeInBytes = _selectedFile.Size,
+                AuthorId = authorId,
+                UploadedAt = DateTime.Now,
+                Tags = tags,
+                CategoryId = null
+            });
+
+            _all.Insert(0, (await Data.GetMediaFilesAsync()).First(m => m.StorageUrl == result.Key));
+        }
+        else
+        {
+            var mediaFile = await Data.GetMediaFileAsync(_editingId.Value);
+            if (mediaFile is null) return;
+
+            mediaFile.FileName = _form.FileName.Trim();
+            mediaFile.Type = _form.Type;
+            mediaFile.Tags = tags;
+            await Data.UpdateMediaFileAsync(mediaFile);
+        }
+
+        ResetPage();
+        _showModal = false;
     }
-    catch (Exception ex)
+    finally
     {
-        return FileUploadResult.Failure(ex.Message);
+        _isUploading = false;
     }
 }
 
-/// <summary>
-/// Normaliza el nombre original (quita acentos, espacios y símbolos inseguros
-/// para filesystem/URL) preservando la extensión. El nombre visible en
-/// MediaFile.FileName no se toca; esto solo afecta la ruta física.
-/// </summary>
-private static string SanitizeFileName(string originalFileName)
+
+private async Task DeleteFile(MediaFile file)
 {
-    var name = Path.GetFileNameWithoutExtension(originalFileName);
-    var extension = Path.GetExtension(originalFileName).ToLowerInvariant();
-
-    var normalized = name.Normalize(NormalizationForm.FormD);
-    var sb = new StringBuilder();
-    foreach (var c in normalized)
-        if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
-            sb.Append(c);
-    name = sb.ToString().Normalize(NormalizationForm.FormC);
-
-    name = Regex.Replace(name, @"\s+", "-");
-    foreach (var c in Path.GetInvalidFileNameChars().Concat(new[] { '#', '?', '%', '&', '+' }))
-        name = name.Replace(c.ToString(), string.Empty);
-
-    name = Regex.Replace(name, "-{2,}", "-").Trim('-', '.');
-    if (string.IsNullOrWhiteSpace(name))
-        name = "archivo";
-
-    return name + extension;
-}
-
-/// <summary>
-/// Evita sobrescribir: si "archivo.png" ya existe, prueba "archivo-1.png", etc.
-/// </summary>
-private (string key, string filePath) ResolveUniqueDestination(string folder, string fileName)
-{
-    var name = Path.GetFileNameWithoutExtension(fileName);
-    var extension = Path.GetExtension(fileName);
-    var attempt = 0;
-
-    while (true)
+    var deleted = await DeleteFile.ExecuteAsync(file.StorageUrl);
+    if (deleted)
     {
-        var candidateName = attempt == 0 ? fileName : $"{name}-{attempt}{extension}";
-        var candidateKey = $"{folder}/{candidateName}";
-        var candidatePath = ResolveSafePath(candidateKey, mustExist: false);
-
-        if (!File.Exists(candidatePath))
-            return (candidateKey, candidatePath);
-
-        attempt++;
+        // asumiendo que agregas Data.DeleteMediaFileAsync(Guid id) a IWikiDataService
+        _all.Remove(file);
+        ResetPage();
     }
 }
