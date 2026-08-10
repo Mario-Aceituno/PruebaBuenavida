@@ -4,21 +4,25 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace CorpWiki.Infrastructure.Persistence.Configurations;
 
-public class CollectionArticleConfiguration : IEntityTypeConfiguration<CollectionArticle>
+public class CollectionConfiguration : IEntityTypeConfiguration<Collection>
 {
-    public void Configure(EntityTypeBuilder<CollectionArticle> builder)
+    public void Configure(EntityTypeBuilder<Collection> builder)
     {
-        builder.ToTable("collection_articles");
-        builder.HasKey(x => new { x.CollectionId, x.ArticleId });
+        builder.ToTable("collections");
+        builder.HasKey(x => x.Id);
 
-        builder.HasOne<Collection>()
-            .WithMany()
-            .HasForeignKey(x => x.CollectionId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.Property(x => x.Name).HasMaxLength(150).IsRequired();
+        builder.Property(x => x.Slug).HasMaxLength(200).IsRequired();
+        builder.HasIndex(x => x.Slug).IsUnique();
 
-        builder.HasOne<Article>()
-            .WithMany()
-            .HasForeignKey(x => x.ArticleId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.Property(x => x.Description).HasMaxLength(1000);
+        builder.Property(x => x.CoverImageUrl).HasMaxLength(500);
+        builder.Property(x => x.Icon).HasMaxLength(50);
+
+        builder.Property(x => x.IsFeatured).HasDefaultValue(false);
+
+        // ArticleIds no se mapea directo: se resuelve vía la tabla
+        // collection_articles (CollectionArticle), igual que TagIds en Article.
+        builder.Ignore(x => x.ArticleIds);
     }
 }
