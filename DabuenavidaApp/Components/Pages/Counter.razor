@@ -1,158 +1,40 @@
-using Microsoft.EntityFrameworkCore.Migrations;
+window.editraScrollTo = (elementId) => {
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+};
 
-#nullable disable
 
-namespace CorpWiki.Infrastructure.Migrations
-{
-    public partial class AddCollectionsTable : Migration
+
+
+
+
+@inject IJSRuntime JS
+
+<nav class="toc">
+    <p class="toc__title"><Icon Name="layers-3" />En esta página</p>
+    @foreach (var h in _headings)
     {
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.CreateTable(
-                name: "collections",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    Slug = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
-                    CoverImageUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    Icon = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    IsFeatured = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_collections", x => x.Id);
-                });
+        <a class="toc__link toc__link--lvl@(h.Meta)"
+           href="#block-@h.Order"
+           @onclick="() => ScrollToBlock(h.Order)"
+           @onclick:preventDefault="true">@h.Text</a>
+    }
+</nav>
 
-            migrationBuilder.CreateIndex(
-                name: "IX_collections_Slug",
-                table: "collections",
-                column: "Slug",
-                unique: true);
+@code {
+    [Parameter, EditorRequired] public List<ArticleContentBlock> Blocks { get; set; } = new();
 
-            migrationBuilder.CreateTable(
-                name: "collection_articles",
-                columns: table => new
-                {
-                    CollectionId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ArticleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_collection_articles", x => new { x.CollectionId, x.ArticleId });
-                    table.ForeignKey(
-                        name: "FK_collection_articles_collections_CollectionId",
-                        column: x => x.CollectionId,
-                        principalTable: "collections",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_collection_articles_articles_ArticleId",
-                        column: x => x.ArticleId,
-                        principalTable: "articles",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+    private List<ArticleContentBlock> _headings = new();
 
-            migrationBuilder.CreateIndex(
-                name: "IX_collection_articles_ArticleId",
-                table: "collection_articles",
-                column: "ArticleId");
-        }
+    protected override void OnParametersSet()
+    {
+        _headings = Blocks.Where(b => b.Type == ContentBlockType.Heading).OrderBy(b => b.Order).ToList();
+    }
 
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropTable(name: "collection_articles");
-            migrationBuilder.DropTable(name: "collections");
-        }
+    private async Task ScrollToBlock(int order)
+    {
+        await JS.InvokeVoidAsync("editraScrollTo", $"block-{order}");
     }
 }
-
-
-
-
-
-
-modelBuilder.Entity("CorpWiki.Domain.Entities.Collection", b =>
-{
-    b.Property<Guid>("Id")
-        .ValueGeneratedOnAdd()
-        .HasColumnType("uniqueidentifier");
-
-    b.Property<string>("Name")
-        .IsRequired()
-        .HasMaxLength(150)
-        .HasColumnType("nvarchar(150)");
-
-    b.Property<string>("Slug")
-        .IsRequired()
-        .HasMaxLength(200)
-        .HasColumnType("nvarchar(200)");
-
-    b.Property<string>("Description")
-        .IsRequired()
-        .HasMaxLength(1000)
-        .HasColumnType("nvarchar(1000)");
-
-    b.Property<string>("CoverImageUrl")
-        .IsRequired()
-        .HasMaxLength(500)
-        .HasColumnType("nvarchar(500)");
-
-    b.Property<string>("Icon")
-        .IsRequired()
-        .HasMaxLength(50)
-        .HasColumnType("nvarchar(50)");
-
-    b.Property<bool>("IsFeatured")
-        .HasColumnType("bit");
-
-    b.HasKey("Id");
-
-    b.HasIndex("Slug")
-        .IsUnique();
-
-    b.ToTable("collections");
-});
-
-
-
-
-
-
-
-modelBuilder.Entity("CorpWiki.Domain.Entities.CollectionArticle", b =>
-{
-    b.Property<Guid>("CollectionId")
-        .HasColumnType("uniqueidentifier");
-
-    b.Property<Guid>("ArticleId")
-        .HasColumnType("uniqueidentifier");
-
-    b.HasKey("CollectionId", "ArticleId");
-
-    b.HasIndex("ArticleId");
-
-    b.ToTable("collection_articles");
-});
-
-
-
-
-
-
-modelBuilder.Entity("CorpWiki.Domain.Entities.CollectionArticle", b =>
-{
-    b.HasOne("CorpWiki.Domain.Entities.Collection", null)
-        .WithMany()
-        .HasForeignKey("CollectionId")
-        .OnDelete(DeleteBehavior.Cascade)
-        .IsRequired();
-
-    b.HasOne("CorpWiki.Domain.Entities.Article", null)
-        .WithMany()
-        .HasForeignKey("ArticleId")
-        .OnDelete(DeleteBehavior.Cascade)
-        .IsRequired();
-});
