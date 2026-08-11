@@ -1,28 +1,158 @@
-using CorpWiki.Domain.Entities;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Migrations;
 
-namespace CorpWiki.Infrastructure.Persistence.Configurations;
+#nullable disable
 
-public class CollectionConfiguration : IEntityTypeConfiguration<Collection>
+namespace CorpWiki.Infrastructure.Migrations
 {
-    public void Configure(EntityTypeBuilder<Collection> builder)
+    public partial class AddCollectionsTable : Migration
     {
-        builder.ToTable("collections");
-        builder.HasKey(x => x.Id);
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.CreateTable(
+                name: "collections",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    Slug = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
+                    CoverImageUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    Icon = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    IsFeatured = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_collections", x => x.Id);
+                });
 
-        builder.Property(x => x.Name).HasMaxLength(150).IsRequired();
-        builder.Property(x => x.Slug).HasMaxLength(200).IsRequired();
-        builder.HasIndex(x => x.Slug).IsUnique();
+            migrationBuilder.CreateIndex(
+                name: "IX_collections_Slug",
+                table: "collections",
+                column: "Slug",
+                unique: true);
 
-        builder.Property(x => x.Description).HasMaxLength(1000);
-        builder.Property(x => x.CoverImageUrl).HasMaxLength(500);
-        builder.Property(x => x.Icon).HasMaxLength(50);
+            migrationBuilder.CreateTable(
+                name: "collection_articles",
+                columns: table => new
+                {
+                    CollectionId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ArticleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_collection_articles", x => new { x.CollectionId, x.ArticleId });
+                    table.ForeignKey(
+                        name: "FK_collection_articles_collections_CollectionId",
+                        column: x => x.CollectionId,
+                        principalTable: "collections",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_collection_articles_articles_ArticleId",
+                        column: x => x.ArticleId,
+                        principalTable: "articles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
 
-        builder.Property(x => x.IsFeatured).HasDefaultValue(false);
+            migrationBuilder.CreateIndex(
+                name: "IX_collection_articles_ArticleId",
+                table: "collection_articles",
+                column: "ArticleId");
+        }
 
-        // ArticleIds no se mapea directo: se resuelve vía la tabla
-        // collection_articles (CollectionArticle), igual que TagIds en Article.
-        builder.Ignore(x => x.ArticleIds);
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropTable(name: "collection_articles");
+            migrationBuilder.DropTable(name: "collections");
+        }
     }
 }
+
+
+
+
+
+
+modelBuilder.Entity("CorpWiki.Domain.Entities.Collection", b =>
+{
+    b.Property<Guid>("Id")
+        .ValueGeneratedOnAdd()
+        .HasColumnType("uniqueidentifier");
+
+    b.Property<string>("Name")
+        .IsRequired()
+        .HasMaxLength(150)
+        .HasColumnType("nvarchar(150)");
+
+    b.Property<string>("Slug")
+        .IsRequired()
+        .HasMaxLength(200)
+        .HasColumnType("nvarchar(200)");
+
+    b.Property<string>("Description")
+        .IsRequired()
+        .HasMaxLength(1000)
+        .HasColumnType("nvarchar(1000)");
+
+    b.Property<string>("CoverImageUrl")
+        .IsRequired()
+        .HasMaxLength(500)
+        .HasColumnType("nvarchar(500)");
+
+    b.Property<string>("Icon")
+        .IsRequired()
+        .HasMaxLength(50)
+        .HasColumnType("nvarchar(50)");
+
+    b.Property<bool>("IsFeatured")
+        .HasColumnType("bit");
+
+    b.HasKey("Id");
+
+    b.HasIndex("Slug")
+        .IsUnique();
+
+    b.ToTable("collections");
+});
+
+
+
+
+
+
+
+modelBuilder.Entity("CorpWiki.Domain.Entities.CollectionArticle", b =>
+{
+    b.Property<Guid>("CollectionId")
+        .HasColumnType("uniqueidentifier");
+
+    b.Property<Guid>("ArticleId")
+        .HasColumnType("uniqueidentifier");
+
+    b.HasKey("CollectionId", "ArticleId");
+
+    b.HasIndex("ArticleId");
+
+    b.ToTable("collection_articles");
+});
+
+
+
+
+
+
+modelBuilder.Entity("CorpWiki.Domain.Entities.CollectionArticle", b =>
+{
+    b.HasOne("CorpWiki.Domain.Entities.Collection", null)
+        .WithMany()
+        .HasForeignKey("CollectionId")
+        .OnDelete(DeleteBehavior.Cascade)
+        .IsRequired();
+
+    b.HasOne("CorpWiki.Domain.Entities.Article", null)
+        .WithMany()
+        .HasForeignKey("ArticleId")
+        .OnDelete(DeleteBehavior.Cascade)
+        .IsRequired();
+});
