@@ -1,40 +1,106 @@
-window.editraScrollTo = (elementId) => {
-    const el = document.getElementById(elementId);
-    if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-};
+namespace CorpWiki.Domain.Entities;
+
+/// <summary>
+/// Representa un artículo marcado como favorito por un usuario.
+/// Clave primaria compuesta (UserId, ArticleId).
+/// </summary>
+public class ArticleFavorite
+{
+    public Guid UserId { get; set; }
+    public Guid ArticleId { get; set; }
+    public DateTime CreatedAt { get; set; }
+
+    // Navegación
+    public Security.SecurityUser? User { get; set; }
+    public Article? Article { get; set; }
+}
+
+
+
+
+namespace CorpWiki.Domain.Entities;
+
+/// <summary>
+/// Registra cada vez que un usuario visualiza un artículo.
+/// </summary>
+public class ArticleHistory
+{
+    public Guid Id { get; set; }
+    public Guid UserId { get; set; }
+    public Guid ArticleId { get; set; }
+    public DateTime ViewedAt { get; set; }
+
+    // Navegación
+    public Security.SecurityUser? User { get; set; }
+    public Article? Article { get; set; }
+}
+
+
+
+
+namespace CorpWiki.Domain.Entities;
+
+/// <summary>
+/// Bitácora de actividad genérica del sistema (auditoría de acciones).
+/// </summary>
+public class ActivityLog
+{
+    public Guid Id { get; set; }
+    public Guid? UserId { get; set; }
+    public string EntityType { get; set; } = string.Empty;
+    public Guid EntityId { get; set; }
+    public string Action { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+
+    // Navegación
+    public Security.SecurityUser? User { get; set; }
+}
 
 
 
 
 
+namespace CorpWiki.Domain.Entities;
 
-@inject IJSRuntime JS
+/// <summary>
+/// Comentario sobre un artículo, con soporte para respuestas anidadas.
+/// </summary>
+public class ArticleComment
+{
+    public Guid Id { get; set; }
+    public Guid ArticleId { get; set; }
+    public Guid UserId { get; set; }
+    public Guid? ParentCommentId { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public bool IsDeleted { get; set; } = false;
 
-<nav class="toc">
-    <p class="toc__title"><Icon Name="layers-3" />En esta página</p>
-    @foreach (var h in _headings)
-    {
-        <a class="toc__link toc__link--lvl@(h.Meta)"
-           href="#block-@h.Order"
-           @onclick="() => ScrollToBlock(h.Order)"
-           @onclick:preventDefault="true">@h.Text</a>
-    }
-</nav>
+    // Navegación
+    public Article? Article { get; set; }
+    public Security.SecurityUser? User { get; set; }
+    public ArticleComment? ParentComment { get; set; }
+    public ICollection<ArticleComment> Replies { get; set; } = new List<ArticleComment>();
+}
 
-@code {
-    [Parameter, EditorRequired] public List<ArticleContentBlock> Blocks { get; set; } = new();
 
-    private List<ArticleContentBlock> _headings = new();
 
-    protected override void OnParametersSet()
-    {
-        _headings = Blocks.Where(b => b.Type == ContentBlockType.Heading).OrderBy(b => b.Order).ToList();
-    }
 
-    private async Task ScrollToBlock(int order)
-    {
-        await JS.InvokeVoidAsync("editraScrollTo", $"block-{order}");
-    }
+namespace CorpWiki.Domain.Entities;
+
+/// <summary>
+/// Calificación (rating) de un artículo por parte de un usuario.
+/// </summary>
+public class ArticleRating
+{
+    public Guid Id { get; set; }
+    public Guid ArticleId { get; set; }
+    public Guid? UserId { get; set; }
+    public byte Score { get; set; }
+    public DateTime CreatedAt { get; set; }
+
+    // Navegación
+    public Article? Article { get; set; }
+    public Security.SecurityUser? User { get; set; }
 }
