@@ -1,89 +1,249 @@
-Task<Collection> CreateCollectionAsync(string name, string description, string icon, string coverImageUrl);
-Task<Collection?> UpdateCollectionAsync(Guid id, string name, string description, string icon, string coverImageUrl);
-Task<bool> DeleteCollectionAsync(Guid id);
-Task<Collection?> GetCollectionByIdAsync(Guid id);
+@page "/colecciones/{Slug}"
+@inject IWikiDataService Data
+@inject IToastService Toast
 
-Task<IReadOnlyList<Article>> GetArticlesInCollectionAsync(Guid collectionId);
-Task<bool> AddArticleToCollectionAsync(Guid collectionId, Guid articleId);
-Task<bool> RemoveArticleFromCollectionAsync(Guid collectionId, Guid articleId);
+<PageTitle>DaviWiki - @(_collection?.Name ?? "Colección")</PageTitle>
 
-
-
-public async Task<Collection?> UpdateCollectionAsync(Guid id, string name, string description, string icon, string coverImageUrl)
+@if (_collection is null)
 {
-    var collection = await _db.Collections.FindAsync(id);
-    if (collection == null) return null;
-
-    collection.Name = name.Trim();
-    collection.Slug = Slugify(name);
-    collection.Description = description?.Trim() ?? string.Empty;
-    collection.Icon = string.IsNullOrWhiteSpace(icon) ? "library" : icon;
-    collection.CoverImageUrl = coverImageUrl?.Trim() ?? string.Empty;
-
-    await _db.SaveChangesAsync();
-    return collection;
-}
-
-public async Task<bool> DeleteCollectionAsync(Guid id)
-{
-    var collection = await _db.Collections.FindAsync(id);
-    if (collection == null) return false;
-
-    _db.Collections.Remove(collection); // cascade elimina collection_articles
-    await _db.SaveChangesAsync();
-    return true;
-}
-
-public async Task<Collection?> GetCollectionByIdAsync(Guid id) =>
-    await _db.Collections.FindAsync(id);
-
-public async Task<IReadOnlyList<Article>> GetArticlesInCollectionAsync(Guid collectionId)
-{
-    var articleIds = await _db.CollectionArticles
-        .Where(ca => ca.CollectionId == collectionId)
-        .Select(ca => ca.ArticleId)
-        .ToListAsync();
-
-    var articles = await _db.Articles
-        .Where(a => articleIds.Contains(a.Id))
-        .ToListAsync();
-
-    foreach (var article in articles)
-        await PopulateNotMappedListsAsync(article);
-
-    return articles;
-}
-
-public async Task<bool> AddArticleToCollectionAsync(Guid collectionId, Guid articleId)
-{
-    var exists = await _db.CollectionArticles
-        .AnyAsync(ca => ca.CollectionId == collectionId && ca.ArticleId == articleId);
-    if (exists) return false;
-
-    _db.CollectionArticles.Add(new CollectionArticle { CollectionId = collectionId, ArticleId = articleId });
-    await _db.SaveChangesAsync();
-    return true;
-}
-
-public async Task<bool> RemoveArticleFromCollectionAsync(Guid collectionId, Guid articleId)
-{
-    var link = await _db.CollectionArticles
-        .FirstOrDefaultAsync(ca => ca.CollectionId == collectionId && ca.ArticleId == articleId);
-    if (link == null) return false;
-
-    _db.CollectionArticles.Remove(link);
-    await _db.SaveChangesAsync();
-    return true;
-}
-
-
-
-if (_editingId is null)
-{
-    await Data.CreateCollectionAsync(_form.Name, _form.Description, _form.Icon, _form.CoverImageUrl);
+    <div class="empty-state">
+        <Icon Name="library" Class="empty-state__icon" />
+        <h2>Colección no encontrada</h2>
+        <a class="btn btn--primary" href="/colecciones">Ver todas las colecciones</a>
+    </div>
 }
 else
 {
-    await Data.UpdateCollectionAsync(_editingId.Value, _form.Name, _form.Description, _form.Icon, _form.CoverImageUrl);
+    <Breadcrumb Items="_breadcrumb" />
+
+    <div class="collection-banner" style="background-image:url('@_collection.CoverImageUrl')">
+        <div class="collection-banner__overlay">
+            <span class="collection-banner__icon"><Icon Name="@_collection.Icon" /></span>
+            <h1>@_collection.Name</h1>
+            <p>@_collection.Description</p>
+            <span class="badge">@_articles.Count artículos</span>
+
+            @* NUEVO: acciones de la colección *@
+            <div class="collection-banner__actions">
+                <button class="btn btn--secondary" @onclick="OpenAddArticleModal">
+                    <Icon Name="plus" /> Agregar artículo
+                </button>
+                <button class="btn btn--secondary" @onclick="OpenEditModal">
+                    <Icon Name="pencil" /> Editar colección
+                </button>
+                <button class="btn btn--danger" @onclick="ConfirmDeleteCollection">
+                    <Icon Name="trash" /> Eliminar colección
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <section class="section">
+        <div class="article-grid">
+            @foreach (var dto in _articles)
+            {
+                @* NUEVO: envuelto para poder mostrar el botón de quitar *@
+                <div class="article-card-wrapper">
+                    <ArticleCard Dto="dto" />
+                    <button class="btn btn--icon btn--danger article-card-wrapper__remove"
+                            title="Quitar de la colección"
+                            @onclick="() => RemoveArticle(dto.Id)">
+                        <Icon Name="x" />
+                    </button>
+                </div>
+            }
+        </div>
+    </section>
+
+    @* NUEVO: modal para agregar artículos existentes *@
+    <Modal IsOpen="_showAddModal" OnIsOpenChanged="OnAddModalOpenChanged" Title="Agregar artículo a la colección">
+        <div class="form-group">
+            <label class="form-label" for="article-search">Buscar artículo</label>
+            <input id="article-search" class="input" type="text" @bind="_searchTerm" @bind:event="oninput" placeholder="Escribe para filtrar..." />
+        </div>
+
+        <div class="article-picker-list">
+            @foreach (var a in _availableArticles.Where(a => string.IsNullOrWhiteSpace(_searchTerm) || a.Title.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)))
+            {
+                <div class="article-picker-item">
+                    <span>@a.Title</span>
+                    <button class="btn btn--primary btn--sm" @onclick="() => AddArticle(a.Id)">Agregar</button>
+                </div>
+            }
+        </div>
+    </Modal>
+
+    @* NUEVO: modal para editar la colección *@
+    <Modal IsOpen="_showEditModal" OnIsOpenChanged="OnEditModalOpenChanged" Title="Editar colección">
+        <EditForm Model="_editForm" OnValidSubmit="SaveEdit">
+            <DataAnnotationsValidator />
+
+            <div class="form-group">
+                <label class="form-label" for="edit-name">Nombre</label>
+                <InputText id="edit-name" class="input" @bind-Value="_editForm.Name" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="edit-desc">Descripción</label>
+                <InputTextArea id="edit-desc" class="input" @bind-Value="_editForm.Description" />
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn btn--secondary" @onclick="CloseEditModal">Cancelar</button>
+                <button type="submit" class="btn btn--primary">
+                    <Icon Name="check-circle" /> Guardar cambios
+                </button>
+            </div>
+        </EditForm>
+    </Modal>
 }
-await LoadData();
+
+
+
+
+
+using CorpWiki.Application.DTOs;
+using CorpWiki.Web.Components.Shared;
+using Microsoft.AspNetCore.Components;
+using CorpWiki.Domain.Entities;
+
+namespace CorpWiki.Web.Components.Pages
+{
+    public partial class ColeccionDetalle
+    {
+        [Parameter] public string Slug { get; set; } = string.Empty;
+
+        private Collection? _collection;
+        private List<ArticleCardDto> _articles = new();
+        private List<BreadcrumbItem> _breadcrumb = new();
+
+        // NUEVO
+        private bool _showAddModal;
+        private bool _showEditModal;
+        private string _searchTerm = string.Empty;
+        private List<Article> _availableArticles = new();
+        private CollectionEditFormModel _editForm = new();
+
+        protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+        // NUEVO: extraje la carga a un método reusable
+        private async Task LoadAsync()
+        {
+            _collection = await Data.GetCollectionBySlugAsync(Slug);
+            if (_collection is null) return;
+
+            var arts = new List<Article>();
+            foreach (var id in _collection.ArticleIds)
+            {
+                var a = await Data.GetArticleByIdAsync(id);
+                if (a != null) arts.Add(a);
+            }
+            _articles = (await Data.ToCardDtosAsync(arts)).ToList();
+
+            _breadcrumb = new List<BreadcrumbItem>
+            {
+                new("Inicio", "/"),
+                new("Colecciones", "/colecciones"),
+                new(_collection.Name, null)
+            };
+        }
+
+        // NUEVO: quitar artículo de la colección
+        private async Task RemoveArticle(Guid articleId)
+        {
+            if (_collection is null) return;
+
+            var ok = await Data.RemoveArticleFromCollectionAsync(_collection.Id, articleId);
+            if (ok)
+            {
+                Toast.Show("Artículo quitado de la colección.", ToastVariant.Success, "check-circle");
+                await LoadAsync();
+            }
+        }
+
+        // NUEVO: modal para agregar artículo
+        private async Task OpenAddArticleModal()
+        {
+            _searchTerm = string.Empty;
+            var all = await Data.GetArticlesAsync(); // ajusta el nombre si tu servicio usa otro
+            _availableArticles = all
+                .Where(a => _collection != null && !_collection.ArticleIds.Contains(a.Id))
+                .ToList();
+            _showAddModal = true;
+        }
+
+        private async Task OnAddModalOpenChanged(bool isOpen) => _showAddModal = isOpen;
+
+        private async Task AddArticle(Guid articleId)
+        {
+            if (_collection is null) return;
+
+            var ok = await Data.AddArticleToCollectionAsync(_collection.Id, articleId);
+            if (ok)
+            {
+                Toast.Show("Artículo agregado a la colección.", ToastVariant.Success, "check-circle");
+                await LoadAsync();
+                _availableArticles.RemoveAll(a => a.Id == articleId);
+            }
+        }
+
+        // NUEVO: editar colección
+        private void OpenEditModal()
+        {
+            if (_collection is null) return;
+
+            _editForm = new CollectionEditFormModel
+            {
+                Name = _collection.Name,
+                Description = _collection.Description
+            };
+            _showEditModal = true;
+        }
+
+        private async Task OnEditModalOpenChanged(bool isOpen) => _showEditModal = isOpen;
+        private void CloseEditModal() => _showEditModal = false;
+
+        private async Task SaveEdit()
+        {
+            if (_collection is null) return;
+
+            await Data.UpdateCollectionAsync(
+                _collection.Id,
+                _editForm.Name,
+                _editForm.Description,
+                _collection.Icon,
+                _collection.CoverImageUrl);
+
+            Toast.Show("Colección actualizada.", ToastVariant.Success, "check-circle");
+            _showEditModal = false;
+            await LoadAsync();
+        }
+
+        // NUEVO: eliminar colección
+        private async Task ConfirmDeleteCollection()
+        {
+            if (_collection is null) return;
+
+            // Si tienes un componente de confirmación (ConfirmDialog), úsalo aquí en vez de borrar directo.
+            var ok = await Data.DeleteCollectionAsync(_collection.Id);
+            if (ok)
+            {
+                Toast.Show("Colección eliminada.", ToastVariant.Success, "trash");
+                NavManager.NavigateTo("/colecciones");
+            }
+        }
+
+        private class CollectionEditFormModel
+        {
+            [System.ComponentModel.DataAnnotations.Required]
+            public string Name { get; set; } = string.Empty;
+            public string Description { get; set; } = string.Empty;
+        }
+    }
+}
+
+
+
+
+
+
