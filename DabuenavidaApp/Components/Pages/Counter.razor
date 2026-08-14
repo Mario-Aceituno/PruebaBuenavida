@@ -1,15 +1,27 @@
-DECLARE @ArticleId UNIQUEIDENTIFIER = '7E337ECB-1ACB-47A3-B4A8-0145F6EFF94F';
+USE Daviwiki;
 
-DELETE FROM dbo.article_comments WHERE ArticleId = @ArticleId;
-DELETE FROM dbo.article_ratings WHERE ArticleId = @ArticleId;
-DELETE FROM dbo.article_favorites WHERE ArticleId = @ArticleId;
-DELETE FROM dbo.article_tags WHERE ArticleId = @ArticleId;
-DELETE FROM dbo.article_related WHERE ArticleId = @ArticleId OR RelatedArticleId = @ArticleId;
-DELETE FROM dbo.article_attachments WHERE ArticleId = @ArticleId;
-DELETE FROM dbo.article_content_blocks WHERE ArticleId = @ArticleId;
-DELETE FROM dbo.article_versions WHERE ArticleId = @ArticleId;
-DELETE FROM dbo.article_history WHERE ArticleId = @ArticleId;
-DELETE FROM dbo.collection_articles WHERE ArticleId = @ArticleId;
--- agrega aquí cualquier otra tabla que te devuelva la query de arriba
+BEGIN TRY
+    BEGIN TRAN;
 
-DELETE FROM dbo.articles WHERE Id = @ArticleId;
+    DECLARE @ArticleId UNIQUEIDENTIFIER = '7E337ECB-1ACB-47A3-B4A8-0145F6EFF94F';
+
+    DELETE FROM dbo.article_attachments     WHERE ArticleId = @ArticleId;
+    DELETE FROM dbo.article_content_blocks  WHERE ArticleId = @ArticleId;
+    DELETE FROM dbo.article_related         WHERE ArticleId = @ArticleId OR RelatedArticleId = @ArticleId;
+    DELETE FROM dbo.article_tags            WHERE ArticleId = @ArticleId;
+    DELETE FROM dbo.article_versions        WHERE ArticleId = @ArticleId;
+    DELETE FROM dbo.collection_articles     WHERE ArticleId = @ArticleId;
+    DELETE FROM dbo.article_comments        WHERE ArticleId = @ArticleId;
+    DELETE FROM dbo.article_favorites       WHERE ArticleId = @ArticleId;
+    DELETE FROM dbo.article_history         WHERE ArticleId = @ArticleId;
+    DELETE FROM dbo.article_ratings         WHERE ArticleId = @ArticleId;
+
+    DELETE FROM dbo.articles WHERE Id = @ArticleId;
+
+    COMMIT TRAN;
+    PRINT 'Borrado exitoso';
+END TRY
+BEGIN CATCH
+    ROLLBACK TRAN;
+    PRINT 'Error, se hizo ROLLBACK: ' + ERROR_MESSAGE();
+END CATCH
