@@ -1,1 +1,166 @@
-"log-out" or "logout" => "<path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\"/><polyline points=\"16 17 21 12 16 7\"/><line x1=\"21\" y1=\"12\" x2=\"9\" y2=\"12\"/>",
+---------------------
+ICurrentUserContext
+---------------------
+namespace CorpWiki.Application.Interfaces;
+
+public interface ICurrentUserContext
+{
+    Task<Guid> GetCurrentUserIdAsync();
+}
+
+---------------------
+CurrentUserContext
+---------------------
+using System.Security.Claims;
+using CorpWiki.Application.Interfaces;
+using Microsoft.AspNetCore.Components.Authorization;
+
+namespace CorpWiki.Infrastructure.Security;
+
+public class CurrentUserContext : ICurrentUserContext
+{
+    private readonly AuthenticationStateProvider _authStateProvider;
+
+    public CurrentUserContext(AuthenticationStateProvider authStateProvider)
+    {
+        _authStateProvider = authStateProvider;
+    }
+
+    public async Task<Guid> GetCurrentUserIdAsync()
+    {
+        var authState = await _authStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity == null || !user.Identity.IsAuthenticated)
+            return Guid.Empty;
+
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+                       ?? user.FindFirst("sub")?.Value 
+                       ?? user.FindFirst("UserId")?.Value;
+
+        return Guid.TryParse(userIdClaim, out var userId) ? userId : Guid.Empty;
+    }
+}
+
+---------------------
+IWikiDataService
+---------------------
+Task<bool> IsFavoriteAsync(Guid articleId);
+Task<bool> ToggleFavoriteAsync(Guid articleId);
+Task<IReadOnlyList<Article>> GetFavoriteArticlesAsync();
+
+
+---------------------
+EfWikiDataService
+---------------------
+using CorpWiki.Application.Interfaces;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Infrastructure.Persistence;
+
+public class EfWikiDataService : IWikiDataService
+{
+    private readonly DaviwikiDbContext _db;
+    private readonly ICurrentUserContext _currentUserContext;
+
+    public EfWikiDataService(DaviwikiDbContext db, ICurrentUserContext currentUserContext)
+    {
+        _db = db;
+        _currentUserContext = currentUserContext;
+    }
+
+    public async Task<bool> IsFavoriteAsync(Guid articleId)
+    {
+        var userId = await _currentUserContext.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return false;
+
+        return await _db.ArticleFavorites
+            .AnyAsync(f => f.UserId == userId && f.ArticleId == articleId);
+    }
+
+    public async Task<bool> ToggleFavoriteAsync(Guid articleId)
+    {
+        var userId = await _currentUserContext.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return false;
+
+        var favorite = await _db.ArticleFavorites
+            .FirstOrDefaultAsync(f => f.UserId == userId && f.ArticleId == articleId);
+
+        if (favorite != null)
+        {
+            _db.ArticleFavorites.Remove(favorite);
+            await _db.SaveChangesAsync();
+            return false; // Ya no es favorito
+        }
+
+        var newFavorite = new ArticleFavorite
+        {
+            UserId = userId,
+            ArticleId = articleId,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _db.ArticleFavorites.AddAsync(newFavorite);
+        await _db.SaveChangesAsync();
+        return true; // Marcado como favorito
+    }
+
+    public async Task<IReadOnlyList<Article>> GetFavoriteArticlesAsync()
+    {
+        var userId = await _currentUserContext.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return new List<Article>();
+
+        var favoriteArticles = await _db.ArticleFavorites
+            .Where(f => f.UserId == userId)
+            .OrderByDescending(f => f.CreatedAt)
+            .Select(f => f.Article)
+            .ToListAsync();
+
+        foreach (var article in favoriteArticles)
+        {
+            await PopulateNotMappedListsAsync(article);
+        }
+
+        return favoriteArticles;
+    }
+}
+
+
+---------------------------
+artículoDetalle.razor.cs 
+---------------------------
+
+private bool _isFavorite;
+
+protected override async Task OnParametersSetAsync()
+{
+    _article = await Data.GetArticleBySlugAsync(Slug);
+    if (_article is null) return;
+
+    _isFavorite = await Data.IsFavoriteAsync(_article.Id);
+
+    await Data.IncrementArticleViewCountAsync(_article.Id);
+    _article.ViewCount++;
+}
+
+private async Task ToggleFavorite()
+{
+    if (_article is null) return;
+    _isFavorite = await Data.ToggleFavoriteAsync(_article.Id);
+}
+
+----------------------------
+ArtículoDetalle.razor
+----------------------------
+<button class="btn btn--secondary btn--sm @(_isFavorite ? "btn--favorite-active" : "")" 
+        @onclick="ToggleFavorite" 
+        title="@(_isFavorite ? "Quitar de favoritos" : "Guardar en favoritos")">
+    <Icon Name="star" Style="@(_isFavorite ? "fill: currentColor; color: #dc2626;" : "")" />
+    <span>@(_isFavorite ? "Favorito" : "Guardar")</span>
+</button>
+
+
+------------------
+Program.cs
+------------------
+builder.Services.AddScoped<ICurrentUserContext, CurrentUserContext>();
