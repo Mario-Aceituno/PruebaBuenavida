@@ -1,6 +1,84 @@
-private static string FormatSize(long bytes) => bytes switch
+case ContentBlockType.Heading:
+    <div class="editra-field editra-field--heading">
+        <div class="editra-level-switch">
+            @foreach (var level in new[] { "2", "3", "4" })
+            {
+                <button type="button" class="editra-level-btn @(Block.Meta == level ? "editra-level-btn--active" : "")"
+                        disabled="@ReadOnly" @onclick="() => SetLevel(level)">
+                    H@(level)
+                </button>
+            }
+        </div>
+        <input class="editra-input editra-input--heading editra-input--h@(Block.Meta ?? "2")"
+               placeholder="Título del encabezado…"
+               readonly="@ReadOnly" @bind="Block.Text" @bind:event="oninput" @bind:after="Changed" />
+
+        @if (!string.IsNullOrWhiteSpace(Block.Text))
+        {
+            <div class="editra-preview editra-preview--heading">
+                @switch (Block.Meta)
+                {
+                    case "3": <h3>@Block.Text</h3> break;
+                    case "4": <h4>@Block.Text</h4> break;
+                    default: <h2>@Block.Text</h2> break;
+                }
+            </div>
+        }
+    </div>
+    break;
+
+
+
+
+.editra-input--h2 { font-size: 1.6rem; font-weight: 700; }
+.editra-input--h3 { font-size: 1.3rem; font-weight: 600; }
+.editra-input--h4 { font-size: 1.1rem; font-weight: 600; }
+
+.editra-preview--heading {
+    margin-top: 0.35rem;
+    padding-top: 0.35rem;
+    border-top: 1px dashed var(--editra-border, #2a2f3a);
+    color: var(--editra-muted, #8b93a5);
+}
+.editra-preview--heading h2,
+.editra-preview--heading h3,
+.editra-preview--heading h4 { margin: 0; color: inherit; }
+
+
+
+
+
+
+case ContentBlockType.Paragraph:
+    <div class="editra-field">
+        @if (!ReadOnly)
+        {
+            <div class="editra-toolbar">
+                <button type="button" class="editra-chip-btn" title="Agregar viñeta" @onclick="AddBulletLine">
+                    <Icon Name="list" /> Viñeta
+                </button>
+            </div>
+        }
+        <textarea class="editra-textarea" rows="3"
+                  placeholder="Escribí un párrafo… admite **negrita**, *cursiva*, `código`. Usa '- ' para viñetas."
+                  readonly="@ReadOnly" @bind="Block.Text" @bind:event="oninput" @bind:after="Changed"></textarea>
+        @if (!string.IsNullOrWhiteSpace(Block.Text))
+        {
+            <div class="editra-preview">@InlineMarkdown.Render(Block.Text)</div>
+        }
+    </div>
+    break;
+
+
+
+private async Task AddBulletLine()
 {
-    < 1024 => $"{bytes} B",
-    < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
-    _ => $"{bytes / (1024.0 * 1024):0.#} MB"
-};
+    var prefix = string.IsNullOrWhiteSpace(Block.Text) ? "" : Block.Text.TrimEnd('\n') + "\n";
+    Block.Text = prefix + "- ";
+    await Changed();
+}
+
+
+
+
+.editra-preview__list { margin: 0.25rem 0; padding-left: 1.25rem; }
