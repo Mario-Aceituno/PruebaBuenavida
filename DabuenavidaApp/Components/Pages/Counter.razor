@@ -1,84 +1,63 @@
-case ContentBlockType.Heading:
-    <div class="editra-field editra-field--heading">
-        <div class="editra-level-switch">
-            @foreach (var level in new[] { "2", "3", "4" })
-            {
-                <button type="button" class="editra-level-btn @(Block.Meta == level ? "editra-level-btn--active" : "")"
-                        disabled="@ReadOnly" @onclick="() => SetLevel(level)">
-                    H@(level)
-                </button>
-            }
-        </div>
-        <input class="editra-input editra-input--heading editra-input--h@(Block.Meta ?? "2")"
-               placeholder="Título del encabezado…"
-               readonly="@ReadOnly" @bind="Block.Text" @bind:event="oninput" @bind:after="Changed" />
-
-        @if (!string.IsNullOrWhiteSpace(Block.Text))
-        {
-            <div class="editra-preview editra-preview--heading">
-                @switch (Block.Meta)
-                {
-                    case "3": <h3>@Block.Text</h3> break;
-                    case "4": <h4>@Block.Text</h4> break;
-                    default: <h2>@Block.Text</h2> break;
-                }
-            </div>
-        }
-    </div>
-    break;
-
-
-
-
-.editra-input--h2 { font-size: 1.6rem; font-weight: 700; }
-.editra-input--h3 { font-size: 1.3rem; font-weight: 600; }
-.editra-input--h4 { font-size: 1.1rem; font-weight: 600; }
-
-.editra-preview--heading {
-    margin-top: 0.35rem;
-    padding-top: 0.35rem;
-    border-top: 1px dashed var(--editra-border, #2a2f3a);
-    color: var(--editra-muted, #8b93a5);
-}
-.editra-preview--heading h2,
-.editra-preview--heading h3,
-.editra-preview--heading h4 { margin: 0; color: inherit; }
-
-
-
-
-
-
-case ContentBlockType.Paragraph:
-    <div class="editra-field">
-        @if (!ReadOnly)
-        {
-            <div class="editra-toolbar">
-                <button type="button" class="editra-chip-btn" title="Agregar viñeta" @onclick="AddBulletLine">
-                    <Icon Name="list" /> Viñeta
-                </button>
-            </div>
-        }
-        <textarea class="editra-textarea" rows="3"
-                  placeholder="Escribí un párrafo… admite **negrita**, *cursiva*, `código`. Usa '- ' para viñetas."
-                  readonly="@ReadOnly" @bind="Block.Text" @bind:event="oninput" @bind:after="Changed"></textarea>
-        @if (!string.IsNullOrWhiteSpace(Block.Text))
-        {
-            <div class="editra-preview">@InlineMarkdown.Render(Block.Text)</div>
-        }
-    </div>
-    break;
-
-
-
-private async Task AddBulletLine()
+public static class InlineMarkdown
 {
-    var prefix = string.IsNullOrWhiteSpace(Block.Text) ? "" : Block.Text.TrimEnd('\n') + "\n";
-    Block.Text = prefix + "- ";
-    await Changed();
+    private static readonly Regex CodeRegex = new(@"`([^`\n]+)`", RegexOptions.Compiled);
+    private static readonly Regex LinkRegex = new(@"\[([^\]\n]+)\]\((https?://[^\s)]+)\)", RegexOptions.Compiled);
+    private static readonly Regex BoldRegex = new(@"\*\*([^\*\n]+)\*\*", RegexOptions.Compiled);
+    private static readonly Regex ItalicRegex = new(@"(?<!\*)\*([^\*\n]+)\*(?!\*)", RegexOptions.Compiled);
+    private static readonly Regex BulletRegex = new(@"^[-*]\s+(.*)$", RegexOptions.Compiled);
+
+    public static MarkupString Render(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return new MarkupString(string.Empty);
+
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var sb = new StringBuilder();
+        var inList = false;
+
+        foreach (var rawLine in lines)
+        {
+            var bulletMatch = BulletRegex.Match(rawLine.TrimStart());
+
+            if (bulletMatch.Success)
+            {
+                if (!inList)
+                {
+                    sb.Append("<ul class=\"editra-preview__list\">");
+                    inList = true;
+                }
+                sb.Append("<li>").Append(RenderInline(bulletMatch.Groups[1].Value)).Append("</li>");
+            }
+            else
+            {
+                if (inList)
+                {
+                    sb.Append("</ul>");
+                    inList = false;
+                }
+                sb.Append(RenderInline(rawLine)).Append("<br />");
+            }
+        }
+
+        if (inList) sb.Append("</ul>");
+
+        return new MarkupString(sb.ToString());
+    }
+
+    /// <summary>
+    /// Escapa y aplica el marcado inline (código, links, negrita, cursiva) a una sola línea.
+    /// </summary>
+    private static string RenderInline(string line)
+    {
+        // 1) Escapar todo primero: nada de lo que entra acá se interpreta como HTML.
+        var html = System.Net.WebUtility.HtmlEncode(line);
+
+        // 2) Aplicar la sintaxis de marcado mínima, en el mismo orden que evita conflictos
+        //    (código primero para no procesar marcado dentro de un `code span`).
+        html = CodeRegex.Replace(html, "<code class=\"inline-code\">$1</code>");
+        html = LinkRegex.Replace(html, "<a href=\"$2\" target=\"_blank\" rel=\"noopener noreferrer\">$1</a>");
+        html = BoldRegex.Replace(html, "<strong>$1</strong>");
+        html = ItalicRegex.Replace(html, "<em>$1</em>");
+
+        return html;
+    }
 }
-
-
-
-
-.editra-preview__list { margin: 0.25rem 0; padding-left: 1.25rem; }
