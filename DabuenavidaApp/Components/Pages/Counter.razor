@@ -1,63 +1,130 @@
-public static class InlineMarkdown
-{
-    private static readonly Regex CodeRegex = new(@"`([^`\n]+)`", RegexOptions.Compiled);
-    private static readonly Regex LinkRegex = new(@"\[([^\]\n]+)\]\((https?://[^\s)]+)\)", RegexOptions.Compiled);
-    private static readonly Regex BoldRegex = new(@"\*\*([^\*\n]+)\*\*", RegexOptions.Compiled);
-    private static readonly Regex ItalicRegex = new(@"(?<!\*)\*([^\*\n]+)\*(?!\*)", RegexOptions.Compiled);
-    private static readonly Regex BulletRegex = new(@"^[-*]\s+(.*)$", RegexOptions.Compiled);
+window.editraTextarea = {
+    getSelection: function (id) {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        return { start: el.selectionStart, end: el.selectionEnd };
+    },
+    setSelection: function (id, start, end) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        requestAnimationFrame(() => {
+            el.focus();
+            el.setSelectionRange(start, end);
+        });
+    }
+};
 
-    public static MarkupString Render(string? text)
-    {
-        if (string.IsNullOrEmpty(text)) return new MarkupString(string.Empty);
 
-        var lines = text.Replace("\r\n", "\n").Split('\n');
-        var sb = new StringBuilder();
-        var inList = false;
 
-        foreach (var rawLine in lines)
+
+
+case ContentBlockType.Paragraph:
+    <div class="editra-field">
+        @if (!ReadOnly)
         {
-            var bulletMatch = BulletRegex.Match(rawLine.TrimStart());
-
-            if (bulletMatch.Success)
-            {
-                if (!inList)
-                {
-                    sb.Append("<ul class=\"editra-preview__list\">");
-                    inList = true;
-                }
-                sb.Append("<li>").Append(RenderInline(bulletMatch.Groups[1].Value)).Append("</li>");
-            }
-            else
-            {
-                if (inList)
-                {
-                    sb.Append("</ul>");
-                    inList = false;
-                }
-                sb.Append(RenderInline(rawLine)).Append("<br />");
-            }
+            <div class="editra-toolbar">
+                <button type="button" class="editra-chip-btn" title="Viñetas (selecciona texto para varias líneas)"
+                        @onclick="ToggleBullets">
+                    <Icon Name="list" /> Viñeta
+                </button>
+            </div>
         }
+        <textarea id="@ParagraphElementId" class="editra-textarea" rows="3"
+                  placeholder="Escribí un párrafo… admite **negrita**, *cursiva*, `código`."
+                  readonly="@ReadOnly" @bind="Block.Text" @bind:event="oninput" @bind:after="Changed"></textarea>
+        @if (!string.IsNullOrWhiteSpace(Block.Text))
+        {
+            <div class="editra-preview">@InlineMarkdown.Render(Block.Text)</div>
+        }
+    </div>
+    break;
 
-        if (inList) sb.Append("</ul>");
 
-        return new MarkupString(sb.ToString());
-    }
 
-    /// <summary>
-    /// Escapa y aplica el marcado inline (código, links, negrita, cursiva) a una sola línea.
-    /// </summary>
-    private static string RenderInline(string line)
+private string ParagraphElementId => $"editra-paragraph-{Block.Id}";
+
+private sealed record TextSelection(int Start, int End);
+
+private async Task ToggleBullets()
+{
+    var selection = await JS.InvokeAsync<TextSelection?>("editraTextarea.getSelection", ParagraphElementId);
+
+    var text = (Block.Text ?? string.Empty).Replace("\r\n", "\n");
+    var lines = text.Split('\n');
+
+    var selStart = selection?.Start ?? 0;
+    var selEnd = selection?.End ?? text.Length;
+    if (selEnd < selStart) (selStart, selEnd) = (selEnd, selStart);
+
+    // Ubicar el rango de líneas que toca la selección
+    var lineStarts = new int[lines.Length];
+    var offset = 0;
+    for (var i = 0; i < lines.Length; i++)
     {
-        // 1) Escapar todo primero: nada de lo que entra acá se interpreta como HTML.
-        var html = System.Net.WebUtility.HtmlEncode(line);
-
-        // 2) Aplicar la sintaxis de marcado mínima, en el mismo orden que evita conflictos
-        //    (código primero para no procesar marcado dentro de un `code span`).
-        html = CodeRegex.Replace(html, "<code class=\"inline-code\">$1</code>");
-        html = LinkRegex.Replace(html, "<a href=\"$2\" target=\"_blank\" rel=\"noopener noreferrer\">$1</a>");
-        html = BoldRegex.Replace(html, "<strong>$1</strong>");
-        html = ItalicRegex.Replace(html, "<em>$1</em>");
-
-        return html;
+        lineStarts[i] = offset;
+        offset += lines[i].Length + 1; // +1 por el '\n'
     }
+
+    var firstLine = 0;
+    for (var i = 0; i < lines.Length; i++)
+    {
+        if (selStart <= lineStarts[i] + lines[i].Length) { firstLine = i; break; }
+        firstLine = i;
+    }
+
+    var lastLine = firstLine;
+    for (var i = lines.Length - 1; i >= 0; i--)
+    {
+        if (lineStarts[i] <= selEnd) { lastLine = i; break; }
+    }
+    if (lastLine < firstLine) lastLine = firstLine;
+
+    // Decidir si el click es "agregar viñetas" o "quitar viñetas" (como Word:
+    // si TODAS las líneas con contenido ya son viñeta, se quitan; si no, se agregan a todas).
+    var anyContentLine = false;
+    var allBulleted = true;
+    for (var i = firstLine; i <= lastLine; i++)
+    {
+        var trimmed = lines[i].TrimStart();
+        if (trimmed.Length == 0) continue;
+        anyContentLine = true;
+        if (!(trimmed.StartsWith("- ") || trimmed.StartsWith("* ")))
+            allBulleted = false;
+    }
+    var shouldRemove = anyContentLine && allBulleted;
+
+    for (var i = firstLine; i <= lastLine; i++)
+    {
+        var line = lines[i];
+        var trimmed = line.TrimStart();
+        var leading = line[..(line.Length - trimmed.Length)];
+
+        if (shouldRemove)
+        {
+            if (trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
+                lines[i] = leading + trimmed[2..];
+        }
+        else
+        {
+            if (!(trimmed.StartsWith("- ") || trimmed.StartsWith("* ")))
+                lines[i] = leading + "- " + trimmed;
+        }
+    }
+
+    Block.Text = string.Join('\n', lines);
+    await Changed();
+
+    // Recalcular offsets tras la edición y restaurar la selección visual
+    var newLineStarts = new int[lines.Length];
+    var newOffset = 0;
+    for (var i = 0; i < lines.Length; i++)
+    {
+        newLineStarts[i] = newOffset;
+        newOffset += lines[i].Length + 1;
+    }
+
+    var newSelStart = newLineStarts[firstLine];
+    var newSelEnd = newLineStarts[lastLine] + lines[lastLine].Length;
+
+    await JS.InvokeVoidAsync("editraTextarea.setSelection", ParagraphElementId, newSelStart, newSelEnd);
 }
