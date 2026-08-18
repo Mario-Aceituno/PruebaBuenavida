@@ -1,51 +1,162 @@
-window.editraTextarea = {
-    getSelection: function (id) {
-        const el = document.getElementById(id);
-        if (!el) return null;
-        return { start: el.selectionStart, end: el.selectionEnd };
-    },
-    setSelection: function (id, start, end) {
-        const el = document.getElementById(id);
-        if (!el) return;
-        requestAnimationFrame(() => {
-            el.focus();
-            el.setSelectionRange(start, end);
-        });
+public static class InlineMarkdown
+{
+    private static readonly Regex CodeRegex = new(@"`([^`\n]+)`", RegexOptions.Compiled);
+    private static readonly Regex LinkRegex = new(@"\[([^\]\n]+)\]\((https?://[^\s)]+)\)", RegexOptions.Compiled);
+    private static readonly Regex BoldRegex = new(@"\*\*([^\*\n]+)\*\*", RegexOptions.Compiled);
+    private static readonly Regex ItalicRegex = new(@"(?<!\*)\*([^\*\n]+)\*(?!\*)", RegexOptions.Compiled);
+
+    // Captura indentación (pares de 2 espacios), tipo de marcador y contenido
+    private static readonly Regex ListLineRegex = new(@"^(?<indent>(?: {2})*)(?<marker>[-*]|\d+\.)\s+(?<content>.*)$", RegexOptions.Compiled);
+
+    public static MarkupString Render(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return new MarkupString(string.Empty);
+
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var sb = new StringBuilder();
+
+        // Pila de listas abiertas: (nivel, tag "ul"|"ol")
+        var stack = new Stack<(int Level, string Tag)>();
+
+        void CloseTo(int level)
+        {
+            while (stack.Count > 0 && stack.Peek().Level >= level)
+                sb.Append("</").Append(stack.Pop().Tag).Append('>');
+        }
+
+        foreach (var rawLine in lines)
+        {
+            var match = ListLineRegex.Match(rawLine);
+
+            if (match.Success)
+            {
+                var level = match.Groups["indent"].Value.Length / 2;
+                var isNumbered = char.IsDigit(match.Groups["marker"].Value[0]);
+                var tag = isNumbered ? "ol" : "ul";
+
+                // Cerrar niveles más profundos o del mismo nivel con tag distinto
+                while (stack.Count > 0 && (stack.Peek().Level > level ||
+                       (stack.Peek().Level == level && stack.Peek().Tag != tag)))
+                {
+                    sb.Append("</").Append(stack.Pop().Tag).Append('>');
+                }
+
+                if (stack.Count == 0 || stack.Peek().Level < level)
+                {
+                    sb.Append('<').Append(tag).Append(" class=\"editra-preview__list editra-preview__list--lvl")
+                      .Append(level).Append("\">");
+                    stack.Push((level, tag));
+                }
+
+                sb.Append("<li>").Append(RenderInline(match.Groups["content"].Value)).Append("</li>");
+            }
+            else
+            {
+                CloseTo(0);
+                sb.Append(RenderInline(rawLine)).Append("<br />");
+            }
+        }
+
+        CloseTo(0);
+
+        return new MarkupString(sb.ToString());
     }
-};
+
+    private static string RenderInline(string line)
+    {
+        var html = System.Net.WebUtility.HtmlEncode(line);
+        html = CodeRegex.Replace(html, "<code class=\"inline-code\">$1</code>");
+        html = LinkRegex.Replace(html, "<a href=\"$2\" target=\"_blank\" rel=\"noopener noreferrer\">$1</a>");
+        html = BoldRegex.Replace(html, "<strong>$1</strong>");
+        html = ItalicRegex.Replace(html, "<em>$1</em>");
+        return html;
+    }
+}
 
 
 
 
 
-case ContentBlockType.Paragraph:
-    <div class="editra-field">
-        @if (!ReadOnly)
-        {
-            <div class="editra-toolbar">
-                <button type="button" class="editra-chip-btn" title="Viñetas (selecciona texto para varias líneas)"
-                        @onclick="ToggleBullets">
-                    <Icon Name="list" /> Viñeta
-                </button>
-            </div>
-        }
-        <textarea id="@ParagraphElementId" class="editra-textarea" rows="3"
-                  placeholder="Escribí un párrafo… admite **negrita**, *cursiva*, `código`."
-                  readonly="@ReadOnly" @bind="Block.Text" @bind:event="oninput" @bind:after="Changed"></textarea>
-        @if (!string.IsNullOrWhiteSpace(Block.Text))
-        {
-            <div class="editra-preview">@InlineMarkdown.Render(Block.Text)</div>
-        }
+@if (!ReadOnly)
+{
+    <div class="editra-toolbar">
+        <button type="button" class="editra-chip-btn" title="Viñetas" @onclick='() => ToggleListMarker("-")'>
+            <Icon Name="list" /> Viñeta
+        </button>
+        <button type="button" class="editra-chip-btn" title="Lista numerada" @onclick='() => ToggleListMarker("1.")'>
+            <Icon Name="list-ordered" /> Numerada
+        </button>
+        <button type="button" class="editra-icon-btn" title="Aumentar sangría" @onclick="() => ChangeIndent(1)">
+            <Icon Name="indent" />
+        </button>
+        <button type="button" class="editra-icon-btn" title="Disminuir sangría" @onclick="() => ChangeIndent(-1)">
+            <Icon Name="outdent" />
+        </button>
     </div>
-    break;
+}
 
 
 
-private string ParagraphElementId => $"editra-paragraph-{Block.Id}";
+
+
+
+private static readonly Regex LineListRegex = new(@"^(?<indent>(?: {2})*)(?<marker>[-*]|\d+\.)\s+(?<content>.*)$", RegexOptions.Compiled);
+
+private async Task ToggleListMarker(string markerType)
+{
+    var (lines, firstLine, lastLine) = await GetSelectedLines();
+
+    var anyContentLine = false;
+    var allThisType = true;
+    for (var i = firstLine; i <= lastLine; i++)
+    {
+        var trimmed = lines[i].TrimStart(' ');
+        if (trimmed.Length == 0) continue;
+        anyContentLine = true;
+
+        var m = LineListRegex.Match(lines[i]);
+        var isThisType = m.Success && (markerType == "-"
+            ? !char.IsDigit(m.Groups["marker"].Value[0])
+            : char.IsDigit(m.Groups["marker"].Value[0]));
+
+        if (!isThisType) allThisType = false;
+    }
+    var shouldRemove = anyContentLine && allThisType;
+
+    for (var i = firstLine; i <= lastLine; i++)
+    {
+        var line = lines[i];
+        var m = LineListRegex.Match(line);
+        var indent = m.Success ? m.Groups["indent"].Value : "";
+        var content = m.Success ? m.Groups["content"].Value : line.TrimStart(' ');
+
+        lines[i] = shouldRemove
+            ? indent + content
+            : indent + markerType + " " + content;
+    }
+
+    await ApplyLines(lines, firstLine, lastLine);
+}
+
+private async Task ChangeIndent(int delta)
+{
+    var (lines, firstLine, lastLine) = await GetSelectedLines();
+
+    for (var i = firstLine; i <= lastLine; i++)
+    {
+        var m = LineListRegex.Match(lines[i]);
+        if (!m.Success) continue; // solo afecta líneas que ya son lista
+
+        var level = Math.Max(0, m.Groups["indent"].Value.Length / 2 + delta);
+        lines[i] = new string(' ', level * 2) + m.Groups["marker"].Value + " " + m.Groups["content"].Value;
+    }
+
+    await ApplyLines(lines, firstLine, lastLine);
+}
 
 private sealed record TextSelection(int Start, int End);
 
-private async Task ToggleBullets()
+private async Task<(string[] Lines, int FirstLine, int LastLine)> GetSelectedLines()
 {
     var selection = await JS.InvokeAsync<TextSelection?>("editraTextarea.getSelection", ParagraphElementId);
 
@@ -56,20 +167,19 @@ private async Task ToggleBullets()
     var selEnd = selection?.End ?? text.Length;
     if (selEnd < selStart) (selStart, selEnd) = (selEnd, selStart);
 
-    // Ubicar el rango de líneas que toca la selección
     var lineStarts = new int[lines.Length];
     var offset = 0;
     for (var i = 0; i < lines.Length; i++)
     {
         lineStarts[i] = offset;
-        offset += lines[i].Length + 1; // +1 por el '\n'
+        offset += lines[i].Length + 1;
     }
 
     var firstLine = 0;
     for (var i = 0; i < lines.Length; i++)
     {
-        if (selStart <= lineStarts[i] + lines[i].Length) { firstLine = i; break; }
         firstLine = i;
+        if (selStart <= lineStarts[i] + lines[i].Length) break;
     }
 
     var lastLine = firstLine;
@@ -79,42 +189,14 @@ private async Task ToggleBullets()
     }
     if (lastLine < firstLine) lastLine = firstLine;
 
-    // Decidir si el click es "agregar viñetas" o "quitar viñetas" (como Word:
-    // si TODAS las líneas con contenido ya son viñeta, se quitan; si no, se agregan a todas).
-    var anyContentLine = false;
-    var allBulleted = true;
-    for (var i = firstLine; i <= lastLine; i++)
-    {
-        var trimmed = lines[i].TrimStart();
-        if (trimmed.Length == 0) continue;
-        anyContentLine = true;
-        if (!(trimmed.StartsWith("- ") || trimmed.StartsWith("* ")))
-            allBulleted = false;
-    }
-    var shouldRemove = anyContentLine && allBulleted;
+    return (lines, firstLine, lastLine);
+}
 
-    for (var i = firstLine; i <= lastLine; i++)
-    {
-        var line = lines[i];
-        var trimmed = line.TrimStart();
-        var leading = line[..(line.Length - trimmed.Length)];
-
-        if (shouldRemove)
-        {
-            if (trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
-                lines[i] = leading + trimmed[2..];
-        }
-        else
-        {
-            if (!(trimmed.StartsWith("- ") || trimmed.StartsWith("* ")))
-                lines[i] = leading + "- " + trimmed;
-        }
-    }
-
+private async Task ApplyLines(string[] lines, int firstLine, int lastLine)
+{
     Block.Text = string.Join('\n', lines);
     await Changed();
 
-    // Recalcular offsets tras la edición y restaurar la selección visual
     var newLineStarts = new int[lines.Length];
     var newOffset = 0;
     for (var i = 0; i < lines.Length; i++)
@@ -128,3 +210,16 @@ private async Task ToggleBullets()
 
     await JS.InvokeVoidAsync("editraTextarea.setSelection", ParagraphElementId, newSelStart, newSelEnd);
 }
+
+
+
+
+
+
+.editra-preview__list { margin: 0.25rem 0; padding-left: 1.25rem; }
+.editra-preview__list--lvl0 { margin-left: 0; }
+.editra-preview__list--lvl1 { margin-left: 0.5rem; }
+.editra-preview__list--lvl2 { margin-left: 1rem; }
+.editra-preview__list--lvl3 { margin-left: 1.5rem; }
+
+.editra-toolbar { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.35rem; }
