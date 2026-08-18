@@ -4,8 +4,8 @@ public static class InlineMarkdown
     private static readonly Regex LinkRegex = new(@"\[([^\]\n]+)\]\((https?://[^\s)]+)\)", RegexOptions.Compiled);
     private static readonly Regex BoldRegex = new(@"\*\*([^\*\n]+)\*\*", RegexOptions.Compiled);
     private static readonly Regex ItalicRegex = new(@"(?<!\*)\*([^\*\n]+)\*(?!\*)", RegexOptions.Compiled);
+    private static readonly Regex UnderlineRegex = new(@"__([^_\n]+)__", RegexOptions.Compiled);
 
-    // Captura indentación (pares de 2 espacios), tipo de marcador y contenido
     private static readonly Regex ListLineRegex = new(@"^(?<indent>(?: {2})*)(?<marker>[-*]|\d+\.)\s+(?<content>.*)$", RegexOptions.Compiled);
 
     public static MarkupString Render(string? text)
@@ -15,13 +15,18 @@ public static class InlineMarkdown
         var lines = text.Replace("\r\n", "\n").Split('\n');
         var sb = new StringBuilder();
 
-        // Pila de listas abiertas: (nivel, tag "ul"|"ol")
-        var stack = new Stack<(int Level, string Tag)>();
+        // Niveles de lista abiertos actualmente: (nivel, tipo "bullet"|"number")
+        var openLevels = new List<(int Level, string Type)>();
+        var counters = new Dictionary<int, int>();
 
-        void CloseTo(int level)
+        void CloseFrom(int level)
         {
-            while (stack.Count > 0 && stack.Peek().Level >= level)
-                sb.Append("</").Append(stack.Pop().Tag).Append('>');
+            while (openLevels.Count > 0 && openLevels[^1].Level >= level)
+            {
+                sb.Append("</ul>");
+                counters.Remove(openLevels[^1].Level);
+                openLevels.RemoveAt(openLevels.Count - 1);
+            }
         }
 
         foreach (var rawLine in lines)
@@ -32,32 +37,40 @@ public static class InlineMarkdown
             {
                 var level = match.Groups["indent"].Value.Length / 2;
                 var isNumbered = char.IsDigit(match.Groups["marker"].Value[0]);
-                var tag = isNumbered ? "ol" : "ul";
+                var type = isNumbered ? "number" : "bullet";
 
-                // Cerrar niveles más profundos o del mismo nivel con tag distinto
-                while (stack.Count > 0 && (stack.Peek().Level > level ||
-                       (stack.Peek().Level == level && stack.Peek().Tag != tag)))
+                // Cerrar niveles más profundos o de tipo distinto en el mismo nivel
+                while (openLevels.Count > 0 && (openLevels[^1].Level > level ||
+                       (openLevels[^1].Level == level && openLevels[^1].Type != type)))
                 {
-                    sb.Append("</").Append(stack.Pop().Tag).Append('>');
+                    sb.Append("</ul>");
+                    counters.Remove(openLevels[^1].Level);
+                    openLevels.RemoveAt(openLevels.Count - 1);
                 }
 
-                if (stack.Count == 0 || stack.Peek().Level < level)
+                if (openLevels.Count == 0 || openLevels[^1].Level < level)
                 {
-                    sb.Append('<').Append(tag).Append(" class=\"editra-preview__list editra-preview__list--lvl")
-                      .Append(level).Append("\">");
-                    stack.Push((level, tag));
+                    sb.Append("<ul class=\"editra-preview__list editra-preview__list--lvl").Append(level).Append("\">");
+                    openLevels.Add((level, type));
+                    counters[level] = 0;
                 }
 
-                sb.Append("<li>").Append(RenderInline(match.Groups["content"].Value)).Append("</li>");
+                counters[level] = counters.GetValueOrDefault(level, 0) + 1;
+                var marker = type == "number" ? $"{counters[level]}." : "*";
+
+                sb.Append("<li><span class=\"editra-preview__marker\">").Append(marker).Append("</span>")
+                  .Append("<span class=\"editra-preview__item-text\">")
+                  .Append(RenderInline(match.Groups["content"].Value))
+                  .Append("</span></li>");
             }
             else
             {
-                CloseTo(0);
+                CloseFrom(0);
                 sb.Append(RenderInline(rawLine)).Append("<br />");
             }
         }
 
-        CloseTo(0);
+        CloseFrom(0);
 
         return new MarkupString(sb.ToString());
     }
@@ -68,6 +81,7 @@ public static class InlineMarkdown
         html = CodeRegex.Replace(html, "<code class=\"inline-code\">$1</code>");
         html = LinkRegex.Replace(html, "<a href=\"$2\" target=\"_blank\" rel=\"noopener noreferrer\">$1</a>");
         html = BoldRegex.Replace(html, "<strong>$1</strong>");
+        html = UnderlineRegex.Replace(html, "<u>$1</u>");
         html = ItalicRegex.Replace(html, "<em>$1</em>");
         return html;
     }
@@ -77,9 +91,47 @@ public static class InlineMarkdown
 
 
 
+.editra-preview__list {
+    list-style: none;
+    margin: 0.25rem 0;
+    padding-left: 0;
+}
+.editra-preview__list li {
+    display: flex;
+    gap: 0.4rem;
+    align-items: baseline;
+}
+.editra-preview__list--lvl0 { margin-left: 0; }
+.editra-preview__list--lvl1 { margin-left: 1.25rem; }
+.editra-preview__list--lvl2 { margin-left: 2.5rem; }
+.editra-preview__list--lvl3 { margin-left: 3.75rem; }
+
+.editra-preview__marker {
+    flex: 0 0 auto;
+    color: var(--editra-muted, #8b93a5);
+    font-weight: 600;
+    min-width: 1.1rem;
+}
+.editra-preview__item-text { flex: 1; }
+
+.editra-toolbar { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.35rem; }
+
+
+
+
 @if (!ReadOnly)
 {
     <div class="editra-toolbar">
+        <button type="button" class="editra-icon-btn" title="Negrita" @onclick='() => ToggleInlineWrap("**")'>
+            <Icon Name="bold" />
+        </button>
+        <button type="button" class="editra-icon-btn" title="Cursiva" @onclick='() => ToggleInlineWrap("*")'>
+            <Icon Name="italic" />
+        </button>
+        <button type="button" class="editra-icon-btn" title="Subrayado" @onclick='() => ToggleInlineWrap("__")'>
+            <Icon Name="underline" />
+        </button>
+        <span class="editra-toolbar__sep"></span>
         <button type="button" class="editra-chip-btn" title="Viñetas" @onclick='() => ToggleListMarker("-")'>
             <Icon Name="list" /> Viñeta
         </button>
@@ -98,128 +150,59 @@ public static class InlineMarkdown
 
 
 
-
-
-private static readonly Regex LineListRegex = new(@"^(?<indent>(?: {2})*)(?<marker>[-*]|\d+\.)\s+(?<content>.*)$", RegexOptions.Compiled);
-
-private async Task ToggleListMarker(string markerType)
-{
-    var (lines, firstLine, lastLine) = await GetSelectedLines();
-
-    var anyContentLine = false;
-    var allThisType = true;
-    for (var i = firstLine; i <= lastLine; i++)
-    {
-        var trimmed = lines[i].TrimStart(' ');
-        if (trimmed.Length == 0) continue;
-        anyContentLine = true;
-
-        var m = LineListRegex.Match(lines[i]);
-        var isThisType = m.Success && (markerType == "-"
-            ? !char.IsDigit(m.Groups["marker"].Value[0])
-            : char.IsDigit(m.Groups["marker"].Value[0]));
-
-        if (!isThisType) allThisType = false;
-    }
-    var shouldRemove = anyContentLine && allThisType;
-
-    for (var i = firstLine; i <= lastLine; i++)
-    {
-        var line = lines[i];
-        var m = LineListRegex.Match(line);
-        var indent = m.Success ? m.Groups["indent"].Value : "";
-        var content = m.Success ? m.Groups["content"].Value : line.TrimStart(' ');
-
-        lines[i] = shouldRemove
-            ? indent + content
-            : indent + markerType + " " + content;
-    }
-
-    await ApplyLines(lines, firstLine, lastLine);
+.editra-toolbar__sep {
+    width: 1px;
+    background: var(--editra-border, #2a2f3a);
+    margin: 0 0.15rem;
 }
 
-private async Task ChangeIndent(int delta)
-{
-    var (lines, firstLine, lastLine) = await GetSelectedLines();
 
-    for (var i = firstLine; i <= lastLine; i++)
-    {
-        var m = LineListRegex.Match(lines[i]);
-        if (!m.Success) continue; // solo afecta líneas que ya son lista
 
-        var level = Math.Max(0, m.Groups["indent"].Value.Length / 2 + delta);
-        lines[i] = new string(' ', level * 2) + m.Groups["marker"].Value + " " + m.Groups["content"].Value;
-    }
 
-    await ApplyLines(lines, firstLine, lastLine);
-}
-
-private sealed record TextSelection(int Start, int End);
-
-private async Task<(string[] Lines, int FirstLine, int LastLine)> GetSelectedLines()
+private async Task ToggleInlineWrap(string marker)
 {
     var selection = await JS.InvokeAsync<TextSelection?>("editraTextarea.getSelection", ParagraphElementId);
+    var text = Block.Text ?? string.Empty;
 
-    var text = (Block.Text ?? string.Empty).Replace("\r\n", "\n");
-    var lines = text.Split('\n');
+    var start = selection?.Start ?? text.Length;
+    var end = selection?.End ?? text.Length;
+    if (end < start) (start, end) = (end, start);
 
-    var selStart = selection?.Start ?? 0;
-    var selEnd = selection?.End ?? text.Length;
-    if (selEnd < selStart) (selStart, selEnd) = (selEnd, selStart);
-
-    var lineStarts = new int[lines.Length];
-    var offset = 0;
-    for (var i = 0; i < lines.Length; i++)
+    if (start == end)
     {
-        lineStarts[i] = offset;
-        offset += lines[i].Length + 1;
+        // Sin selección: inserta el par de marcadores con el cursor en medio
+        var newText = text[..start] + marker + marker + text[start..];
+        Block.Text = newText;
+        await Changed();
+        var caret = start + marker.Length;
+        await JS.InvokeVoidAsync("editraTextarea.setSelection", ParagraphElementId, caret, caret);
+        return;
     }
 
-    var firstLine = 0;
-    for (var i = 0; i < lines.Length; i++)
+    var selected = text[start..end];
+    var markerLen = marker.Length;
+
+    var alreadyWrapped = start >= markerLen && end + markerLen <= text.Length
+        && text.Substring(start - markerLen, markerLen) == marker
+        && text.Substring(end, markerLen) == marker;
+
+    string newFullText;
+    int newStart, newEnd;
+
+    if (alreadyWrapped)
     {
-        firstLine = i;
-        if (selStart <= lineStarts[i] + lines[i].Length) break;
+        newFullText = text[..(start - markerLen)] + selected + text[(end + markerLen)..];
+        newStart = start - markerLen;
+        newEnd = newStart + selected.Length;
+    }
+    else
+    {
+        newFullText = text[..start] + marker + selected + marker + text[end..];
+        newStart = start;
+        newEnd = end + markerLen * 2;
     }
 
-    var lastLine = firstLine;
-    for (var i = lines.Length - 1; i >= 0; i--)
-    {
-        if (lineStarts[i] <= selEnd) { lastLine = i; break; }
-    }
-    if (lastLine < firstLine) lastLine = firstLine;
-
-    return (lines, firstLine, lastLine);
-}
-
-private async Task ApplyLines(string[] lines, int firstLine, int lastLine)
-{
-    Block.Text = string.Join('\n', lines);
+    Block.Text = newFullText;
     await Changed();
-
-    var newLineStarts = new int[lines.Length];
-    var newOffset = 0;
-    for (var i = 0; i < lines.Length; i++)
-    {
-        newLineStarts[i] = newOffset;
-        newOffset += lines[i].Length + 1;
-    }
-
-    var newSelStart = newLineStarts[firstLine];
-    var newSelEnd = newLineStarts[lastLine] + lines[lastLine].Length;
-
-    await JS.InvokeVoidAsync("editraTextarea.setSelection", ParagraphElementId, newSelStart, newSelEnd);
+    await JS.InvokeVoidAsync("editraTextarea.setSelection", ParagraphElementId, newStart, newEnd);
 }
-
-
-
-
-
-
-.editra-preview__list { margin: 0.25rem 0; padding-left: 1.25rem; }
-.editra-preview__list--lvl0 { margin-left: 0; }
-.editra-preview__list--lvl1 { margin-left: 0.5rem; }
-.editra-preview__list--lvl2 { margin-left: 1rem; }
-.editra-preview__list--lvl3 { margin-left: 1.5rem; }
-
-.editra-toolbar { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.35rem; }
