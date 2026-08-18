@@ -1,13 +1,235 @@
-"bold" => "<path d=\"M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z\"/><path d=\"M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z\"/>",
+// ---------- Rating ----------
 
-"italic" => "<line x1=\"19\" y1=\"4\" x2=\"10\" y2=\"4\"/><line x1=\"14\" y1=\"20\" x2=\"5\" y2=\"20\"/><line x1=\"15\" y1=\"4\" x2=\"9\" y2=\"20\"/>",
+/// <summary>Indica si el usuario actual ya calificó este artículo.</summary>
+Task<bool> HasUserRatedAsync(Guid articleId);
 
-"underline" => "<path d=\"M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3\"/><line x1=\"4\" y1=\"21\" x2=\"20\" y2=\"21\"/>",
+/// <summary>Obtiene la calificación (0.5 - 5.0) que el usuario actual dio, o null si no ha calificado.</summary>
+Task<double?> GetUserRatingAsync(Guid articleId);
 
-"list" => "<line x1=\"8\" y1=\"6\" x2=\"21\" y2=\"6\"/><line x1=\"8\" y1=\"12\" x2=\"21\" y2=\"12\"/><line x1=\"8\" y1=\"18\" x2=\"21\" y2=\"18\"/><line x1=\"3\" y1=\"6\" x2=\"3.01\" y2=\"6\"/><line x1=\"3\" y1=\"12\" x2=\"3.01\" y2=\"12\"/><line x1=\"3\" y1=\"18\" x2=\"3.01\" y2=\"18\"/>",
+/// <summary>
+/// Registra la calificación de un artículo. Lanza si el usuario ya calificó
+/// (no se permite modificar ni re-calificar).
+/// </summary>
+Task RateArticleAsync(Guid articleId, double score);
 
-"list-ordered" => "<line x1=\"10\" y1=\"6\" x2=\"21\" y2=\"6\"/><line x1=\"10\" y1=\"12\" x2=\"21\" y2=\"12\"/><line x1=\"10\" y1=\"18\" x2=\"21\" y2=\"18\"/><path d=\"M4 6h1v4\"/><path d=\"M4 10h2\"/><path d=\"M6 18H4c0-1 2-2 2-3s-1-1.5-2-1\"/>",
 
-"indent" => "<polyline points=\"3 8 7 12 3 16\"/><line x1=\"21\" y1=\"12\" x2=\"11\" y2=\"12\"/><line x1=\"21\" y1=\"6\" x2=\"11\" y2=\"6\"/><line x1=\"21\" y1=\"18\" x2=\"11\" y2=\"18\"/>",
 
-"outdent" => "<polyline points=\"7 8 3 12 7 16\"/><line x1=\"21\" y1=\"12\" x2=\"11\" y2=\"12\"/><line x1=\"21\" y1=\"6\" x2=\"11\" y2=\"6\"/><line x1=\"21\" y1=\"18\" x2=\"11\" y2=\"18\"/>",
+
+
+public async Task<bool> HasUserRatedAsync(Guid articleId)
+{
+    var userId = await _securityService.GetCurrentUserIdAsync();
+    if (userId == Guid.Empty) return false;
+
+    return await _db.ArticleRatings
+        .AnyAsync(r => r.ArticleId == articleId && r.UserId == userId);
+}
+
+public async Task<double?> GetUserRatingAsync(Guid articleId)
+{
+    var userId = await _securityService.GetCurrentUserIdAsync();
+    if (userId == Guid.Empty) return null;
+
+    var score = await _db.ArticleRatings
+        .Where(r => r.ArticleId == articleId && r.UserId == userId)
+        .Select(r => (byte?)r.Score)
+        .FirstOrDefaultAsync();
+
+    // Score se guarda en unidades de 0.5 (byte 1-10) -> convertir a double real
+    return score is null ? null : score.Value / 2.0;
+}
+
+public async Task RateArticleAsync(Guid articleId, double score)
+{
+    if (score < 0.5 || score > 5.0 || (score * 2) % 1 != 0)
+        throw new ArgumentOutOfRangeException(nameof(score), "La puntuación debe ir de 0.5 a 5.0 en pasos de 0.5.");
+
+    var userId = await _securityService.GetCurrentUserIdAsync();
+    if (userId == Guid.Empty)
+        throw new UnauthorizedAccessException("Debes iniciar sesión para calificar.");
+
+    var alreadyRated = await _db.ArticleRatings
+        .AnyAsync(r => r.ArticleId == articleId && r.UserId == userId);
+
+    if (alreadyRated)
+        throw new InvalidOperationException("Ya has calificado este artículo.");
+
+    var byteScore = (byte)Math.Round(score * 2); // 0.5 -> 1, 5.0 -> 10
+
+    _db.ArticleRatings.Add(new ArticleRating
+    {
+        Id = Guid.NewGuid(),
+        ArticleId = articleId,
+        UserId = userId,
+        Score = byteScore,
+        CreatedAt = DateTime.UtcNow
+    });
+
+    await _db.SaveChangesAsync();
+
+    // Recalcular promedio (convirtiendo cada Score de unidades de 0.5 a real) y cantidad
+    var ratings = await _db.ArticleRatings
+        .Where(r => r.ArticleId == articleId)
+        .Select(r => (int)r.Score)
+        .ToListAsync();
+
+    var article = await _articleRepo.GetByIdAsync(articleId, track: true);
+    if (article is not null)
+    {
+        article.Rating = ratings.Count == 0 ? 0 : ratings.Average(s => s / 2.0);
+        article.RatingCount = ratings.Count;
+        await _db.SaveChangesAsync();
+    }
+}
+
+
+
+
+
+
+<div class="rating">
+    <div class="rating__stars @(CanRate ? "" : "rating__stars--locked")"
+         @onmouseleave="ClearHover">
+        @for (int i = 1; i <= 5; i++)
+        {
+            var starIndex = i;
+            <span class="rating__star-wrapper">
+                @if (CanRate)
+                {
+                    <span class="rating__star-half rating__star-half--left"
+                          @onmouseenter="() => OnHover(starIndex - 0.5)"
+                          @onclick="() => OnClickStar(starIndex - 0.5)"></span>
+                    <span class="rating__star-half rating__star-half--right"
+                          @onmouseenter="() => OnHover(starIndex)"
+                          @onclick="() => OnClickStar(starIndex)"></span>
+                }
+                <Icon Name="star" Class="rating__star-bg" />
+                <Icon Name="star" Class="rating__star-fill" style="@GetFillStyle(starIndex)" />
+            </span>
+        }
+    </div>
+    <span class="rating__value">@DisplayValue.ToString("0.0")</span>
+    <span class="rating__count">(@Count valoraciones)</span>
+
+    @if (!CanRate && UserRating is not null)
+    {
+        <span class="rating__user-note">Ya calificaste: @UserRating.Value.ToString("0.0")★</span>
+    }
+</div>
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public int Count { get; set; }
+    [Parameter] public double? UserRating { get; set; } // null = no ha calificado
+    [Parameter] public EventCallback<double> OnRate { get; set; }
+
+    private bool CanRate => UserRating is null;
+
+    private double? _hoverValue;
+    private double DisplayValue => _hoverValue ?? UserRating ?? Value;
+
+    private void OnHover(double v)
+    {
+        if (!CanRate) return;
+        _hoverValue = v;
+    }
+
+    private void ClearHover() => _hoverValue = null;
+
+    private async Task OnClickStar(double v)
+    {
+        if (!CanRate) return;
+        _hoverValue = null;
+        UserRating = v; // bloquea inmediatamente en UI
+        if (OnRate.HasDelegate)
+            await OnRate.InvokeAsync(v);
+    }
+
+    private string GetFillStyle(int starIndex)
+    {
+        var diff = Math.Clamp(DisplayValue - (starIndex - 1), 0, 1) * 100;
+        return $"clip-path: inset(0 {100 - diff}% 0 0);";
+    }
+}
+
+
+.rating__stars--locked .rating__star-wrapper {
+    cursor: default;
+    opacity: 0.9;
+}
+.rating__user-note {
+    font-size: .8rem;
+    color: var(--text-muted, #888);
+    margin-left: .5rem;
+}
+
+
+
+<Rating Value="_article.Rating"
+        Count="_article.RatingCount"
+        UserRating="_userRating"
+        OnRate="HandleRate" />
+
+
+
+private double? _userRating;
+
+protected override async Task OnInitializedAsync()
+{
+    // ... tu carga existente de _article ...
+    _userRating = await WikiDataService.GetUserRatingAsync(_article.Id);
+}
+
+private async Task HandleRate(double score)
+{
+    try
+    {
+        await WikiDataService.RateArticleAsync(_article.Id, score);
+        _article = await WikiDataService.GetArticleByIdAsync(_article.Id) ?? _article;
+        _userRating = score;
+    }
+    catch (InvalidOperationException)
+    {
+        // ya calificó (carrera entre pestañas, etc.) -> refrescar estado real
+        _userRating = await WikiDataService.GetUserRatingAsync(_article.Id);
+    }
+    catch (UnauthorizedAccessException)
+    {
+        // redirigir a login o mostrar mensaje
+    }
+} 
+
+
+
+
+.rating__stars {
+    display: inline-flex;
+    gap: .25rem;
+}
+.rating__star-wrapper {
+    position: relative;
+    width: 1.5rem;
+    height: 1.5rem;
+    display: inline-block;
+}
+.rating__star-bg,
+.rating__star-fill {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.rating__star-bg { color: var(--rating-empty, #d0d0d0); }
+.rating__star-fill {
+    color: var(--rating-filled, #f5b301);
+    transition: clip-path .1s ease;
+}
+.rating__star-half {
+    position: absolute;
+    top: 0;
+    width: 50%;
+    height: 100%;
+    z-index: 2;
+    cursor: pointer;
+}
+.rating__star-half--left { left: 0; }
+.rating__star-half--right { right: 0; }
