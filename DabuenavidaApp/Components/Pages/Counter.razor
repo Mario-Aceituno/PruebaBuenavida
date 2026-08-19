@@ -1,20 +1,550 @@
-app.MapGet("/logout", async (
-    HttpContext ctx,
-    IAuthenticationService authService) =>
+<nav class="chip-row" style="display:flex; gap: var(--space-2); margin-bottom: var(--space-5)">
+    <NavLink href="/admin/seguridad/usuarios" Match="NavLinkMatch.Prefix" class="chip" ActiveClass="chip--active">
+        <Icon Name="users" /> Usuarios
+    </NavLink>
+    <NavLink href="/admin/seguridad/roles" Match="NavLinkMatch.Prefix" class="chip" ActiveClass="chip--active">
+        <Icon Name="shield" /> Roles y permisos
+    </NavLink>
+    <NavLink href="/admin/seguridad/auditoria" Match="NavLinkMatch.Prefix" class="chip" ActiveClass="chip--active">
+        <Icon Name="history" /> Auditoría
+    </NavLink>
+</nav>
+
+
+
+
+
+
+
+@page "/admin/seguridad/usuarios"
+@attribute [Authorize(Policy = "ADMIN:READ")]
+@rendermode InteractiveServer
+@inject ISecurityService SecurityService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@using CorpWiki.Domain.Entities.Security
+@using CorpWiki.Web.Security
+
+<PageTitle>DaviWiki - Usuarios</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1>Seguridad</h1>
+        <p>Gestión de usuarios, roles y permisos del sistema.</p>
+    </div>
+</div>
+
+<AdminNav />
+
+<div class="section-header">
+    <div>
+        <h3>Usuarios (@_users.Count)</h3>
+        <p class="section-header__subtitle">Provisionados automáticamente desde el Active Directory en el primer login.</p>
+    </div>
+</div>
+
+@if (_loading)
 {
-    if (ctx.User.Identity?.IsAuthenticated == true)
-    {
-        var userIdClaim = ctx.User.FindFirst(
-            System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-
-        if (Guid.TryParse(userIdClaim, out var userId))
+    <p>Cargando usuarios...</p>
+}
+else
+{
+    <div class="card">
+        @foreach (var u in _users)
         {
-            await authService.LogoutAsync(userId);
-        }
+            <div class="article-list-item">
+                <span class="avatar avatar--sm" style="background: linear-gradient(135deg, @u.AvatarColorFrom, @u.AvatarColorTo)">
+                    @GetInitials(u.FullName)
+                </span>
+                <div class="article-list-item__info">
+                    <span class="article-list-item__title">@u.FullName</span>
+                    <span class="article-list-item__meta">@u.Username · @u.Department · @u.Position</span>
+                </div>
 
-        await ctx.SignOutAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme);
+                @if (!u.IsActive)
+                {
+                    <span class="badge">Inactivo</span>
+                }
+
+                <button class="btn btn--secondary btn--sm" @onclick="() => GoToDetail(u.Id)">
+                    Ver detalle
+                </button>
+
+                @if (_canWrite)
+                {
+                    <button class="btn @(u.IsActive ? "btn--danger" : "btn--primary") btn--sm" @onclick="() => ToggleActive(u)">
+                        @(u.IsActive ? "Desactivar" : "Activar")
+                    </button>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<SecurityUser> _users = new();
+    private bool _loading = true;
+    private bool _canWrite;
+    private string _actingUser = "unknown";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
+        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
+
+        _users = await SecurityService.GetAllUsersAsync();
+        _loading = false;
     }
 
-    return Results.Redirect("/");
-});
+    private void GoToDetail(Guid id) => Navigation.NavigateTo($"/admin/seguridad/usuarios/{id}");
+
+    private async Task ToggleActive(SecurityUser u)
+    {
+        if (!_canWrite) return;
+
+        await SecurityService.ToggleUserActiveAsync(u.Id);
+        u.IsActive = !u.IsActive;
+
+        await SecurityService.LogAuditAsync(null, _actingUser,
+            u.IsActive ? "USER_ACTIVATED" : "USER_DEACTIVATED", $"Usuario afectado: {u.Username}");
+    }
+
+    private static string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "U";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1 ? parts[0][..1].ToUpper() : $"{parts[0][0]}{parts[1][0]}".ToUpper();
+    }
+}
+
+
+
+
+
+@page "/admin/seguridad/usuarios/{UserId:guid}"
+@attribute [Authorize(Policy = "ADMIN:READ")]
+@rendermode InteractiveServer
+@inject ISecurityService SecurityService
+@inject AuthenticationStateProvider AuthStateProvider
+@using CorpWiki.Domain.Entities.Security
+@using CorpWiki.Web.Security
+
+<PageTitle>DaviWiki - Detalle de usuario</PageTitle>
+
+<AdminNav />
+
+@if (_loading)
+{
+    <p>Cargando...</p>
+}
+else if (_user is null)
+{
+    <div class="empty-state"><p>No se encontró el usuario.</p></div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <h1>@_user.FullName</h1>
+            <p>@_user.Username · @_user.Email · @_user.Department</p>
+        </div>
+    </div>
+
+    <div class="card admin-section">
+        <h3 class="admin-section__title"><Icon Name="shield" /> Roles asignados</h3>
+
+        <div style="display:flex; gap: var(--space-2); flex-wrap:wrap">
+            @foreach (var r in _userRoles)
+            {
+                <span class="chip chip--active">
+                    @r.Name
+                    @if (_canWrite)
+                    {
+                        <button class="icon-btn icon-btn--ghost" style="width:18px;height:18px" title="Quitar rol" @onclick="() => RemoveRole(r.Id)">
+                            <Icon Name="x" />
+                        </button>
+                    }
+                </span>
+            }
+            @if (_userRoles.Count == 0)
+            {
+                <span class="article-list-item__meta">Sin roles asignados todavía.</span>
+            }
+        </div>
+
+        @if (_canWrite && _availableRoles.Any())
+        {
+            <div class="form-row" style="margin-top: var(--space-4)">
+                <select class="input" @bind="_selectedRoleId" style="max-width:260px">
+                    <option value="">Seleccioná un rol...</option>
+                    @foreach (var r in _availableRoles)
+                    {
+                        <option value="@r.Id">@r.Name</option>
+                    }
+                </select>
+                <button class="btn btn--primary btn--sm" disabled="@(_selectedRoleId == Guid.Empty)" @onclick="AssignRole">
+                    Asignar rol
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid UserId { get; set; }
+
+    private SecurityUser? _user;
+    private List<SecurityRole> _userRoles = new();
+    private List<SecurityRole> _allRoles = new();
+    private List<SecurityRole> _availableRoles => _allRoles.Where(r => _userRoles.All(ur => ur.Id != r.Id)).ToList();
+    private Guid _selectedRoleId = Guid.Empty;
+    private bool _loading = true;
+    private bool _canWrite;
+    private string _actingUser = "unknown";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
+        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
+
+        _user = await SecurityService.GetUserByIdAsync(UserId);
+        _userRoles = await SecurityService.GetUserRolesAsync(UserId);
+        _allRoles = await SecurityService.GetAllRolesAsync();
+        _loading = false;
+    }
+
+    private async Task AssignRole()
+    {
+        if (!_canWrite || _selectedRoleId == Guid.Empty || _user is null) return;
+
+        await SecurityService.AssignRoleToUserAsync(UserId, _selectedRoleId, _actingUser);
+        var role = _allRoles.First(r => r.Id == _selectedRoleId);
+
+        await SecurityService.LogAuditAsync(UserId, _user.Username, "ROLE_ASSIGNED", $"Rol asignado: {role.Name}");
+
+        _selectedRoleId = Guid.Empty;
+        _userRoles = await SecurityService.GetUserRolesAsync(UserId);
+    }
+
+    private async Task RemoveRole(Guid roleId)
+    {
+        if (!_canWrite || _user is null) return;
+
+        var role = _allRoles.First(r => r.Id == roleId);
+        await SecurityService.RemoveRoleFromUserAsync(UserId, roleId);
+        await SecurityService.LogAuditAsync(UserId, _user.Username, "ROLE_REMOVED", $"Rol removido: {role.Name}");
+
+        _userRoles = await SecurityService.GetUserRolesAsync(UserId);
+    }
+}
+
+
+
+
+
+
+@page "/admin/seguridad/roles"
+@attribute [Authorize(Policy = "ADMIN:READ")]
+@rendermode InteractiveServer
+@inject ISecurityService SecurityService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@using CorpWiki.Domain.Entities.Security
+@using CorpWiki.Web.Security
+
+<PageTitle>DaviWiki - Roles</PageTitle>
+
+<AdminNav />
+
+<div class="section-header">
+    <div>
+        <h3>Roles (@_roles.Count)</h3>
+        <p class="section-header__subtitle">Los roles de sistema (Administrador, Editor, Lector) no pueden eliminarse.</p>
+    </div>
+    @if (_canWrite)
+    {
+        <button class="btn btn--primary btn--sm" @onclick="() => _showCreateForm = true">
+            <Icon Name="plus" /> Nuevo rol
+        </button>
+    }
+</div>
+
+@if (_showCreateForm)
+{
+    <div class="card admin-section">
+        <h3 class="admin-section__title">Crear rol</h3>
+        <div class="form-row">
+            <input class="input" placeholder="Nombre del rol" @bind="_newRoleName" />
+            <input class="input" placeholder="Descripción" @bind="_newRoleDescription" />
+        </div>
+        <div class="form-actions">
+            <button class="btn btn--ghost btn--sm" @onclick="() => _showCreateForm = false">Cancelar</button>
+            <button class="btn btn--primary btn--sm" disabled="@string.IsNullOrWhiteSpace(_newRoleName)" @onclick="CreateRole">Crear</button>
+        </div>
+    </div>
+}
+
+<div class="card">
+    @foreach (var r in _roles)
+    {
+        <div class="article-list-item">
+            <div class="article-list-item__icon"><Icon Name="shield" /></div>
+            <div class="article-list-item__info">
+                <span class="article-list-item__title">@r.Name @(r.IsSystemRole ? "(sistema)" : "")</span>
+                <span class="article-list-item__meta">@r.Description</span>
+            </div>
+
+            <button class="btn btn--secondary btn--sm" @onclick="() => GoToMatrix(r.Id)">
+                <Icon Name="grid-3x3" /> Permisos
+            </button>
+
+            @if (_canWrite && !r.IsSystemRole)
+            {
+                <button class="btn btn--danger btn--sm" @onclick="() => DeleteRole(r)">
+                    <Icon Name="trash-2" />
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<SecurityRole> _roles = new();
+    private bool _canWrite;
+    private bool _showCreateForm;
+    private string _newRoleName = "";
+    private string _newRoleDescription = "";
+    private string _actingUser = "unknown";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
+        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
+
+        _roles = await SecurityService.GetAllRolesAsync();
+    }
+
+    private void GoToMatrix(Guid roleId) => Navigation.NavigateTo($"/admin/seguridad/roles/{roleId}/permisos");
+
+    private async Task CreateRole()
+    {
+        if (!_canWrite || string.IsNullOrWhiteSpace(_newRoleName)) return;
+
+        var role = await SecurityService.CreateRoleAsync(_newRoleName.Trim(), _newRoleDescription.Trim());
+        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_CREATED", $"Rol creado: {role.Name}");
+
+        _newRoleName = "";
+        _newRoleDescription = "";
+        _showCreateForm = false;
+        _roles = await SecurityService.GetAllRolesAsync();
+    }
+
+    private async Task DeleteRole(SecurityRole role)
+    {
+        if (!_canWrite || role.IsSystemRole) return;
+
+        await SecurityService.DeleteRoleAsync(role.Id);
+        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_DELETED", $"Rol eliminado: {role.Name}");
+
+        _roles = await SecurityService.GetAllRolesAsync();
+    }
+}
+
+
+
+
+
+@page "/admin/seguridad/roles/{RoleId:guid}/permisos"
+@attribute [Authorize(Policy = "ADMIN:READ")]
+@rendermode InteractiveServer
+@inject ISecurityService SecurityService
+@inject AuthenticationStateProvider AuthStateProvider
+@using CorpWiki.Domain.Entities.Security
+@using CorpWiki.Web.Security
+
+<PageTitle>DaviWiki - Permisos de rol</PageTitle>
+
+<AdminNav />
+
+@if (_loading)
+{
+    <p>Cargando...</p>
+}
+else if (_role is null)
+{
+    <div class="empty-state"><p>Rol no encontrado.</p></div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <h1>Permisos: @_role.Name</h1>
+            <p>Marcá qué puede hacer este rol en cada pantalla del sistema.</p>
+        </div>
+        @if (_canWrite && _isDirty)
+        {
+            <button class="btn btn--primary" @onclick="Save">
+                <Icon Name="check-circle" /> Guardar cambios
+            </button>
+        }
+    </div>
+
+    @if (_isDirty)
+    {
+        <div class="callout callout--tip">
+            <Icon Name="alert-triangle" />
+            <p>Tenés cambios sin guardar.</p>
+        </div>
+    }
+
+    <div class="card" style="overflow-x:auto">
+        <table style="width:100%; border-collapse:collapse">
+            <thead>
+                <tr>
+                    <th style="text-align:left; padding: var(--space-2)">Pantalla</th>
+                    @foreach (var p in _permissions)
+                    {
+                        <th style="padding: var(--space-2); text-align:center">@p.Name</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _screens)
+                {
+                    <tr class="category-row">
+                        <td style="padding: var(--space-2)">@s.Name</td>
+                        @foreach (var p in _permissions)
+                        {
+                            var key = (s.Id, p.Id);
+                            <td style="text-align:center">
+                                <input type="checkbox"
+                                       disabled="@(!_canWrite)"
+                                       checked="@_matrix[key]"
+                                       @onchange="@(e => Toggle(key, (bool)e.Value!))" />
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid RoleId { get; set; }
+
+    private SecurityRole? _role;
+    private List<SecurityScreen> _screens = new();
+    private List<SecurityPermission> _permissions = new();
+    private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _matrix = new();
+    private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _original = new();
+    private bool _loading = true;
+    private bool _canWrite;
+    private string _actingUser = "unknown";
+
+    private bool _isDirty => !_matrix.OrderBy(kv => kv.Key).SequenceEqual(_original.OrderBy(kv => kv.Key));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
+        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
+
+        _role = await SecurityService.GetRoleByIdAsync(RoleId);
+        _screens = (await SecurityService.GetAllScreensAsync()).OrderBy(s => s.DisplayOrder).ToList();
+        _permissions = await SecurityService.GetAllPermissionsAsync();
+
+        var granted = await SecurityService.GetRolePermissionsAsync(RoleId);
+        var grantedSet = granted.Select(rp => (rp.ScreenId, rp.PermissionId)).ToHashSet();
+
+        foreach (var s in _screens)
+            foreach (var p in _permissions)
+                _matrix[(s.Id, p.Id)] = grantedSet.Contains((s.Id, p.Id));
+
+        _original = new Dictionary<(Guid, Guid), bool>(_matrix);
+        _loading = false;
+    }
+
+    private void Toggle((Guid ScreenId, Guid PermissionId) key, bool value)
+    {
+        if (!_canWrite) return;
+        _matrix[key] = value;
+    }
+
+    private async Task Save()
+    {
+        if (!_canWrite) return;
+
+        var changes = _matrix
+            .Where(kv => !_original.TryGetValue(kv.Key, out var was) || was != kv.Value)
+            .ToList();
+
+        foreach (var kv in changes)
+        {
+            var (screenId, permissionId) = kv.Key;
+            await SecurityService.SetRolePermissionAsync(RoleId, screenId, permissionId, kv.Value);
+        }
+
+        if (changes.Count > 0)
+        {
+            await SecurityService.LogAuditAsync(null, _actingUser, "PERMISSION_CHANGED",
+                $"Rol '{_role!.Name}': {changes.Count} permiso(s) modificado(s).");
+        }
+
+        _original = new Dictionary<(Guid, Guid), bool>(_matrix);
+    }
+}
+
+
+
+
+
+
+
+@page "/admin/seguridad/auditoria"
+@attribute [Authorize(Policy = "ADMIN:READ")]
+@rendermode InteractiveServer
+@inject ISecurityService SecurityService
+@using CorpWiki.Domain.Entities.Security
+
+<PageTitle>DaviWiki - Auditoría</PageTitle>
+
+<AdminNav />
+
+<div class="section-header">
+    <div>
+        <h3>Registro de auditoría</h3>
+        <p class="section-header__subtitle">Últimos @_logs.Count eventos de seguridad.</p>
+    </div>
+</div>
+
+<div class="card">
+    @foreach (var log in _logs)
+    {
+        <div class="activity-row">
+            <div class="activity-row__avatar">@(log.Username.Length > 0 ? log.Username[..1].ToUpper() : "?")</div>
+            <div>
+                <p class="activity-row__text">
+                    <strong>@log.Username</strong> — @log.Action
+                    @if (!string.IsNullOrWhiteSpace(log.Details))
+                    {
+                        <span class="article-list-item__meta"> · @log.Details</span>
+                    }
+                </p>
+                <p class="activity-row__time">@log.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<SecurityAuditLog> _logs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _logs = await SecurityService.GetAuditLogsAsync(200);
+    }
+}
