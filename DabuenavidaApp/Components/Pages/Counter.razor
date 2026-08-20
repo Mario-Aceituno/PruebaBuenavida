@@ -1,71 +1,14 @@
-private static async Task SeedScreensAsync(DaviWikiDbContext db, ILogger logger)
-{
-    var existingCodes = await db.SecurityScreens.Select(s => s.Code).ToListAsync();
-    var existingSet = existingCodes.ToHashSet();
-
-    var allScreens = new List<SecurityScreen>
-    {
-        new() { Id = ScreenIds.Home, Code = "HOME", Name = "Inicio", Route = "/home", Icon = "home", DisplayOrder = 1 },
-        new() { Id = ScreenIds.Articles, Code = "ARTICLES", Name = "Artículos", Route = "/articulos", Icon = "file-text", DisplayOrder = 2 },
-        new() { Id = ScreenIds.ArticleEditor, Code = "ARTICLE_EDITOR", Name = "Editor de Artículos", Route = "/articulos/nuevo", Icon = "edit", DisplayOrder = 3, ParentScreenId = ScreenIds.Articles },
-        new() { Id = ScreenIds.Categories, Code = "CATEGORIES", Name = "Categorías", Route = "/categorias", Icon = "folder", DisplayOrder = 4 },
-        new() { Id = ScreenIds.Tags, Code = "TAGS", Name = "Etiquetas", Route = "/etiquetas", Icon = "tag", DisplayOrder = 5 },
-        new() { Id = ScreenIds.Collections, Code = "COLLECTIONS", Name = "Colecciones", Route = "/colecciones", Icon = "layers", DisplayOrder = 6 },
-        new() { Id = ScreenIds.Multimedia, Code = "MULTIMEDIA", Name = "Multimedia", Route = "/multimedia", Icon = "image", DisplayOrder = 7 },
-        new() { Id = ScreenIds.Authors, Code = "AUTHORS", Name = "Autores", Route = "/autores", Icon = "users", DisplayOrder = 8 },
-        new() { Id = ScreenIds.Incidents, Code = "INCIDENTS", Name = "Incidencias", Route = "/incidencias", Icon = "alert-circle", DisplayOrder = 9 },
-        new() { Id = ScreenIds.Stats, Code = "STATS", Name = "Estadísticas", Route = "/estadisticas", Icon = "bar-chart", DisplayOrder = 10 },
-        new() { Id = ScreenIds.Search, Code = "SEARCH", Name = "Búsqueda", Route = "/buscar", Icon = "search", DisplayOrder = 11 },
-        new() { Id = ScreenIds.AdminPanel, Code = "ADMIN", Name = "Administración", Route = "/admin", Icon = "settings", DisplayOrder = 12 },
-        new() { Id = ScreenIds.Profile, Code = "PROFILE", Name = "Perfil", Route = "/perfil", Icon = "user", DisplayOrder = 13 },
-        new() { Id = ScreenIds.Activity, Code = "ACTIVITY", Name = "Actividad", Route = "/actividad", Icon = "activity", DisplayOrder = 14 },
-
-        // --- Pantallas nuevas ---
-        new() { Id = ScreenIds.Dashboard, Code = "DASHBOARD", Name = "Dashboard", Route = "/dashboard", Icon = "layout-dashboard", DisplayOrder = 15 },
-        new() { Id = ScreenIds.Explore, Code = "EXPLORE", Name = "Explorar", Route = "/explorar", Icon = "compass", DisplayOrder = 16 },
-        new() { Id = ScreenIds.Favorites, Code = "FAVORITES", Name = "Favoritos", Route = "/favoritos", Icon = "star", DisplayOrder = 17 },
-        new() { Id = ScreenIds.History, Code = "HISTORY", Name = "Historial", Route = "/historial", Icon = "history", DisplayOrder = 18 },
-        new() { Id = ScreenIds.Help, Code = "HELP", Name = "Centro de ayuda", Route = "/ayuda", Icon = "life-buoy", DisplayOrder = 19 },
-    };
-
-    var missing = allScreens.Where(s => !existingSet.Contains(s.Code)).ToList();
-    if (missing.Count == 0) return;
-
-    db.SecurityScreens.AddRange(missing);
-    await db.SaveChangesAsync();
-    logger.LogInformation("Pantallas nuevas agregadas: {Count}", missing.Count);
-}
-
-
-
-
-
-
-
-
-public static class ScreenIds
-{
-    // ... los 14 existentes sin cambios ...
-    public static readonly Guid Dashboard  = new("B0000001-0000-0000-0000-000000000015");
-    public static readonly Guid Explore    = new("B0000001-0000-0000-0000-000000000016");
-    public static readonly Guid Favorites  = new("B0000001-0000-0000-0000-000000000017");
-    public static readonly Guid History    = new("B0000001-0000-0000-0000-000000000018");
-    public static readonly Guid Help       = new("B0000001-0000-0000-0000-000000000019");
-}
-
-
-
-
-
-
-
 private static async Task SeedMissingScreenPermissionsAsync(DaviWikiDbContext db, ILogger logger)
 {
-    var systemRoleIds = new[] { RoleIds.Admin, RoleIds.Editor, RoleIds.Reader };
-    var existingRoleIds = await db.SecurityRoles
-        .Where(r => systemRoleIds.Contains(r.Id))
+    var systemRoleIds = new HashSet<Guid> { RoleIds.Admin, RoleIds.Editor, RoleIds.Reader };
+
+    // Traemos TODOS los roles (son pocos) y filtramos en memoria con LINQ-to-Objects.
+    // Esto NO se traduce a SQL, así que nunca genera OPENJSON.
+    var allRolesInDb = await db.SecurityRoles.AsNoTracking().ToListAsync();
+    var existingRoleIds = allRolesInDb
         .Select(r => r.Id)
-        .ToListAsync();
+        .Where(id => systemRoleIds.Contains(id)) // LINQ-to-Objects: seguro
+        .ToHashSet();
 
     if (existingRoleIds.Count == 0) return; // SeedRolesAsync todavía no corrió
 
@@ -73,12 +16,13 @@ private static async Task SeedMissingScreenPermissionsAsync(DaviWikiDbContext db
     var contentPermissionIds = new[] { PermissionIds.Read, PermissionIds.Write };
     var readOnlyPermissionIds = new[] { PermissionIds.Read };
 
-    var allScreenIds = await db.SecurityScreens.Select(s => s.Id).ToListAsync();
+    var allScreens = await db.SecurityScreens.AsNoTracking().ToListAsync();
+    var allScreenIds = allScreens.Select(s => s.Id).ToList();
     var contentScreenIds = allScreenIds.Where(id => id != ScreenIds.AdminPanel).ToList();
 
-    var existingSet = (await db.SecurityRolePermissions
-        .Select(rp => new { rp.RoleId, rp.ScreenId, rp.PermissionId })
-        .ToListAsync())
+    // Igual acá: traemos toda la tabla de asignaciones y armamos el set en memoria.
+    var existingAssignments = await db.SecurityRolePermissions.AsNoTracking().ToListAsync();
+    var existingSet = existingAssignments
         .Select(a => (a.RoleId, a.ScreenId, a.PermissionId))
         .ToHashSet();
 
@@ -111,107 +55,3 @@ private static async Task SeedMissingScreenPermissionsAsync(DaviWikiDbContext db
     await db.SaveChangesAsync();
     logger.LogInformation("Permisos de paridad agregados a roles de sistema: {Count}", toAdd.Count);
 }
-
-
-
-
-
-
-await SeedPermissionsAsync(db, logger);
-await SeedScreensAsync(db, logger);
-await SeedRolesAsync(db, logger);
-await SeedMissingScreenPermissionsAsync(db, logger);   // ← nueva línea
-await SeedAdminUserAsync(db, logger);
-
-
-
-
-
-
-<div class="sidebar__group">
-    <p class="sidebar__group-title">Personal</p>
-    @if (CanSee("FAVORITES")) { <SidebarLink Href="/favoritos" Icon="star" Label="Favoritos" /> }
-    @if (CanSee("HISTORY")) { <SidebarLink Href="/historial" Icon="history" Label="Historial" /> }
-    @if (CanSee("ACTIVITY")) { <SidebarLink Href="/actividad" Icon="activity" Label="Actividad" /> }
-</div>
-
-<div class="sidebar__group">
-    <p class="sidebar__group-title">Equipo</p>
-    @if (CanSee("AUTHORS")) { <SidebarLink Href="/autores" Icon="users" Label="Autores" /> }
-    @if (CanSee("STATS")) { <SidebarLink Href="/estadisticas" Icon="bar-chart-3" Label="Estadísticas" /> }
-    @if (CanSee("HELP")) { <SidebarLink Href="/ayuda" Icon="life-buoy" Label="Centro de ayuda" /> }
-</div>
-
-
-
-
-
-<div class="sidebar__group">
-    @if (CanSee("HOME")) { <SidebarLink Href="/home" Icon="home" Label="Inicio" Exact="true" /> }
-    @if (CanSee("DASHBOARD")) { <SidebarLink Href="/dashboard" Icon="layout-dashboard" Label="Dashboard" /> }
-    @if (CanSee("EXPLORE")) { <SidebarLink Href="/explorar" Icon="compass" Label="Explorar" /> }
-    @if (CanSee("SEARCH")) { <SidebarLink Href="/buscar" Icon="search" Label="Búsqueda" /> }
-</div>
-
-
-
-
-<td>
-    <label class="switch">
-        <input type="checkbox"
-               disabled="@(!_canWrite)"
-               checked="@_matrix[key]"
-               @onchange="@(e => Toggle(key, (bool)e.Value!))" />
-        <span class="switch__track"></span>
-    </label>
-</td>
-
-
-
-
-
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Authorization;
-
-namespace CorpWiki.Web.Security;
-
-/// <summary>
-/// Base para páginas de contenido que necesitan mostrar/ocultar acciones
-/// (crear, editar, eliminar, exportar) según los permisos del usuario sobre
-/// una pantalla específica. La entrada a la página se sigue controlando
-/// aparte con [Authorize(Policy = "CODE:READ")].
-/// </summary>
-public abstract class PermissionAwareComponentBase : ComponentBase
-{
-    [Inject] protected AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
-
-    /// <summary>Código de pantalla (debe existir en DatabaseSeeder.ScreenIds).</summary>
-    protected abstract string ScreenCode { get; }
-
-    protected bool CanWrite { get; private set; }
-    protected bool CanDelete { get; private set; }
-    protected bool CanExport { get; private set; }
-    protected bool CanAdmin { get; private set; }
-    protected string CurrentUsername { get; private set; } = "unknown";
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
-
-        CanWrite = user.HasPermission(ScreenCode, "WRITE");
-        CanDelete = user.HasPermission(ScreenCode, "DELETE");
-        CanExport = user.HasPermission(ScreenCode, "EXPORT");
-        CanAdmin = user.HasPermission(ScreenCode, "ADMIN");
-        CurrentUsername = user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
-
-        await OnPermissionsLoadedAsync();
-    }
-
-    /// <summary>Las páginas cargan sus datos acá en vez de OnInitializedAsync directamente.</summary>
-    protected virtual Task OnPermissionsLoadedAsync() => Task.CompletedTask;
-}
-
-
-
-
