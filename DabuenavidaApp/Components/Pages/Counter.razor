@@ -1,221 +1,26 @@
-using System.Security.Claims;
-using Microsoft.AspNetCore.Components.Authorization;
-
-namespace CorpWiki.Web.Security;
-
-public interface ICurrentUserContext
+public static void AddDaviWikiPolicies(this AuthorizationOptions options)
 {
-    Guid UserId { get; }
-    string Username { get; }
-    string FullName { get; }
-    bool IsAuthenticated { get; }
-    IReadOnlyCollection<string> Roles { get; }
-
-    Task EnsureLoadedAsync();
-    bool HasPermission(string screenCode, string permissionCode);
-    bool CanRead(string screenCode);
-    bool CanWrite(string screenCode);
-    bool CanDelete(string screenCode);
-    bool CanExport(string screenCode);
-    bool CanAdmin(string screenCode);
-}
-
-/// <summary>
-/// Contexto de permisos del usuario actual, cacheado una vez por circuito.
-/// Reemplaza la lectura repetida de claims en cada componente.
-/// </summary>
-public class CurrentUserContext : ICurrentUserContext
-{
-    private readonly AuthenticationStateProvider _authStateProvider;
-    private ClaimsPrincipal? _user;
-    private bool _loaded;
-
-    public CurrentUserContext(AuthenticationStateProvider authStateProvider)
+    var screenCodes = new[]
     {
-        _authStateProvider = authStateProvider;
-    }
+        "HOME", "ARTICLES", "ARTICLE_EDITOR", "ARTICLE_DETAIL", "CATEGORIES", "TAGS",
+        "COLLECTIONS", "MULTIMEDIA", "AUTHORS", "INCIDENTS", "STATS",
+        "SEARCH", "ADMIN", "PROFILE", "ACTIVITY",
+        "DASHBOARD", "EXPLORE", "FAVORITES", "HISTORY", "HELP"
+    };
 
-    public Guid UserId { get; private set; }
-    public string Username { get; private set; } = "";
-    public string FullName { get; private set; } = "";
-    public bool IsAuthenticated { get; private set; }
-    public IReadOnlyCollection<string> Roles { get; private set; } = Array.Empty<string>();
+    var permissionCodes = new[] { "READ", "WRITE", "DELETE", "EXPORT", "ADMIN" };
 
-    public async Task EnsureLoadedAsync()
+    foreach (var screen in screenCodes)
     {
-        if (_loaded) return;
-
-        var authState = await _authStateProvider.GetAuthenticationStateAsync();
-        _user = authState.User;
-        IsAuthenticated = _user.Identity?.IsAuthenticated ?? false;
-
-        if (IsAuthenticated)
+        foreach (var permission in permissionCodes)
         {
-            Username = _user.FindFirst(ClaimTypes.Name)?.Value ?? "";
-            FullName = _user.FindFirst("FullName")?.Value ?? Username;
-
-            var idClaim = _user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            UserId = Guid.TryParse(idClaim, out var id) ? id : Guid.Empty;
-
-            Roles = _user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+            var policyName = $"{screen}:{permission}";
+            options.AddPolicy(policyName, policy =>
+                policy.Requirements.Add(new ScreenPermissionRequirement(screen, permission)));
         }
-
-        _loaded = true;
-    }
-
-    public bool HasPermission(string screenCode, string permissionCode) =>
-        _user?.Claims.Any(c => c.Type == $"Permission:{screenCode}" && c.Value == permissionCode) ?? false;
-
-    public bool CanRead(string screenCode)   => HasPermission(screenCode, "READ");
-    public bool CanWrite(string screenCode)  => HasPermission(screenCode, "WRITE");
-    public bool CanDelete(string screenCode) => HasPermission(screenCode, "DELETE");
-    public bool CanExport(string screenCode) => HasPermission(screenCode, "EXPORT");
-    public bool CanAdmin(string screenCode)  => HasPermission(screenCode, "ADMIN");
-}
-
-
-
-
-
-
-
-
-
-namespace CorpWiki.Web.Security;
-
-public abstract class PermissionAwareComponentBase : ComponentBase
-{
-    [Inject] protected ICurrentUserContext CurrentUser { get; set; } = default!;
-
-    protected abstract string ScreenCode { get; }
-
-    protected bool CanWrite  => CurrentUser.CanWrite(ScreenCode);
-    protected bool CanDelete => CurrentUser.CanDelete(ScreenCode);
-    protected bool CanExport => CurrentUser.CanExport(ScreenCode);
-    protected bool CanAdmin  => CurrentUser.CanAdmin(ScreenCode);
-
-    protected override async Task OnInitializedAsync()
-    {
-        await CurrentUser.EnsureLoadedAsync();
-        await OnPermissionsLoadedAsync();
-    }
-
-    protected virtual Task OnPermissionsLoadedAsync() => Task.CompletedTask;
-}
-
-
-
-
-
-
-
-@if (_allowed)
-{
-    @ChildContent
-}
-
-@code {
-    [Parameter] public string Screen { get; set; } = "";
-    [Parameter] public string Permission { get; set; } = "READ";
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Inject] private ICurrentUserContext CurrentUser { get; set; } = default!;
-
-    private bool _allowed;
-
-    protected override async Task OnParametersSetAsync()
-    {
-        await CurrentUser.EnsureLoadedAsync();
-        _allowed = CurrentUser.HasPermission(Screen, Permission);
     }
 }
 
 
 
-
-
-using CorpWiki.Application.Interfaces;
-using Microsoft.Extensions.Logging;
-
-namespace CorpWiki.Web.Security;
-
-public static class PermissionGuard
-{
-    /// <summary>
-    /// Re-valida un permiso dentro del handler de una acción (crear, editar, borrar, exportar).
-    /// Si el usuario no tiene el permiso, registra el intento en auditoría y devuelve false.
-    /// </summary>
-    public static async Task<bool> EnsureAsync(
-        ICurrentUserContext user,
-        ISecurityService securityService,
-        string screenCode,
-        string permissionCode,
-        ILogger? logger = null)
-    {
-        var allowed = user.HasPermission(screenCode, permissionCode);
-
-        if (!allowed)
-        {
-            logger?.LogWarning(
-                "Acción bloqueada: {Username} intentó {Permission} en {Screen} sin autorización.",
-                user.Username, permissionCode, screenCode);
-
-            await securityService.LogAuditAsync(
-                user.UserId == Guid.Empty ? null : user.UserId,
-                user.Username,
-                "PERMISSION_DENIED",
-                $"Intento de {permissionCode} en {screenCode} sin permiso.");
-        }
-
-        return allowed;
-    }
-}
-
-
-
-
-@using CorpWiki.Web.Components.Security
-
-<Router AppAssembly="@typeof(Program).Assembly">
-    <Found Context="routeData">
-        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
-            <NotAuthorized>
-                <AuthorizeView>
-                    <Authorized>
-                        <LayoutView Layout="@typeof(MainLayout)">
-                            <AccessDenied />
-                        </LayoutView>
-                    </Authorized>
-                    <NotAuthorized>
-                        <RedirectToLogin />
-                    </NotAuthorized>
-                </AuthorizeView>
-            </NotAuthorized>
-        </AuthorizeRouteView>
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-    </Found>
-    <NotFound>
-        <LayoutView Layout="@typeof(MainLayout)">
-            <div class="empty-state">
-                <Icon Name="compass" Class="empty-state__icon" />
-                <h2>No encontramos esta página</h2>
-                <p>Puede que el artículo se haya movido o no exista todavía.</p>
-                <a class="btn btn--primary" href="/">Volver al inicio</a>
-            </div>
-        </LayoutView>
-    </NotFound>
-</Router>
-
-
-
-
-
-
-<div class="empty-state">
-    <Icon Name="shield-off" Class="empty-state__icon" />
-    <h2>No tenés permisos para ver esta sección</h2>
-    <p>Si creés que esto es un error, contactá a un administrador del sistema.</p>
-    <a class="btn btn--primary" href="/home">Volver al inicio</a>
-</div>
-
-
-
+new() { Id = ScreenIds.ArticleDetail, Code = "ARTICLE_DETAIL", Name = "Artículo Detalle", Route = "/articulos/{id}", Icon = "file-text", DisplayOrder = 2, ParentScreenId = ScreenIds.Articles },
