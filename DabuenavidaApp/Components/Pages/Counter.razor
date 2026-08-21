@@ -1,26 +1,5 @@
-public static void AddDaviWikiPolicies(this AuthorizationOptions options)
-{
-    var screenCodes = new[]
-    {
-        "HOME", "ARTICLES", "ARTICLE_EDITOR", "ARTICLE_DETAIL", "CATEGORIES", "TAGS",
-        "COLLECTIONS", "MULTIMEDIA", "AUTHORS", "INCIDENTS", "STATS",
-        "SEARCH", "ADMIN", "PROFILE", "ACTIVITY",
-        "DASHBOARD", "EXPLORE", "FAVORITES", "HISTORY", "HELP"
-    };
+new() { Id = ScreenIds.CategoryDetail, Code = "CATEGORY_DETAIL", Name = "Categoría Detalle", Route = "/categorias/{id}", Icon = "folder-tree", DisplayOrder = 4, ParentScreenId = ScreenIds.Categories },
 
-    var permissionCodes = new[] { "READ", "WRITE", "DELETE", "EXPORT", "ADMIN" };
+new() { Id = ScreenIds.CollectionDetail, Code = "COLLECTION_DETAIL", Name = "Colección Detalle", Route = "/colecciones/{id}", Icon = "library", DisplayOrder = 6, ParentScreenId = ScreenIds.Collections },
 
-    foreach (var screen in screenCodes)
-    {
-        foreach (var permission in permissionCodes)
-        {
-            var policyName = $"{screen}:{permission}";
-            options.AddPolicy(policyName, policy =>
-                policy.Requirements.Add(new ScreenPermissionRequirement(screen, permission)));
-        }
-    }
-}
-
-
-
-new() { Id = ScreenIds.ArticleDetail, Code = "ARTICLE_DETAIL", Name = "Artículo Detalle", Route = "/articulos/{id}", Icon = "file-text", DisplayOrder = 2, ParentScreenId = ScreenIds.Articles },
+new() { Id = ScreenIds.TagDetail, Code = "TAG_DETAIL", Name = "Etiqueta Detalle", Route = "/etiquetas/{id}", Icon = "tag", DisplayOrder = 5, ParentScreenId = ScreenIds.Tags },
