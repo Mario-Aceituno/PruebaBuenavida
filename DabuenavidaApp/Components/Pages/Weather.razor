@@ -1,166 +1,768 @@
----------------------
-ICurrentUserContext
----------------------
-namespace CorpWiki.Application.Interfaces;
+-------------------
+EfWikiDataService 
+-------------------
 
-public interface ICurrentUserContext
+// ---------- Comentarios ----------
+
+public async Task<IReadOnlyList<CommentDto>> GetCommentsByArticleAsync(Guid articleId)
 {
-    Task<Guid> GetCurrentUserIdAsync();
-}
+    var currentUserId = await _securityService.GetCurrentUserIdAsync();
 
----------------------
-CurrentUserContext
----------------------
-using System.Security.Claims;
-using CorpWiki.Application.Interfaces;
-using Microsoft.AspNetCore.Components.Authorization;
+    var all = await _db.ArticleComments
+        .Include(c => c.User)
+        .Where(c => c.ArticleId == articleId)
+        .OrderBy(c => c.CreatedAt)
+        .ToListAsync();
 
-namespace CorpWiki.Infrastructure.Security;
+    if (all.Count == 0) return new List<CommentDto>();
 
-public class CurrentUserContext : ICurrentUserContext
-{
-    private readonly AuthenticationStateProvider _authStateProvider;
+    var likeCounts = await _db.ArticleCommentLikes
+        .Where(l => all.Select(c => c.Id).Contains(l.CommentId))
+        .GroupBy(l => l.CommentId)
+        .Select(g => new { CommentId = g.Key, Count = g.Count() })
+        .ToDictionaryAsync(x => x.CommentId, x => x.Count);
 
-    public CurrentUserContext(AuthenticationStateProvider authStateProvider)
+    var likedByMe = currentUserId != Guid.Empty
+        ? (await _db.ArticleCommentLikes
+            .Where(l => l.UserId == currentUserId && all.Select(c => c.Id).Contains(l.CommentId))
+            .Select(l => l.CommentId)
+            .ToListAsync()).ToHashSet()
+        : new HashSet<Guid>();
+
+    // Mapa comentario -> raíz de su hilo, y comentario -> autor (para menciones)
+    var byId = all.ToDictionary(c => c.Id);
+    Guid GetRootId(ArticleComment c)
     {
-        _authStateProvider = authStateProvider;
+        var current = c;
+        while (current.ParentCommentId is Guid pid && byId.TryGetValue(pid, out var parent))
+            current = parent;
+        return current.Id;
     }
 
-    public async Task<Guid> GetCurrentUserIdAsync()
+    CommentDto Map(ArticleComment c)
     {
-        var authState = await _authStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
-
-        if (user.Identity == null || !user.Identity.IsAuthenticated)
-            return Guid.Empty;
-
-        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value 
-                       ?? user.FindFirst("sub")?.Value 
-                       ?? user.FindFirst("UserId")?.Value;
-
-        return Guid.TryParse(userIdClaim, out var userId) ? userId : Guid.Empty;
-    }
-}
-
----------------------
-IWikiDataService
----------------------
-Task<bool> IsFavoriteAsync(Guid articleId);
-Task<bool> ToggleFavoriteAsync(Guid articleId);
-Task<IReadOnlyList<Article>> GetFavoriteArticlesAsync();
-
-
----------------------
-EfWikiDataService
----------------------
-using CorpWiki.Application.Interfaces;
-using Microsoft.EntityFrameworkCore;
-
-namespace CorpWiki.Infrastructure.Persistence;
-
-public class EfWikiDataService : IWikiDataService
-{
-    private readonly DaviwikiDbContext _db;
-    private readonly ICurrentUserContext _currentUserContext;
-
-    public EfWikiDataService(DaviwikiDbContext db, ICurrentUserContext currentUserContext)
-    {
-        _db = db;
-        _currentUserContext = currentUserContext;
-    }
-
-    public async Task<bool> IsFavoriteAsync(Guid articleId)
-    {
-        var userId = await _currentUserContext.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) return false;
-
-        return await _db.ArticleFavorites
-            .AnyAsync(f => f.UserId == userId && f.ArticleId == articleId);
-    }
-
-    public async Task<bool> ToggleFavoriteAsync(Guid articleId)
-    {
-        var userId = await _currentUserContext.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) return false;
-
-        var favorite = await _db.ArticleFavorites
-            .FirstOrDefaultAsync(f => f.UserId == userId && f.ArticleId == articleId);
-
-        if (favorite != null)
+        var dto = new CommentDto
         {
-            _db.ArticleFavorites.Remove(favorite);
-            await _db.SaveChangesAsync();
-            return false; // Ya no es favorito
-        }
-
-        var newFavorite = new ArticleFavorite
-        {
-            UserId = userId,
-            ArticleId = articleId,
-            CreatedAt = DateTime.UtcNow
+            Id = c.Id,
+            ParentCommentId = c.ParentCommentId,
+            Content = c.Content,
+            CreatedAt = c.CreatedAt,
+            UpdatedAt = c.UpdatedAt,
+            AuthorName = c.User?.FullName ?? "Usuario",
+            AuthorInitials = c.User?.Initials ?? "??",
+            AuthorColorFrom = c.User?.AvatarColorFrom ?? "#6366f1",
+            AuthorColorTo = c.User?.AvatarColorTo ?? "#8b5cf6",
+            LikesCount = likeCounts.TryGetValue(c.Id, out var lc) ? lc : 0,
+            IsLikedByCurrentUser = likedByMe.Contains(c.Id),
+            CanEditOrDelete = currentUserId != Guid.Empty && c.UserId == currentUserId
         };
-
-        await _db.ArticleFavorites.AddAsync(newFavorite);
-        await _db.SaveChangesAsync();
-        return true; // Marcado como favorito
+        return dto;
     }
 
-    public async Task<IReadOnlyList<Article>> GetFavoriteArticlesAsync()
+    var roots = all.Where(c => c.ParentCommentId == null)
+                   .OrderBy(c => c.CreatedAt)
+                   .Select(Map)
+                   .ToList();
+    var rootsById = roots.ToDictionary(r => r.Id);
+
+    // Aplanar: cualquier comentario cuya raíz de hilo sea un root, va a Replies de ese root
+    foreach (var c in all.Where(c => c.ParentCommentId != null).OrderBy(c => c.CreatedAt))
     {
-        var userId = await _currentUserContext.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) return new List<Article>();
+        var rootId = GetRootId(c);
+        if (!rootsById.TryGetValue(rootId, out var rootDto)) continue;
 
-        var favoriteArticles = await _db.ArticleFavorites
-            .Where(f => f.UserId == userId)
-            .OrderByDescending(f => f.CreatedAt)
-            .Select(f => f.Article)
-            .ToListAsync();
+        var replyDto = Map(c);
 
-        foreach (var article in favoriteArticles)
+        // Si respondió a otra respuesta (no a la raíz), guardar mención
+        if (c.ParentCommentId != rootId && byId.TryGetValue(c.ParentCommentId!.Value, out var directParent))
         {
-            await PopulateNotMappedListsAsync(article);
+            replyDto.ReplyingToCommentId = directParent.Id;
+            replyDto.ReplyingToAuthorName = directParent.User?.FullName ?? "Usuario";
         }
 
-        return favoriteArticles;
+        rootDto.Replies.Add(replyDto);
+    }
+
+    return roots;
+}
+
+public async Task<CommentDto> CreateCommentAsync(Guid articleId, Guid? parentCommentId, string content)
+{
+    var userId = await _securityService.GetCurrentUserIdAsync();
+    if (userId == Guid.Empty) throw new InvalidOperationException("Usuario no autenticado.");
+    if (string.IsNullOrWhiteSpace(content)) throw new ArgumentException("El comentario no puede estar vacío.");
+
+    var comment = new ArticleComment
+    {
+        Id = Guid.NewGuid(),
+        ArticleId = articleId,
+        UserId = userId,
+        ParentCommentId = parentCommentId,
+        Content = content.Trim(),
+        CreatedAt = DateTime.UtcNow,
+        IsDeleted = false
+    };
+
+    _db.ArticleComments.Add(comment);
+    await _db.SaveChangesAsync();
+
+    await CreateNotificationForNewCommentAsync(comment, userId);
+
+    var saved = await _db.ArticleComments.Include(c => c.User)
+        .FirstAsync(c => c.Id == comment.Id);
+
+    return new CommentDto
+    {
+        Id = saved.Id,
+        ParentCommentId = saved.ParentCommentId,
+        Content = saved.Content,
+        CreatedAt = saved.CreatedAt,
+        AuthorName = saved.User?.FullName ?? "Usuario",
+        AuthorInitials = saved.User?.Initials ?? "??",
+        AuthorColorFrom = saved.User?.AvatarColorFrom ?? "#6366f1",
+        AuthorColorTo = saved.User?.AvatarColorTo ?? "#8b5cf6",
+        CanEditOrDelete = true
+    };
+}
+
+public async Task<bool> UpdateCommentAsync(Guid commentId, string content)
+{
+    var userId = await _securityService.GetCurrentUserIdAsync();
+    if (userId == Guid.Empty) return false;
+    if (string.IsNullOrWhiteSpace(content)) return false;
+
+    var comment = await _db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
+    if (comment is null || comment.UserId != userId) return false;
+
+    comment.Content = content.Trim();
+    comment.UpdatedAt = DateTime.UtcNow;
+    await _db.SaveChangesAsync();
+    return true;
+}
+
+public async Task<bool> DeleteCommentAsync(Guid commentId)
+{
+    var userId = await _securityService.GetCurrentUserIdAsync();
+    if (userId == Guid.Empty) return false;
+
+    var root = await _db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
+    if (root is null || root.UserId != userId) return false;
+
+    // Cargar todo el subárbol (respuestas de respuestas incluidas)
+    var toDelete = new List<ArticleComment> { root };
+    var frontier = new List<Guid> { root.Id };
+    while (frontier.Count > 0)
+    {
+        var children = await _db.ArticleComments
+            .Where(c => c.ParentCommentId != null && frontier.Contains(c.ParentCommentId!.Value))
+            .ToListAsync();
+        if (children.Count == 0) break;
+        toDelete.AddRange(children);
+        frontier = children.Select(c => c.Id).ToList();
+    }
+
+    // Borrar de hojas hacia raíz (orden inverso al que se descubrieron, ya es BFS raíz->hojas)
+    await using var tx = await _db.Database.BeginTransactionAsync();
+    try
+    {
+        for (int i = toDelete.Count - 1; i >= 0; i--)
+        {
+            _db.ArticleComments.Remove(toDelete[i]);
+            await _db.SaveChangesAsync();
+        }
+        await tx.CommitAsync();
+    }
+    catch
+    {
+        await tx.RollbackAsync();
+        throw;
+    }
+
+    return true;
+}
+
+public async Task<bool> ToggleCommentLikeAsync(Guid commentId)
+{
+    var userId = await _securityService.GetCurrentUserIdAsync();
+    if (userId == Guid.Empty) return false;
+
+    var existing = await _db.ArticleCommentLikes
+        .FirstOrDefaultAsync(l => l.CommentId == commentId && l.UserId == userId);
+
+    bool liked;
+    if (existing != null)
+    {
+        _db.ArticleCommentLikes.Remove(existing);
+        liked = false;
+    }
+    else
+    {
+        _db.ArticleCommentLikes.Add(new ArticleCommentLike
+        {
+            CommentId = commentId,
+            UserId = userId,
+            CreatedAt = DateTime.UtcNow
+        });
+        liked = true;
+    }
+
+    await _db.SaveChangesAsync();
+
+    if (liked)
+    {
+        var comment = await _db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
+        if (comment != null && comment.UserId != userId)
+        {
+            _db.Notifications.Add(new Notification
+            {
+                Id = Guid.NewGuid(),
+                RecipientUserId = comment.UserId,
+                ActorUserId = userId,
+                CommentId = comment.Id,
+                Type = NotificationType.CommentLike,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+        }
+    }
+
+    return liked;
+}
+
+private async Task CreateNotificationForNewCommentAsync(ArticleComment comment, Guid actorUserId)
+{
+    if (comment.ParentCommentId is null)
+    {
+        var article = await _db.Articles.FirstOrDefaultAsync(a => a.Id == comment.ArticleId);
+        if (article is null) return;
+
+        var author = await _db.Authors.FirstOrDefaultAsync(a => a.Id == article.AuthorId);
+        if (author?.SecurityUserId is not Guid recipientId || recipientId == actorUserId) return;
+
+        _db.Notifications.Add(new Notification
+        {
+            Id = Guid.NewGuid(),
+            RecipientUserId = recipientId,
+            ActorUserId = actorUserId,
+            CommentId = comment.Id,
+            Type = NotificationType.CommentOnArticle,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+    }
+    else
+    {
+        var parent = await _db.ArticleComments.FirstOrDefaultAsync(c => c.Id == comment.ParentCommentId);
+        if (parent is null || parent.UserId == actorUserId) return;
+
+        _db.Notifications.Add(new Notification
+        {
+            Id = Guid.NewGuid(),
+            RecipientUserId = parent.UserId,
+            ActorUserId = actorUserId,
+            CommentId = comment.Id,
+            Type = NotificationType.ReplyToComment,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+    }
+}
+
+---------------
+commentHub.cs
+----------------
+
+using Microsoft.AspNetCore.SignalR;
+
+namespace CorpWiki.Web.Hubs;
+
+public class CommentHub : Hub
+{
+    private static string GroupName(Guid articleId) => $"article-{articleId}";
+
+    public async Task JoinArticleGroup(Guid articleId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(articleId));
+    }
+
+    public async Task LeaveArticleGroup(Guid articleId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(articleId));
     }
 }
 
 
----------------------------
-artículoDetalle.razor.cs 
----------------------------
+--------------------
+program.cs
+--------------------
+app.MapHub<CommentHub>("/hubs/comments");
 
-private bool _isFavorite;
 
-protected override async Task OnParametersSetAsync()
+--------------
+Wikidataservice
+---------------
+private readonly IHubContext<CommentHub> _commentHub;
+
+public WikiDataService(
+    /* ...parámetros existentes... */,
+    IHubContext<CommentHub> commentHub)
 {
-    _article = await Data.GetArticleBySlugAsync(Slug);
-    if (_article is null) return;
-
-    _isFavorite = await Data.IsFavoriteAsync(_article.Id);
-
-    await Data.IncrementArticleViewCountAsync(_article.Id);
-    _article.ViewCount++;
+    /* ...asignaciones existentes... */
+    _commentHub = commentHub;
 }
 
-private async Task ToggleFavorite()
+
+-------------
+createComentAsync
+--------------
+var dto = new CommentDto
 {
-    if (_article is null) return;
-    _isFavorite = await Data.ToggleFavoriteAsync(_article.Id);
+    Id = saved.Id,
+    ParentCommentId = saved.ParentCommentId,
+    Content = saved.Content,
+    CreatedAt = saved.CreatedAt,
+    AuthorName = saved.User?.FullName ?? "Usuario",
+    AuthorInitials = saved.User?.Initials ?? "??",
+    AuthorColorFrom = saved.User?.AvatarColorFrom ?? "#6366f1",
+    AuthorColorTo = saved.User?.AvatarColorTo ?? "#8b5cf6",
+    CanEditOrDelete = true
+};
+
+await _commentHub.Clients.Group($"article-{articleId}").SendAsync("CommentAdded", dto);
+
+return dto;
+
+---------------
+update comment async 
+-------------
+comment.Content = content.Trim();
+comment.UpdatedAt = DateTime.UtcNow;
+await _db.SaveChangesAsync();
+
+var updated = await _db.ArticleComments.Include(c => c.User)
+    .FirstAsync(c => c.Id == commentId);
+
+var dto = new CommentDto
+{
+    Id = updated.Id,
+    ParentCommentId = updated.ParentCommentId,
+    Content = updated.Content,
+    CreatedAt = updated.CreatedAt,
+    UpdatedAt = updated.UpdatedAt,
+    AuthorName = updated.User?.FullName ?? "Usuario",
+    AuthorInitials = updated.User?.Initials ?? "??",
+    AuthorColorFrom = updated.User?.AvatarColorFrom ?? "#6366f1",
+    AuthorColorTo = updated.User?.AvatarColorTo ?? "#8b5cf6",
+    CanEditOrDelete = true
+};
+
+await _commentHub.Clients.Group($"article-{updated.ArticleId}").SendAsync("CommentUpdated", dto);
+
+return true;
+
+
+-------------
+delete
+-----------
+var articleId = root.ArticleId;
+
+await using var tx = await _db.Database.BeginTransactionAsync();
+try
+{
+    for (int i = toDelete.Count - 1; i >= 0; i--)
+    {
+        _db.ArticleComments.Remove(toDelete[i]);
+        await _db.SaveChangesAsync();
+    }
+    await tx.CommitAsync();
+}
+catch
+{
+    await tx.RollbackAsync();
+    throw;
 }
 
-----------------------------
-ArtículoDetalle.razor
-----------------------------
-<button class="btn btn--secondary btn--sm @(_isFavorite ? "btn--favorite-active" : "")" 
-        @onclick="ToggleFavorite" 
-        title="@(_isFavorite ? "Quitar de favoritos" : "Guardar en favoritos")">
-    <Icon Name="star" Style="@(_isFavorite ? "fill: currentColor; color: #dc2626;" : "")" />
-    <span>@(_isFavorite ? "Favorito" : "Guardar")</span>
-</button>
+var deletedIds = toDelete.Select(c => c.Id).ToArray();
+await _commentHub.Clients.Group($"article-{articleId}").SendAsync("CommentDeleted", deletedIds);
+
+return true;
 
 
-------------------
-Program.cs
-------------------
-builder.Services.AddScoped<ICurrentUserContext, CurrentUserContext>();
+
+-------------
+toggle comment async
+------------
+
+
+var likesCount = await _db.ArticleCommentLikes.CountAsync(l => l.CommentId == commentId);
+var articleId = (await _db.ArticleComments.FirstAsync(c => c.Id == commentId)).ArticleId;
+
+await _commentHub.Clients.Group($"article-{articleId}")
+    .SendAsync("CommentLikeToggled", commentId, likesCount, userId, liked);
+
+return liked;
+
+--------------
+Artículo detalle razor cs 
+--------------
+
+using Microsoft.AspNetCore.SignalR.Client;
+using CorpWiki.Application.DTOs;
+
+public partial class ArticuloDetalle : IAsyncDisposable
+
+private List<Comment> _comments = new();
+
+private List<CommentDto> _comments = new();
+private HubConnection? _commentHubConnection;
+
+_comments = (await Data.GetCommentsByArticleAsync(_article.Id)).ToList();
+
+protected override async Task OnInitializedAsync()
+{
+    if (_article is not null)
+    {
+        _userRating = await wikiDataService.GetUserRatingAsync(_article.Id);
+    }
+
+    await ConnectCommentHubAsync();
+}
+
+private async Task ConnectCommentHubAsync()
+{
+    _commentHubConnection = new HubConnectionBuilder()
+        .WithUrl(Nav.ToAbsoluteUri("/hubs/comments"))
+        .WithAutomaticReconnect()
+        .Build();
+
+    _commentHubConnection.On<CommentDto>("CommentAdded", comment =>
+    {
+        InvokeAsync(() =>
+        {
+            if (comment.ParentCommentId is null)
+            {
+                _comments.Add(comment);
+            }
+            else
+            {
+                var root = _comments.FirstOrDefault(c => c.Id == comment.ParentCommentId)
+                           ?? _comments.FirstOrDefault(c => c.Replies.Any(r => r.Id == comment.ParentCommentId));
+                root?.Replies.Add(comment);
+            }
+            StateHasChanged();
+        });
+    });
+
+    _commentHubConnection.On<CommentDto>("CommentUpdated", comment =>
+    {
+        InvokeAsync(() =>
+        {
+            if (comment.ParentCommentId is null)
+            {
+                var idx = _comments.FindIndex(c => c.Id == comment.Id);
+                if (idx >= 0)
+                {
+                    comment.Replies = _comments[idx].Replies; // conservar respuestas ya cargadas
+                    _comments[idx] = comment;
+                }
+            }
+            else
+            {
+                var root = _comments.FirstOrDefault(c => c.Replies.Any(r => r.Id == comment.Id));
+                if (root != null)
+                {
+                    var ridx = root.Replies.FindIndex(r => r.Id == comment.Id);
+                    if (ridx >= 0) root.Replies[ridx] = comment;
+                }
+            }
+            StateHasChanged();
+        });
+    });
+
+    _commentHubConnection.On<Guid[]>("CommentDeleted", deletedIds =>
+    {
+        InvokeAsync(() =>
+        {
+            _comments.RemoveAll(c => deletedIds.Contains(c.Id));
+            foreach (var root in _comments)
+                root.Replies.RemoveAll(r => deletedIds.Contains(r.Id));
+            StateHasChanged();
+        });
+    });
+
+    _commentHubConnection.On<Guid, int, Guid, bool>("CommentLikeToggled", (commentId, likesCount, userId, liked) =>
+    {
+        InvokeAsync(() =>
+        {
+            var target = _comments.FirstOrDefault(c => c.Id == commentId)
+                         ?? _comments.SelectMany(c => c.Replies).FirstOrDefault(r => r.Id == commentId);
+            if (target != null)
+            {
+                target.LikesCount = likesCount;
+                if (userId == _author?.Id) target.IsLikedByCurrentUser = liked;
+            }
+            StateHasChanged();
+        });
+    });
+
+    await _commentHubConnection.StartAsync();
+
+    if (_article is not null)
+        await _commentHubConnection.SendAsync("JoinArticleGroup", _article.Id);
+}
+
+
+if (_commentHubConnection is { State: HubConnectionState.Connected })
+    await _commentHubConnection.SendAsync("JoinArticleGroup", _article.Id);
+
+private async Task AddComment()
+{
+    if (string.IsNullOrWhiteSpace(_newComment) || _article is null) return;
+
+    await Data.CreateCommentAsync(_article.Id, null, _newComment);
+    _newComment = string.Empty;
+    // No se actualiza _comments aquí: llega por el evento CommentAdded del Hub.
+}
+
+private async Task LikeComment(Guid commentId)
+{
+    await Data.ToggleCommentLikeAsync(commentId);
+}
+
+private async Task ReplyToComment((Guid ParentId, string Content) reply)
+{
+    if (_article is null || string.IsNullOrWhiteSpace(reply.Content)) return;
+    await Data.CreateCommentAsync(_article.Id, reply.ParentId, reply.Content);
+}
+
+private async Task EditComment((Guid CommentId, string Content) edit)
+{
+    if (string.IsNullOrWhiteSpace(edit.Content)) return;
+    await Data.UpdateCommentAsync(edit.CommentId, edit.Content);
+}
+
+private async Task DeleteComment(Guid commentId)
+{
+    await Data.DeleteCommentAsync(commentId);
+}
+
+public async ValueTask DisposeAsync()
+{
+    if (_commentHubConnection is not null)
+    {
+        if (_commentHubConnection.State == HubConnectionState.Connected && _article is not null)
+        {
+            try { await _commentHubConnection.SendAsync("LeaveArticleGroup", _article.Id); }
+            catch { /* conexión ya cerrada, ignorar */ }
+        }
+        await _commentHubConnection.DisposeAsync();
+    }
+}
+
+--------------
+comment card razor 
+--------------
+
+<div class="comment-card" id="comment-@Id">
+    <span class="avatar avatar--sm" style="background:linear-gradient(135deg, @AuthorColorFrom, @AuthorColorTo)">@AuthorInitials</span>
+    <div class="comment-card__body">
+        <div class="comment-card__head">
+            <span class="comment-card__author">@AuthorName</span>
+            <span class="comment-card__date">@CreatedAt.ToString("d MMM yyyy")</span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(ReplyingToAuthorName))
+        {
+            <p class="comment-card__mention">@@@ReplyingToAuthorName</p>
+        }
+
+        @if (_isEditing)
+        {
+            <div class="comment-card__edit-box">
+                <textarea class="input" rows="2" @bind="_editContent"></textarea>
+                <div class="comment-card__edit-actions">
+                    <button class="btn btn--sm" @onclick="CancelEdit">Cancelar</button>
+                    <button class="btn btn--primary btn--sm" @onclick="SubmitEdit">Guardar</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <p class="comment-card__text">@Content</p>
+        }
+
+        <div class="comment-card__actions">
+            <button class="comment-card__like @(IsLiked ? "comment-card__like--active" : "")" @onclick="HandleLike">
+                <Icon Name="thumbs-up" /> @LikesCount
+            </button>
+            <button class="comment-card__reply-btn" @onclick="ToggleReply">Responder</button>
+            @if (CanEditOrDelete)
+            {
+                <button class="comment-card__edit-btn" @onclick="StartEdit">Editar</button>
+                <button class="comment-card__delete-btn" @onclick="OpenDeleteModal">Eliminar</button>
+            }
+        </div>
+
+        @if (_isReplying)
+        {
+            <div class="comment-composer comment-composer--reply">
+                <textarea class="input" rows="2" placeholder="Escribe una respuesta..." @bind="_replyContent"></textarea>
+                <button class="btn btn--primary btn--sm" @onclick="SubmitReply">Responder</button>
+            </div>
+        }
+
+        @if (Replies.Count > 0)
+        {
+            <div class="comment-card__replies">
+                @foreach (var reply in Replies)
+                {
+                    <CommentCard
+                        Id="@reply.Id"
+                        ParentCommentId="@reply.ParentCommentId"
+                        AuthorName="@reply.AuthorName"
+                        AuthorInitials="@reply.AuthorInitials"
+                        AuthorColorFrom="@reply.AuthorColorFrom"
+                        AuthorColorTo="@reply.AuthorColorTo"
+                        Content="@reply.Content"
+                        CreatedAt="@reply.CreatedAt"
+                        LikesCount="@reply.LikesCount"
+                        IsLiked="@reply.IsLikedByCurrentUser"
+                        CanEditOrDelete="@reply.CanEditOrDelete"
+                        ReplyingToAuthorName="@reply.ReplyingToAuthorName"
+                        Replies="@(new List<CommentDto>())"
+                        RootCommentId="@Id"
+                        OnLike="OnLike"
+                        OnReply="OnReply"
+                        OnEdit="OnEdit"
+                        OnDelete="OnDelete" />
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@if (_showDeleteModal)
+{
+    <div class="modal-backdrop" @onclick="CloseDeleteModal">
+        <div class="modal-box" @onclick:stopPropagation="true">
+            <h4>Eliminar comentario</h4>
+            @if (Replies.Count > 0)
+            {
+                <p>Este comentario tiene @Replies.Count respuesta(s), también se eliminarán.</p>
+            }
+            else
+            {
+                <p>¿Seguro que quieres eliminar este comentario?</p>
+            }
+            <div class="modal-box__actions">
+                <button class="btn btn--sm" @onclick="CloseDeleteModal">Cancelar</button>
+                <button class="btn btn--danger btn--sm" @onclick="ConfirmDelete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [Parameter] public Guid? ParentCommentId { get; set; }
+    [Parameter] public Guid? RootCommentId { get; set; } // solo se usa en respuestas, para saber a qué hilo pertenecen al responder/editar
+    [Parameter] public string AuthorName { get; set; } = string.Empty;
+    [Parameter] public string AuthorInitials { get; set; } = "??";
+    [Parameter] public string AuthorColorFrom { get; set; } = "#6366f1";
+    [Parameter] public string AuthorColorTo { get; set; } = "#8b5cf6";
+    [Parameter] public string Content { get; set; } = string.Empty;
+    [Parameter] public DateTime CreatedAt { get; set; }
+    [Parameter] public int LikesCount { get; set; }
+    [Parameter] public bool IsLiked { get; set; }
+    [Parameter] public bool CanEditOrDelete { get; set; }
+    [Parameter] public string? ReplyingToAuthorName { get; set; }
+    [Parameter] public List<CommentDto> Replies { get; set; } = new();
+
+    [Parameter] public EventCallback<Guid> OnLike { get; set; }
+    [Parameter] public EventCallback<(Guid ParentId, string Content)> OnReply { get; set; }
+    [Parameter] public EventCallback<(Guid CommentId, string Content)> OnEdit { get; set; }
+    [Parameter] public EventCallback<Guid> OnDelete { get; set; }
+
+    private bool _isReplying;
+    private string _replyContent = string.Empty;
+    private bool _isEditing;
+    private string _editContent = string.Empty;
+    private bool _showDeleteModal;
+
+    private Task HandleLike() => OnLike.InvokeAsync(Id);
+
+    private void ToggleReply() => _isReplying = !_isReplying;
+
+    private async Task SubmitReply()
+    {
+        if (string.IsNullOrWhiteSpace(_replyContent)) return;
+
+        // Si este CommentCard ya es una respuesta (tiene RootCommentId), el nuevo comentario
+        // debe colgar del comentario raíz del hilo, no de esta respuesta específica —
+        // el backend se encarga de mostrar la mención igualmente vía ReplyingToCommentId.
+        var parentId = RootCommentId ?? Id;
+        await OnReply.InvokeAsync((parentId, _replyContent));
+        _replyContent = string.Empty;
+        _isReplying = false;
+    }
+
+    private void StartEdit()
+    {
+        _editContent = Content;
+        _isEditing = true;
+    }
+
+    private void CancelEdit() => _isEditing = false;
+
+    private async Task SubmitEdit()
+    {
+        if (string.IsNullOrWhiteSpace(_editContent)) return;
+        await OnEdit.InvokeAsync((Id, _editContent));
+        _isEditing = false;
+    }
+
+    private void OpenDeleteModal() => _showDeleteModal = true;
+    private void CloseDeleteModal() => _showDeleteModal = false;
+
+    private async Task ConfirmDelete()
+    {
+        _showDeleteModal = false;
+        await OnDelete.InvokeAsync(Id);
+    }
+}
+
+-----------------
+Artículo detalle razor 
+-----------------
+
+<section class="section">
+    <h3>Comentarios (@_comments.Count)</h3>
+    <div class="comment-composer">
+        <textarea class="input" rows="2" placeholder="Escribe un comentario..." @bind="_newComment"></textarea>
+        <button class="btn btn--primary btn--sm" @onclick="AddComment">Comentar</button>
+    </div>
+    <div class="comments-list">
+        @foreach (var c in _comments)
+        {
+            <CommentCard
+                Id="@c.Id"
+                ParentCommentId="@c.ParentCommentId"
+                AuthorName="@c.AuthorName"
+                AuthorInitials="@c.AuthorInitials"
+                AuthorColorFrom="@c.AuthorColorFrom"
+                AuthorColorTo="@c.AuthorColorTo"
+                Content="@c.Content"
+                CreatedAt="@c.CreatedAt"
+                LikesCount="@c.LikesCount"
+                IsLiked="@c.IsLikedByCurrentUser"
+                CanEditOrDelete="@c.CanEditOrDelete"
+                ReplyingToAuthorName="@c.ReplyingToAuthorName"
+                Replies="@c.Replies"
+                RootCommentId="null"
+                OnLike="LikeComment"
+                OnReply="ReplyToComment"
+                OnEdit="EditComment"
+                OnDelete="DeleteComment" />
+        }
+    </div>
+</section>
