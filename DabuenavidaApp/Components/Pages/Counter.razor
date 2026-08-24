@@ -1,1334 +1,232 @@
-"shield" => "<path d=\"M12 2.5 4 5.5v6c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10v-6Z\"/>",
-
-        "shield-check" => "<path d=\"M12 2.5 4 5.5v6c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10v-6Z\"/><path d=\"m9 12 2 2 4-4.5\"/>",
-
-        "filter" => "<path d=\"M3.5 5h17l-6.5 7.5V19l-4 2v-8.5Z\"/>",
-
-        "x" => "<path d=\"m6 6 12 12\"/><path d=\"m18 6-12 12\"/>",
-
-        "sliders-horizontal" => "<line x1=\"4\" y1=\"6\" x2=\"20\" y2=\"6\"/><circle cx=\"10\" cy=\"6\" r=\"2\"/><line x1=\"4\" y1=\"12\" x2=\"20\" y2=\"12\"/><circle cx=\"16\" cy=\"12\" r=\"2\"/><line x1=\"4\" y1=\"18\" x2=\"20\" y2=\"18\"/><circle cx=\"8\" cy=\"18\" r=\"2\"/>",
-
-        "more-vertical" => "<circle cx=\"12\" cy=\"5\" r=\"1.2\"/><circle cx=\"12\" cy=\"12\" r=\"1.2\"/><circle cx=\"12\" cy=\"19\" r=\"1.2\"/>",
-
-        "mail" => "<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"1.5\"/><path d=\"m4 6.5 8 6 8-6\"/>",
-
-        "arrow-left" => "<path d=\"M20 12H4\"/><path d=\"m11 5-7 7 7 7\"/>",
-
-        "grid-3x3" => "<rect x=\"3\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"9.5\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"16\" y=\"3\" width=\"5\" height=\"6\" rx=\"1\"/><rect x=\"3\" y=\"9.5\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"9.5\" y=\"9.5\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"16\" y=\"9.5\" width=\"5\" height=\"6\" rx=\"1\"/><rect x=\"3\" y=\"16\" width=\"6\" height=\"5\" rx=\"1\"/><rect x=\"9.5\" y=\"16\" width=\"6\" height=\"5\" rx=\"1\"/><rect x=\"16\" y=\"16\" width=\"5\" height=\"5\" rx=\"1\"/>",
-
-
-
-
-
-
-/* ===== Security Page Header (nuevo, compartido) ===== */
-.security-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-4);
-    margin-bottom: var(--space-6);
-    flex-wrap: wrap;
-}
-.security-header__back {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    color: var(--text-tertiary);
-    margin-bottom: var(--space-2);
-    transition: color var(--transition-fast);
-}
-.security-header__back:hover { color: var(--brand-500); }
-.security-header__back .icon { width: 14px; height: 14px; }
-.security-header__titles h1 { margin-bottom: 4px; }
-.security-header__titles p { color: var(--text-tertiary); font-size: var(--fs-sm); max-width: 560px; }
-.security-header__actions { display: flex; gap: var(--space-2); align-items: center; flex-shrink: 0; }
-
-/* ===== Toolbar: búsqueda + filtros ===== */
-.security-toolbar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-    flex-wrap: wrap;
-}
-.security-search {
-    position: relative;
-    flex: 1;
-    min-width: 220px;
-    max-width: 340px;
-}
-.security-search .icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 15px; height: 15px;
-    color: var(--text-tertiary);
-    pointer-events: none;
-}
-.security-search input {
-    width: 100%;
-    padding: 8px 12px 8px 34px;
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
-    background: var(--bg-elevated);
-    font-size: var(--fs-sm);
-    transition: border-color var(--transition-fast);
-}
-.security-search input:focus { border-color: var(--brand-500); }
-.security-filter-group { display: flex; gap: 4px; padding: 3px; background: var(--bg-surface-2); border-radius: var(--radius-md); }
-.security-filter-btn {
-    padding: 6px 12px;
-    border-radius: var(--radius-sm, 6px);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    color: var(--text-tertiary);
-    transition: background var(--transition-fast), color var(--transition-fast);
-}
-.security-filter-btn:hover { color: var(--text-primary); }
-.security-filter-btn--active { background: var(--bg-elevated); color: var(--text-primary); box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.1)); }
-.security-toolbar__count { margin-left: auto; font-size: var(--fs-xs); color: var(--text-tertiary); white-space: nowrap; }
-
-/* ===== Data table (usuarios / auditoría) ===== */
-.data-table-wrap { overflow-x: auto; }
-.data-table { width: 100%; border-collapse: collapse; min-width: 640px; }
-.data-table thead th {
-    text-align: left;
-    padding: var(--space-3) var(--space-3);
-    font-size: var(--fs-xs);
-    font-weight: 700;
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    border-bottom: 1px solid var(--border-default);
-    white-space: nowrap;
-}
-.data-table tbody td {
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--border-subtle);
-    vertical-align: middle;
-    font-size: var(--fs-sm);
-}
-.data-table tbody tr { transition: background var(--transition-fast); }
-.data-table tbody tr:hover { background: var(--bg-hover); }
-.data-table tbody tr:last-child td { border-bottom: none; }
-.data-table__user-cell { display: flex; align-items: center; gap: var(--space-3); }
-.data-table__user-info { display: flex; flex-direction: column; line-height: 1.3; }
-.data-table__user-name { font-weight: 600; color: var(--text-primary); }
-.data-table__user-sub { font-size: var(--fs-xs); color: var(--text-tertiary); }
-.data-table__actions { text-align: right; }
-.data-table--clickable tbody tr { cursor: pointer; }
-.data-table th.sortable { cursor: pointer; user-select: none; }
-.data-table th.sortable:hover { color: var(--text-primary); }
-.data-table th.sortable .icon { width: 12px; height: 12px; vertical-align: -1px; margin-left: 2px; opacity: 0.6; }
-
-/* ===== Status badge ===== */
-.status-badge { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs); font-weight: 700; padding: 3px 9px; border-radius: var(--radius-full); }
-.status-badge__dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.status-badge--active { background: rgba(16,185,129,0.12); color: #0a8a5f; }
-.status-badge--active .status-badge__dot { background: #10b981; }
-[data-theme="dark"] .status-badge--active { color: #34d399; }
-.status-badge--inactive { background: var(--bg-surface-3); color: var(--text-tertiary); }
-.status-badge--inactive .status-badge__dot { background: var(--text-tertiary); }
-
-/* ===== Role cards ===== */
-.role-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-4); }
-.role-card { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
-.role-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
-.role-card__icon { width: 38px; height: 38px; border-radius: var(--radius-md); background: var(--gradient-brand); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.role-card__icon .icon { width: 18px; height: 18px; }
-.role-card__name { font-weight: 700; font-size: var(--fs-md); }
-.role-card__desc { font-size: var(--fs-sm); color: var(--text-tertiary); flex: 1; line-height: 1.5; }
-.role-card__footer { display: flex; align-items: center; justify-content: space-between; padding-top: var(--space-3); border-top: 1px solid var(--border-subtle); }
-
-/* ===== Detail header (usuario) ===== */
-.entity-header { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
-.entity-header .avatar { width: 56px; height: 56px; font-size: var(--fs-lg); }
-.entity-header__meta { font-size: var(--fs-sm); color: var(--text-tertiary); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: 4px; }
-
-/* ===== Tabs (detalle) ===== */
-.security-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border-default); margin: var(--space-6) 0 var(--space-5); }
-.security-tab { padding: var(--space-3) var(--space-1); margin-right: var(--space-5); font-size: var(--fs-sm); font-weight: 600; color: var(--text-tertiary); border-bottom: 2px solid transparent; transition: color var(--transition-fast), border-color var(--transition-fast); }
-.security-tab:hover { color: var(--text-primary); }
-.security-tab--active { color: var(--brand-500); border-color: var(--brand-500); }
-
-/* ===== Drawer (auditoría) ===== */
-.drawer-overlay { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(0,0,0,0.45); animation: fadeIn 0.15s var(--ease); display: flex; justify-content: flex-end; }
-.drawer { width: 100%; max-width: 420px; height: 100%; background: var(--bg-elevated); border-left: 1px solid var(--border-default); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; animation: slideInRight 0.2s var(--ease); }
-@keyframes slideInRight { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-.drawer__header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-5); border-bottom: 1px solid var(--border-subtle); }
-.drawer__body { padding: var(--space-5); overflow-y: auto; flex: 1; }
-.drawer__row { display: flex; flex-direction: column; gap: 2px; padding: var(--space-3) 0; border-bottom: 1px solid var(--border-subtle); }
-.drawer__row:last-child { border-bottom: none; }
-.drawer__row-label { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-tertiary); }
-.drawer__row-value { font-size: var(--fs-sm); color: var(--text-primary); }
-
-/* ===== Toast (feedback de guardado) ===== */
-.toast { position: fixed; bottom: var(--space-6); right: var(--space-6); z-index: 999; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--bg-elevated); border: 1px solid var(--border-default); border-left: 3px solid #10b981; border-radius: var(--radius-md); box-shadow: var(--shadow-lg); font-size: var(--fs-sm); font-weight: 600; animation: slideInLeft 0.2s var(--ease); }
-.toast .icon { color: #10b981; width: 16px; height: 16px; }
-
-/* ===== Permission matrix: agrupación + búsqueda ===== */
-.matrix-toolbar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.matrix-group-header td { background: var(--bg-surface-2); font-weight: 700; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-tertiary); padding: 6px var(--space-2) !important; }
-.matrix-changed { position: relative; }
-.matrix-changed::after { content: ""; position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--brand-500); }
-
-@media (max-width: 720px) {
-    .security-header { flex-direction: column; }
-    .security-toolbar__count { margin-left: 0; }
-    .entity-header { flex-direction: column; align-items: flex-start; }
-}
-
-
-
-
-
-
-@* Header consistente para las 6 pantallas de Seguridad *@
-
-<div class="security-header">
-    <div>
-        @if (!string.IsNullOrEmpty(BackHref))
-        {
-            <a href="@BackHref" class="security-header__back">
-                <Icon Name="arrow-left" /> @BackText
-            </a>
-        }
-        <div class="security-header__titles">
-            <h1>@Title</h1>
-            @if (!string.IsNullOrEmpty(Subtitle))
-            {
-                <p>@Subtitle</p>
-            }
-        </div>
-    </div>
-    @if (ChildContent is not null)
-    {
-        <div class="security-header__actions">
-            @ChildContent
-        </div>
-    }
-</div>
-
-@code {
-    [Parameter, EditorRequired] public string Title { get; set; } = "";
-    [Parameter] public string? Subtitle { get; set; }
-    [Parameter] public string? BackHref { get; set; }
-    [Parameter] public string BackText { get; set; } = "Volver";
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-}
-
-
-
-
-
-<span class="status-badge @(Active ? "status-badge--active" : "status-badge--inactive")">
-    <span class="status-badge__dot"></span>
-    @(Active ? ActiveText : InactiveText)
-</span>
-
-@code {
-    [Parameter] public bool Active { get; set; }
-    [Parameter] public string ActiveText { get; set; } = "Activo";
-    [Parameter] public string InactiveText { get; set; } = "Inactivo";
-}
-
-
-
-
-
-
-<div class="empty-state @(Inline ? "empty-state--inline" : "")">
-    <Icon Name="@IconName" />
-    <h3>@Title</h3>
-    <p>@Description</p>
-    @if (!string.IsNullOrEmpty(ActionText) && OnAction.HasDelegate)
-    {
-        <button class="btn btn--primary btn--sm" @onclick="OnAction">@ActionText</button>
-    }
-</div>
-
-@code {
-    [Parameter] public string IconName { get; set; } = "inbox";
-    [Parameter, EditorRequired] public string Title { get; set; } = "";
-    [Parameter] public string Description { get; set; } = "";
-    [Parameter] public string? ActionText { get; set; }
-    [Parameter] public bool Inline { get; set; }
-    [Parameter] public EventCallback OnAction { get; set; }
-}
-
-
-
-
-
-
-
-@if (Visible)
-{
-    <div class="modal-overlay" @onclick="Cancel">
-        <div class="modal" @onclick:stopPropagation="true">
-            <div class="modal__header">
-                <h3>@Title</h3>
-                <button class="btn btn--ghost btn--sm" @onclick="Cancel" aria-label="Cerrar">
-                    <Icon Name="x" />
-                </button>
-            </div>
-            <div class="modal__body">
-                <p>@Message</p>
-                @if (ChildContent is not null)
-                {
-                    <div style="margin-top: var(--space-3)">@ChildContent</div>
-                }
-                <div class="form-actions">
-                    <button class="btn btn--ghost btn--sm" @onclick="Cancel">Cancelar</button>
-                    <button class="btn @(Dangerous ? "btn--danger" : "btn--primary") btn--sm" @onclick="Confirm">
-                        @ConfirmText
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
-@code {
-    [Parameter] public bool Visible { get; set; }
-    [Parameter] public string Title { get; set; } = "¿Confirmar acción?";
-    [Parameter] public string Message { get; set; } = "";
-    [Parameter] public string ConfirmText { get; set; } = "Confirmar";
-    [Parameter] public bool Dangerous { get; set; }
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public EventCallback OnConfirm { get; set; }
-    [Parameter] public EventCallback OnCancel { get; set; }
-
-    private async Task Confirm() => await OnConfirm.InvokeAsync();
-    private async Task Cancel() => await OnCancel.InvokeAsync();
-}
-
-
-
-
-
-
-
 @inject NavigationManager Navigation
 
-<nav class="chip-row" style="display:flex; gap: var(--space-2); margin-bottom: var(--space-5)" aria-label="Navegación de Seguridad">
-    <NavLink href="/admin/seguridad/usuarios" Match="NavLinkMatch.Prefix" class="chip" ActiveClass="chip--active">
-        <Icon Name="users" /> Usuarios
-    </NavLink>
-    <a href="/admin/seguridad/roles" class="chip @(IsRolesSection ? "chip--active" : "")">
-        <Icon Name="shield" /> Roles y permisos
-    </a>
-    <NavLink href="/admin/seguridad/auditoria" Match="NavLinkMatch.Prefix" class="chip" ActiveClass="chip--active">
-        <Icon Name="history" /> Auditoría
-    </NavLink>
+<nav class="security-nav" aria-label="Navegación de Seguridad">
+    <div class="security-nav__label">
+        Seguridad
+    </div>
+
+    <div class="security-nav__items">
+
+        <NavLink href="/admin/seguridad/usuarios"
+                 Match="NavLinkMatch.Prefix"
+                 class="security-nav__item"
+                 ActiveClass="security-nav__item--active">
+            <Icon Name="users" />
+            <span>Usuarios</span>
+        </NavLink>
+
+        <NavLink href="/admin/seguridad/roles"
+                 Match="NavLinkMatch.Prefix"
+                 class="security-nav__item"
+                 ActiveClass="security-nav__item--active">
+            <Icon Name="shield" />
+            <span>Roles</span>
+        </NavLink>
+
+        <NavLink href="/admin/seguridad/auditoria"
+                 Match="NavLinkMatch.Prefix"
+                 class="security-nav__item"
+                 ActiveClass="security-nav__item--active">
+            <Icon Name="history" />
+            <span>Auditoría</span>
+        </NavLink>
+
+    </div>
 </nav>
 
-@code {
-    // "Roles y permisos" debe verse activo tanto en /roles como en /roles/{id}/permisos,
-    // por eso no se puede usar NavLinkMatch.Prefix a secas (ya lo cubre, pero se deja explícito
-    // y centralizado acá para si el patrón de ruta cambia en el futuro).
-    private bool IsRolesSection => Navigation.Uri.Contains("/admin/seguridad/roles");
+
+
+
+
+
+/* =========================================================
+   SECURITY NAVIGATION
+   ========================================================= */
+
+.security-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    margin-bottom: var(--space-6);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border-default);
+}
+
+.security-nav__label {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.security-nav__items {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.security-nav__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    color: var(--text-tertiary);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-decoration: none;
+    transition:
+        background var(--transition-fast),
+        color var(--transition-fast);
+}
+
+.security-nav__item .icon {
+    width: 16px;
+    height: 16px;
+}
+
+.security-nav__item:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.security-nav__item--active {
+    color: var(--brand-500);
+    background: var(--bg-surface-2);
+}
+
+@media (max-width: 720px) {
+    .security-nav {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+
+    .security-nav__items {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .security-nav__item {
+        white-space: nowrap;
+    }
 }
 
 
 
 
 
-
-@page "/admin/seguridad/usuarios"
-@attribute [Authorize(Policy = "ADMIN:READ")]
-@rendermode InteractiveServer
-@inject ISecurityService SecurityService
-@inject AuthenticationStateProvider AuthStateProvider
-@inject NavigationManager Navigation
-@using CorpWiki.Domain.Entities.Security
-@using CorpWiki.Web.Security
-
-<PageTitle>DaviWiki - Usuarios</PageTitle>
-
-<SecurityPageHeader Title="Seguridad" Subtitle="Gestión de usuarios, roles y permisos del sistema." />
-<AdminNav />
-
-<SecurityPageHeader Title="Usuarios" Subtitle="Provisionados automáticamente desde el Active Directory en el primer login." />
-
-@if (_loading)
+private async Task ConfirmToggle()
 {
-    <div class="card" style="padding: var(--space-4)">
-        @for (int i = 0; i < 5; i++)
+    var user = _confirmingUser;
+
+    if (user is null || !_canWrite)
+        return;
+
+    _confirmingUser = null;
+
+    try
+    {
+        var previousState = user.IsActive;
+
+        var success = await SecurityService.ToggleUserActiveAsync(user.Id);
+
+        if (!success)
         {
-            <div class="skeleton" style="height:48px; margin-bottom:8px; border-radius:var(--radius-md)"></div>
-        }
-    </div>
-}
-else if (_users.Count == 0)
-{
-    <SecurityEmptyState IconName="users" Title="Todavía no hay usuarios"
-                         Description="Los usuarios se crean automáticamente cuando alguien inicia sesión por primera vez con su cuenta corporativa." />
-}
-else
-{
-    <div class="security-toolbar">
-        <div class="security-search">
-            <Icon Name="search" />
-            <input type="text" placeholder="Buscar por nombre, usuario o correo..."
-                   aria-label="Buscar usuarios"
-                   @bind="_searchTerm" @bind:event="oninput" />
-        </div>
-        <div class="security-filter-group" role="group" aria-label="Filtrar por estado">
-            <button class="security-filter-btn @(_statusFilter == "all" ? "security-filter-btn--active" : "")" @onclick='() => _statusFilter = "all"'>Todos</button>
-            <button class="security-filter-btn @(_statusFilter == "active" ? "security-filter-btn--active" : "")" @onclick='() => _statusFilter = "active"'>Activos</button>
-            <button class="security-filter-btn @(_statusFilter == "inactive" ? "security-filter-btn--active" : "")" @onclick='() => _statusFilter = "inactive"'>Inactivos</button>
-        </div>
-        <span class="security-toolbar__count">@FilteredUsers.Count de @_users.Count</span>
-    </div>
-
-    @if (FilteredUsers.Count == 0)
-    {
-        <SecurityEmptyState IconName="search" Title="Sin resultados"
-                             Description="No encontramos usuarios que coincidan con la búsqueda o el filtro aplicado." />
-    }
-    else
-    {
-        <div class="card data-table-wrap">
-            <table class="data-table data-table--clickable">
-                <thead>
-                    <tr>
-                        <th>Usuario</th>
-                        <th>Correo</th>
-                        <th>Departamento</th>
-                        <th>Estado</th>
-                        <th class="data-table__actions">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var u in FilteredUsers)
-                    {
-                        <tr @onclick="() => GoToDetail(u.Id)">
-                            <td>
-                                <div class="data-table__user-cell">
-                                    <span class="avatar avatar--sm" style="background: linear-gradient(135deg, @u.AvatarColorFrom, @u.AvatarColorTo)">
-                                        @GetInitials(u.FullName)
-                                    </span>
-                                    <div class="data-table__user-info">
-                                        <span class="data-table__user-name">@u.FullName</span>
-                                        <span class="data-table__user-sub">@u.Username</span>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>@u.Email</td>
-                            <td>@u.Department</td>
-                            <td><SecurityStatusBadge Active="u.IsActive" /></td>
-                            <td class="data-table__actions" @onclick:stopPropagation="true">
-                                <div class="row-actions">
-                                    <button class="btn btn--secondary btn--sm" @onclick="() => GoToDetail(u.Id)">
-                                        Ver detalle
-                                    </button>
-                                    @if (_canWrite)
-                                    {
-                                        <button class="btn @(u.IsActive ? "btn--danger" : "btn--primary") btn--sm"
-                                                @onclick="() => RequestToggle(u)">
-                                            @(u.IsActive ? "Desactivar" : "Activar")
-                                        </button>
-                                    }
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-}
-
-<SecurityConfirmDialog Visible="_confirmingUser is not null"
-                        Title="@(_confirmingUser?.IsActive == true ? "Desactivar usuario" : "Activar usuario")"
-                        Message="@ConfirmMessage"
-                        ConfirmText="@(_confirmingUser?.IsActive == true ? "Desactivar" : "Activar")"
-                        Dangerous="@(_confirmingUser?.IsActive == true)"
-                        OnConfirm="ConfirmToggle"
-                        OnCancel="() => _confirmingUser = null" />
-
-@if (_showToast)
-{
-    <div class="toast"><Icon Name="check-circle" /> @_toastMessage</div>
-}
-
-@code {
-    private List<SecurityUser> _users = new();
-    private bool _loading = true;
-    private bool _canWrite;
-    private string _actingUser = "unknown";
-    private string _searchTerm = "";
-    private string _statusFilter = "all";
-    private SecurityUser? _confirmingUser;
-    private bool _showToast;
-    private string _toastMessage = "";
-
-    private IReadOnlyList<SecurityUser> FilteredUsers =>
-        _users.Where(u =>
-                (_statusFilter == "all" || (_statusFilter == "active") == u.IsActive) &&
-                (string.IsNullOrWhiteSpace(_searchTerm) ||
-                 u.FullName.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
-                 u.Username.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
-                 (u.Email?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)))
-            .OrderBy(u => u.FullName)
-            .ToList();
-
-    private string ConfirmMessage => _confirmingUser?.IsActive == true
-        ? $"{_confirmingUser.FullName} no podrá iniciar sesión hasta que vuelva a activarse. ¿Continuar?"
-        : $"{_confirmingUser?.FullName} recuperará acceso al sistema. ¿Continuar?";
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
-        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
-
-        _users = await SecurityService.GetAllUsersAsync();
-        _loading = false;
-    }
-
-    private void GoToDetail(Guid id) => Navigation.NavigateTo($"/admin/seguridad/usuarios/{id}");
-
-    private void RequestToggle(SecurityUser u)
-    {
-        if (!_canWrite) return;
-        _confirmingUser = u;
-    }
-
-    private async Task ConfirmToggle()
-    {
-        var u = _confirmingUser;
-        if (u is null) { return; }
-        _confirmingUser = null;
-
-        var success = await SecurityService.ToggleUserActiveAsync(u.Id);
-        if (!success) return;
-
-        u.IsActive = !u.IsActive;
-
-        await SecurityService.LogAuditAsync(null, _actingUser,
-            u.IsActive ? "USER_ACTIVATED" : "USER_DEACTIVATED", $"Usuario afectado: {u.Username}");
-
-        _toastMessage = u.IsActive ? "Usuario activado." : "Usuario desactivado.";
-        _showToast = true;
-        StateHasChanged();
-        await Task.Delay(2500);
-        _showToast = false;
-        StateHasChanged();
-    }
-
-    private static string GetInitials(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return "U";
-        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 1 ? parts[0][..1].ToUpper() : $"{parts[0][0]}{parts[1][0]}".ToUpper();
-    }
-}
-
-
-
-
-
-
-@page "/admin/seguridad/usuarios/{UserId:guid}"
-@attribute [Authorize(Policy = "ADMIN:READ")]
-@rendermode InteractiveServer
-@inject ISecurityService SecurityService
-@inject AuthenticationStateProvider AuthStateProvider
-@using CorpWiki.Domain.Entities.Security
-@using CorpWiki.Web.Security
-
-<PageTitle>DaviWiki - Detalle de usuario</PageTitle>
-
-<AdminNav />
-
-@if (_loading)
-{
-    <div class="skeleton" style="height:80px; border-radius:var(--radius-lg)"></div>
-}
-else if (_user is null)
-{
-    <SecurityEmptyState IconName="user" Title="Usuario no encontrado"
-                         Description="El usuario que buscás no existe o fue eliminado." />
-}
-else
-{
-    <SecurityPageHeader BackHref="/admin/seguridad/usuarios" BackText="Usuarios" Title="Detalle de usuario">
-        @if (_canWrite)
-        {
-            <button class="btn @(_user.IsActive ? "btn--danger" : "btn--primary") btn--sm" @onclick="() => _confirmingToggle = true">
-                @(_user.IsActive ? "Desactivar" : "Activar")
-            </button>
-        }
-    </SecurityPageHeader>
-
-    <div class="card" style="padding: var(--space-6)">
-        <div class="entity-header">
-            <span class="avatar" style="background: linear-gradient(135deg, @_user.AvatarColorFrom, @_user.AvatarColorTo)">
-                @GetInitials(_user.FullName)
-            </span>
-            <div>
-                <h2 style="margin-bottom:2px">@_user.FullName</h2>
-                <div class="entity-header__meta">
-                    <span>@_user.Username</span>
-                    <span>·</span>
-                    <span>@_user.Email</span>
-                    <span>·</span>
-                    <span>@_user.Department @(string.IsNullOrEmpty(_user.Position) ? "" : $"— {_user.Position}")</span>
-                </div>
-            </div>
-            <div style="margin-left:auto">
-                <SecurityStatusBadge Active="_user.IsActive" />
-            </div>
-        </div>
-    </div>
-
-    <div class="security-tabs" role="tablist">
-        <button role="tab" class="security-tab @(_tab == "role" ? "security-tab--active" : "")" @onclick='() => _tab = "role"'>Rol y permisos</button>
-        <button role="tab" class="security-tab @(_tab == "info" ? "security-tab--active" : "")" @onclick='() => _tab = "info"'>Información</button>
-    </div>
-
-    @if (_tab == "role")
-    {
-        <div class="card admin-section">
-            <h3 class="admin-section__title"><Icon Name="shield" /> Rol asignado</h3>
-            <p class="admin-section__desc">Cada usuario tiene un único rol activo. Cambiarlo reemplaza el anterior.</p>
-
-            <div class="role-chip-list">
-                @if (_currentRole is not null)
-                {
-                    <span class="chip chip--active">@_currentRole.Name</span>
-                }
-                else
-                {
-                    <span class="role-chip-list__empty">Sin rol asignado.</span>
-                }
-            </div>
-
-            @if (_canWrite)
-            {
-                <div class="role-assign-row">
-                    <select class="input" @bind="_selectedRoleId" aria-label="Seleccionar rol">
-                        <option value="00000000-0000-0000-0000-000000000000">Sin rol</option>
-                        @foreach (var r in _allRoles)
-                        {
-                            <option value="@r.Id">@r.Name</option>
-                        }
-                    </select>
-                    <button class="btn btn--primary btn--sm"
-                            disabled="@(_selectedRoleId == (_currentRole?.Id ?? Guid.Empty))"
-                            @onclick="RequestRoleChange">
-                        Guardar rol
-                    </button>
-                </div>
-            }
-        </div>
-    }
-    else
-    {
-        <div class="card admin-section">
-            <h3 class="admin-section__title"><Icon Name="user" /> Información</h3>
-            <div class="drawer__row">
-                <span class="drawer__row-label">Nombre completo</span>
-                <span class="drawer__row-value">@_user.FullName</span>
-            </div>
-            <div class="drawer__row">
-                <span class="drawer__row-label">Usuario</span>
-                <span class="drawer__row-value">@_user.Username</span>
-            </div>
-            <div class="drawer__row">
-                <span class="drawer__row-label">Correo</span>
-                <span class="drawer__row-value">@_user.Email</span>
-            </div>
-            <div class="drawer__row">
-                <span class="drawer__row-label">Departamento / Cargo</span>
-                <span class="drawer__row-value">@_user.Department @(string.IsNullOrEmpty(_user.Position) ? "" : $"— {_user.Position}")</span>
-            </div>
-        </div>
-    }
-}
-
-<SecurityConfirmDialog Visible="_confirmingToggle"
-                        Title="@(_user?.IsActive == true ? "Desactivar usuario" : "Activar usuario")"
-                        Message="@($"{_user?.FullName} {(_user?.IsActive == true ? "perderá acceso al sistema" : "recuperará acceso al sistema")}. ¿Continuar?")"
-                        ConfirmText="@(_user?.IsActive == true ? "Desactivar" : "Activar")"
-                        Dangerous="@(_user?.IsActive == true)"
-                        OnConfirm="ToggleActive"
-                        OnCancel="() => _confirmingToggle = false" />
-
-<SecurityConfirmDialog Visible="_confirmingRoleChange"
-                        Title="Cambiar rol"
-                        Message="@RoleChangeMessage"
-                        ConfirmText="Confirmar cambio"
-                        OnConfirm="ChangeRole"
-                        OnCancel="() => _confirmingRoleChange = false" />
-
-@if (_showToast)
-{
-    <div class="toast"><Icon Name="check-circle" /> @_toastMessage</div>
-}
-
-@code {
-    [Parameter] public Guid UserId { get; set; }
-
-    private SecurityUser? _user;
-    private SecurityRole? _currentRole;
-    private List<SecurityRole> _allRoles = new();
-    private Guid _selectedRoleId = Guid.Empty;
-    private bool _loading = true;
-    private bool _canWrite;
-    private string _actingUser = "unknown";
-    private string _tab = "role";
-    private bool _confirmingToggle;
-    private bool _confirmingRoleChange;
-    private bool _showToast;
-    private string _toastMessage = "";
-
-    private string RoleChangeMessage
-    {
-        get
-        {
-            var newRoleName = _selectedRoleId == Guid.Empty
-                ? "sin rol"
-                : _allRoles.FirstOrDefault(r => r.Id == _selectedRoleId)?.Name ?? "";
-            return _currentRole is null
-                ? $"Se asignará el rol '{newRoleName}' a {_user?.FullName}."
-                : $"El rol de {_user?.FullName} cambiará de '{_currentRole.Name}' a '{newRoleName}'.";
-        }
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
-        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
-
-        _user = await SecurityService.GetUserByIdAsync(UserId);
-        _allRoles = await SecurityService.GetAllRolesAsync();
-
-        var userRoles = await SecurityService.GetUserRolesAsync(UserId);
-        _currentRole = userRoles.FirstOrDefault();
-        _selectedRoleId = _currentRole?.Id ?? Guid.Empty;
-
-        _loading = false;
-    }
-
-    private void RequestRoleChange()
-    {
-        if (!_canWrite || _user is null) return;
-        _confirmingRoleChange = true;
-    }
-
-    private async Task ChangeRole()
-    {
-        _confirmingRoleChange = false;
-        if (!_canWrite || _user is null) return;
-
-        var oldRole = _currentRole;
-
-        if (oldRole is not null)
-        {
-            await SecurityService.RemoveRoleFromUserAsync(UserId, oldRole.Id);
+            _toastMessage = "No se pudo actualizar el estado del usuario.";
+            _showToast = true;
+            return;
         }
 
-        if (_selectedRoleId != Guid.Empty)
+        // Volvemos a consultar el usuario para evitar
+        // depender de un estado local desactualizado.
+        var updatedUser = await SecurityService.GetUserByIdAsync(user.Id);
+
+        if (updatedUser is not null)
         {
-            await SecurityService.AssignRoleToUserAsync(UserId, _selectedRoleId, _actingUser);
-            var newRole = _allRoles.First(r => r.Id == _selectedRoleId);
-            _currentRole = newRole;
-
-            var detail = oldRole is null
-                ? $"Rol asignado: {newRole.Name}"
-                : $"Rol cambiado: {oldRole.Name} -> {newRole.Name}";
-
-            await SecurityService.LogAuditAsync(UserId, _user.Username, "ROLE_ASSIGNED", detail);
-            _toastMessage = "Rol actualizado correctamente.";
+            user.IsActive = updatedUser.IsActive;
         }
         else
         {
-            _currentRole = null;
-            await SecurityService.LogAuditAsync(UserId, _user.Username, "ROLE_REMOVED",
-                oldRole is null ? "Sin cambios." : $"Rol removido: {oldRole.Name}");
-            _toastMessage = "Rol removido.";
+            user.IsActive = !previousState;
         }
 
+        await SecurityService.LogAuditAsync(
+            user.Id,
+            _actingUser,
+            user.IsActive
+                ? "USER_ACTIVATED"
+                : "USER_DEACTIVATED",
+            $"Usuario afectado: {user.Username}");
+
+        _toastMessage = user.IsActive
+            ? "Usuario activado correctamente."
+            : "Usuario desactivado correctamente.";
+
         _showToast = true;
-        StateHasChanged();
-        await Task.Delay(2500);
-        _showToast = false;
+    }
+    catch (Exception)
+    {
+        _toastMessage = "Ocurrió un error al actualizar el usuario.";
+        _showToast = true;
+    }
+    finally
+    {
         StateHasChanged();
     }
+}
 
-    private async Task ToggleActive()
+
+
+
+private async Task ToggleActive()
+{
+    _confirmingToggle = false;
+
+    if (_user is null || !_canWrite)
+        return;
+
+    try
     {
-        _confirmingToggle = false;
-        if (_user is null) return;
-
         var success = await SecurityService.ToggleUserActiveAsync(_user.Id);
-        if (!success) return;
 
-        _user.IsActive = !_user.IsActive;
-        await SecurityService.LogAuditAsync(null, _actingUser,
-            _user.IsActive ? "USER_ACTIVATED" : "USER_DEACTIVATED", $"Usuario afectado: {_user.Username}");
+        if (!success)
+        {
+            _toastMessage = "No se pudo actualizar el estado del usuario.";
+            _showToast = true;
+            return;
+        }
 
-        _toastMessage = _user.IsActive ? "Usuario activado." : "Usuario desactivado.";
+        var updatedUser = await SecurityService.GetUserByIdAsync(_user.Id);
+
+        if (updatedUser is not null)
+        {
+            _user.IsActive = updatedUser.IsActive;
+        }
+
+        await SecurityService.LogAuditAsync(
+            _user.Id,
+            _actingUser,
+            _user.IsActive
+                ? "USER_ACTIVATED"
+                : "USER_DEACTIVATED",
+            $"Usuario afectado: {_user.Username}");
+
+        _toastMessage = _user.IsActive
+            ? "Usuario activado correctamente."
+            : "Usuario desactivado correctamente.";
+
         _showToast = true;
-        StateHasChanged();
-        await Task.Delay(2500);
-        _showToast = false;
-        StateHasChanged();
     }
-
-    private static string GetInitials(string name)
+    catch (Exception)
     {
-        if (string.IsNullOrWhiteSpace(name)) return "U";
-        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 1 ? parts[0][..1].ToUpper() : $"{parts[0][0]}{parts[1][0]}".ToUpper();
-    }
-}
-
-
-
-
-
-
-
-@page "/admin/seguridad/roles"
-@attribute [Authorize(Policy = "ADMIN:READ")]
-@rendermode InteractiveServer
-@inject ISecurityService SecurityService
-@inject AuthenticationStateProvider AuthStateProvider
-@inject NavigationManager Navigation
-@using CorpWiki.Domain.Entities.Security
-@using CorpWiki.Web.Security
-
-<PageTitle>DaviWiki - Roles</PageTitle>
-
-<SecurityPageHeader Title="Seguridad" Subtitle="Gestión de usuarios, roles y permisos del sistema." />
-<AdminNav />
-
-<SecurityPageHeader Title="Roles" Subtitle="Los roles de sistema (Administrador, Editor, Lector) no pueden eliminarse.">
-    @if (_canWrite)
-    {
-        <button class="btn btn--primary btn--sm" @onclick="() => _showCreateModal = true">
-            <Icon Name="plus" /> Nuevo rol
-        </button>
-    }
-</SecurityPageHeader>
-
-@if (_loading)
-{
-    <div class="role-card-grid">
-        @for (int i = 0; i < 3; i++)
-        {
-            <div class="skeleton" style="height:140px; border-radius:var(--radius-lg)"></div>
-        }
-    </div>
-}
-else if (_roles.Count == 0)
-{
-    <SecurityEmptyState IconName="shield" Title="No hay roles creados"
-                         Description="Creá un rol para empezar a asignar permisos por pantalla."
-                         ActionText="@(_canWrite ? "Nuevo rol" : null)"
-                         OnAction="() => _showCreateModal = true" />
-}
-else
-{
-    <div class="role-card-grid">
-        @foreach (var r in _roles)
-        {
-            <div class="card role-card">
-                <div class="role-card__top">
-                    <div class="role-card__icon"><Icon Name="shield" /></div>
-                    @if (r.IsSystemRole)
-                    {
-                        <span class="badge">Sistema</span>
-                    }
-                </div>
-                <div>
-                    <div class="role-card__name">@r.Name</div>
-                    <p class="role-card__desc">@(string.IsNullOrWhiteSpace(r.Description) ? "Sin descripción." : r.Description)</p>
-                </div>
-                <div class="role-card__footer">
-                    <button class="btn btn--secondary btn--sm" @onclick="() => GoToMatrix(r.Id)">
-                        <Icon Name="grid-3x3" /> Permisos
-                    </button>
-                    @if (_canWrite && !r.IsSystemRole)
-                    {
-                        <button class="btn btn--ghost btn--sm" @onclick="() => _confirmingDelete = r" aria-label="Eliminar rol">
-                            <Icon Name="trash-2" />
-                        </button>
-                    }
-                </div>
-            </div>
-        }
-    </div>
-}
-
-@if (_showCreateModal)
-{
-    <div class="modal-overlay" @onclick="() => _showCreateModal = false">
-        <div class="modal" @onclick:stopPropagation="true">
-            <div class="modal__header">
-                <h3>Nuevo rol</h3>
-                <button class="btn btn--ghost btn--sm" @onclick="() => _showCreateModal = false" aria-label="Cerrar"><Icon Name="x" /></button>
-            </div>
-            <div class="modal__body">
-                <div class="form-group">
-                    <label class="form-label" for="roleName">Nombre <span class="form-required">*</span></label>
-                    <input id="roleName" class="input" placeholder="Ej: Colaborador externo" @bind="_newRoleName" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="roleDesc">Descripción</label>
-                    <input id="roleDesc" class="input" placeholder="Para qué se usa este rol" @bind="_newRoleDescription" />
-                </div>
-                <div class="form-actions">
-                    <button class="btn btn--ghost btn--sm" @onclick="() => _showCreateModal = false">Cancelar</button>
-                    <button class="btn btn--primary btn--sm" disabled="@string.IsNullOrWhiteSpace(_newRoleName)" @onclick="CreateRole">Crear rol</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
-<SecurityConfirmDialog Visible="_confirmingDelete is not null"
-                        Title="Eliminar rol"
-                        Message="@($"El rol '{_confirmingDelete?.Name}' se eliminará. Los usuarios que lo tengan asignado quedarán sin rol. Esta acción no se puede deshacer.")"
-                        ConfirmText="Eliminar"
-                        Dangerous="true"
-                        OnConfirm="DeleteRole"
-                        OnCancel="() => _confirmingDelete = null" />
-
-@if (_showToast)
-{
-    <div class="toast"><Icon Name="check-circle" /> @_toastMessage</div>
-}
-
-@code {
-    private List<SecurityRole> _roles = new();
-    private bool _loading = true;
-    private bool _canWrite;
-    private bool _showCreateModal;
-    private string _newRoleName = "";
-    private string _newRoleDescription = "";
-    private string _actingUser = "unknown";
-    private SecurityRole? _confirmingDelete;
-    private bool _showToast;
-    private string _toastMessage = "";
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
-        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
-
-        _roles = await SecurityService.GetAllRolesAsync();
-        _loading = false;
-    }
-
-    private void GoToMatrix(Guid roleId) => Navigation.NavigateTo($"/admin/seguridad/roles/{roleId}/permisos");
-
-    private async Task CreateRole()
-    {
-        if (!_canWrite || string.IsNullOrWhiteSpace(_newRoleName)) return;
-
-        var role = await SecurityService.CreateRoleAsync(_newRoleName.Trim(), _newRoleDescription.Trim());
-        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_CREATED", $"Rol creado: {role.Name}");
-
-        _newRoleName = "";
-        _newRoleDescription = "";
-        _showCreateModal = false;
-        _roles = await SecurityService.GetAllRolesAsync();
-
-        _toastMessage = "Rol creado correctamente.";
-        await ShowToast();
-    }
-
-    private async Task DeleteRole()
-    {
-        var role = _confirmingDelete;
-        _confirmingDelete = null;
-        if (!_canWrite || role is null || role.IsSystemRole) return;
-
-        await SecurityService.DeleteRoleAsync(role.Id);
-        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_DELETED", $"Rol eliminado: {role.Name}");
-
-        _roles = await SecurityService.GetAllRolesAsync();
-        _toastMessage = "Rol eliminado.";
-        await ShowToast();
-    }
-
-    private async Task ShowToast()
-    {
+        _toastMessage = "Ocurrió un error al actualizar el usuario.";
         _showToast = true;
-        StateHasChanged();
-        await Task.Delay(2500);
-        _showToast = false;
-        StateHasChanged();
     }
-}
-
-
-
-
-
-
-
-@page "/admin/seguridad/roles/{RoleId:guid}/permisos"
-@attribute [Authorize(Policy = "ADMIN:READ")]
-@rendermode InteractiveServer
-@inject ISecurityService SecurityService
-@inject AuthenticationStateProvider AuthStateProvider
-@using CorpWiki.Domain.Entities.Security
-@using CorpWiki.Web.Security
-
-<PageTitle>DaviWiki - Permisos de rol</PageTitle>
-
-<AdminNav />
-
-@if (_loading)
-{
-    <div class="skeleton" style="height:60px; border-radius:var(--radius-lg); margin-bottom:var(--space-4)"></div>
-    <div class="skeleton" style="height:320px; border-radius:var(--radius-lg)"></div>
-}
-else if (_role is null)
-{
-    <SecurityEmptyState IconName="shield" Title="Rol no encontrado" Description="El rol que buscás no existe o fue eliminado." />
-}
-else
-{
-    <SecurityPageHeader BackHref="/admin/seguridad/roles" BackText="Roles" Title="@($"Permisos: {_role.Name}")"
-                         Subtitle="Marcá qué puede hacer este rol en cada pantalla del sistema.">
-        @if (_canWrite && _isDirty)
-        {
-            <button class="btn btn--primary" @onclick="Save">
-                <Icon Name="check-circle" /> Guardar cambios
-            </button>
-        }
-    </SecurityPageHeader>
-
-    @if (_isDirty)
+    finally
     {
-        <div class="callout callout--tip">
-            <Icon Name="alert-triangle" />
-            <p>Tenés cambios sin guardar.</p>
-        </div>
-    }
-
-    <div class="matrix-toolbar">
-        <div class="security-search">
-            <Icon Name="search" />
-            <input type="text" placeholder="Buscar pantalla..." aria-label="Buscar pantalla"
-                   @bind="_screenSearch" @bind:event="oninput" />
-        </div>
-        <span class="security-toolbar__count">@FilteredScreens.Count de @_screens.Count pantallas</span>
-    </div>
-
-    @if (FilteredScreens.Count == 0)
-    {
-        <SecurityEmptyState IconName="search" Title="Sin resultados" Description="No hay pantallas que coincidan con la búsqueda." Inline="true" />
-    }
-    else
-    {
-        <div class="card permission-matrix-wrap">
-            <table class="permission-matrix">
-                <colgroup>
-                    <col class="permission-matrix__screen-col" />
-                    @for (int i = 0; i < _permissions.Count; i++)
-                    {
-                        <col />
-                    }
-                </colgroup>
-                <thead>
-                    <tr>
-                        <th>Pantalla</th>
-                        @foreach (var p in _permissions)
-                        {
-                            <th>@p.Name</th>
-                        }
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var s in FilteredScreens)
-                    {
-                        <tr>
-                            <td>@s.Name</td>
-                            @foreach (var p in _permissions)
-                            {
-                                var key = (s.Id, p.Id);
-                                var changed = _original.TryGetValue(key, out var was) && was != _matrix[key];
-                                <td class="@(changed ? "matrix-changed" : "")">
-                                    <label class="switch">
-                                        <input type="checkbox"
-                                               disabled="@(!_canWrite)"
-                                               checked="@_matrix[key]"
-                                               aria-label="@($"{p.Name} en {s.Name}")"
-                                               @onchange="@(e => Toggle(key, (bool)e.Value!))" />
-                                        <span class="switch__track"></span>
-                                    </label>
-                                </td>
-                            }
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-}
-
-@if (_showToast)
-{
-    <div class="toast"><Icon Name="check-circle" /> @_toastMessage</div>
-}
-
-@code {
-    [Parameter] public Guid RoleId { get; set; }
-
-    private SecurityRole? _role;
-    private List<SecurityScreen> _screens = new();
-    private List<SecurityPermission> _permissions = new();
-    private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _matrix = new();
-    private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _original = new();
-    private bool _loading = true;
-    private bool _canWrite;
-    private string _actingUser = "unknown";
-    private string _screenSearch = "";
-    private bool _showToast;
-    private string _toastMessage = "";
-    private static readonly string[] PermissionOrder = { "READ", "WRITE", "DELETE", "EXPORT", "ADMIN" };
-    private bool _isDirty => !_matrix.OrderBy(kv => kv.Key).SequenceEqual(_original.OrderBy(kv => kv.Key));
-
-    private IReadOnlyList<SecurityScreen> FilteredScreens =>
-        string.IsNullOrWhiteSpace(_screenSearch)
-            ? _screens
-            : _screens.Where(s => s.Name.Contains(_screenSearch, StringComparison.OrdinalIgnoreCase)).ToList();
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
-        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
-
-        _role = await SecurityService.GetRoleByIdAsync(RoleId);
-        _screens = (await SecurityService.GetAllScreensAsync()).OrderBy(s => s.DisplayOrder).ToList();
-        _permissions = (await SecurityService.GetAllPermissionsAsync())
-            .OrderBy(p => Array.IndexOf(PermissionOrder, p.Code))
-            .ToList();
-
-        var granted = await SecurityService.GetRolePermissionsAsync(RoleId);
-        var grantedSet = granted.Select(rp => (rp.ScreenId, rp.PermissionId)).ToHashSet();
-
-        foreach (var s in _screens)
-        {
-            foreach (var p in _permissions)
-            {
-                _matrix[(s.Id, p.Id)] = grantedSet.Contains((s.Id, p.Id));
-            }
-        }
-
-        _original = new Dictionary<(Guid, Guid), bool>(_matrix);
-        _loading = false;
-    }
-
-    private void Toggle((Guid ScreenId, Guid PermissionId) key, bool value)
-    {
-        if (!_canWrite) return;
-        _matrix[key] = value;
-    }
-
-    private async Task Save()
-    {
-        if (!_canWrite) return;
-
-        var changes = _matrix
-            .Where(kv => !_original.TryGetValue(kv.Key, out var was) || was != kv.Value)
-            .ToList();
-
-        foreach (var kv in changes)
-        {
-            var (screenId, permissionId) = kv.Key;
-            await SecurityService.SetRolePermissionAsync(RoleId, screenId, permissionId, kv.Value);
-        }
-
-        if (changes.Count > 0)
-        {
-            await SecurityService.LogAuditAsync(null, _actingUser, "PERMISSION_CHANGED",
-                $"Rol '{_role!.Name}': {changes.Count} permiso(s) modificado(s).");
-        }
-
-        _original = new Dictionary<(Guid, Guid), bool>(_matrix);
-
-        _toastMessage = $"{changes.Count} permiso(s) guardado(s).";
-        _showToast = true;
-        StateHasChanged();
-        await Task.Delay(2500);
-        _showToast = false;
         StateHasChanged();
     }
 }
-
-
-
-
-
-@page "/admin/seguridad/auditoria"
-@attribute [Authorize(Policy = "ADMIN:READ")]
-@rendermode InteractiveServer
-@inject ISecurityService SecurityService
-@using CorpWiki.Domain.Entities.Security
-
-<PageTitle>DaviWiki - Auditoría</PageTitle>
-
-<SecurityPageHeader Title="Seguridad" Subtitle="Gestión de usuarios, roles y permisos del sistema." />
-<AdminNav />
-
-<SecurityPageHeader Title="Auditoría" Subtitle="@($"Últimos {_logs.Count} eventos de seguridad.")" />
-
-@if (_loading)
-{
-    <div class="card" style="padding: var(--space-4)">
-        @for (int i = 0; i < 6; i++)
-        {
-            <div class="skeleton" style="height:44px; margin-bottom:8px; border-radius:var(--radius-md)"></div>
-        }
-    </div>
-}
-else if (_logs.Count == 0)
-{
-    <SecurityEmptyState IconName="history" Title="Sin eventos registrados"
-                         Description="Cuando se realicen cambios de seguridad (usuarios, roles, permisos) van a aparecer acá." />
-}
-else
-{
-    <div class="security-toolbar">
-        <div class="security-search">
-            <Icon Name="search" />
-            <input type="text" placeholder="Buscar por usuario o detalle..." aria-label="Buscar en auditoría"
-                   @bind="_searchTerm" @bind:event="oninput" />
-        </div>
-        <select class="input" style="max-width:220px" @bind="_actionFilter" aria-label="Filtrar por tipo de acción">
-            <option value="">Todas las acciones</option>
-            @foreach (var action in DistinctActions)
-            {
-                <option value="@action">@FormatAction(action)</option>
-            }
-        </select>
-        <span class="security-toolbar__count">@FilteredLogs.Count de @_logs.Count</span>
-    </div>
-
-    @if (FilteredLogs.Count == 0)
-    {
-        <SecurityEmptyState IconName="search" Title="Sin resultados" Description="No hay eventos que coincidan con la búsqueda o el filtro." Inline="true" />
-    }
-    else
-    {
-        <div class="card data-table-wrap">
-            <table class="data-table data-table--clickable">
-                <thead>
-                    <tr>
-                        <th>Fecha y hora</th>
-                        <th>Usuario</th>
-                        <th>Acción</th>
-                        <th>Detalle</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var log in FilteredLogs)
-                    {
-                        <tr @onclick="() => _selectedLog = log">
-                            <td style="white-space:nowrap; color:var(--text-tertiary)">@log.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                            <td>
-                                <div class="data-table__user-cell">
-                                    <span class="activity-row__avatar">@(log.Username.Length > 0 ? log.Username[..1].ToUpper() : "?")</span>
-                                    <strong>@log.Username</strong>
-                                </div>
-                            </td>
-                            <td><span class="badge">@FormatAction(log.Action)</span></td>
-                            <td style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-tertiary)">
-                                @log.Details
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-}
-
-@if (_selectedLog is not null)
-{
-    <div class="drawer-overlay" @onclick="() => _selectedLog = null">
-        <div class="drawer" @onclick:stopPropagation="true">
-            <div class="drawer__header">
-                <h3>Detalle del evento</h3>
-                <button class="btn btn--ghost btn--sm" @onclick="() => _selectedLog = null" aria-label="Cerrar"><Icon Name="x" /></button>
-            </div>
-            <div class="drawer__body">
-                <div class="drawer__row">
-                    <span class="drawer__row-label">Fecha y hora</span>
-                    <span class="drawer__row-value">@_selectedLog.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</span>
-                </div>
-                <div class="drawer__row">
-                    <span class="drawer__row-label">Usuario</span>
-                    <span class="drawer__row-value">@_selectedLog.Username</span>
-                </div>
-                <div class="drawer__row">
-                    <span class="drawer__row-label">Acción</span>
-                    <span class="drawer__row-value">@FormatAction(_selectedLog.Action)</span>
-                </div>
-                @if (!string.IsNullOrWhiteSpace(_selectedLog.Details))
-                {
-                    <div class="drawer__row">
-                        <span class="drawer__row-label">Detalle</span>
-                        <span class="drawer__row-value">@_selectedLog.Details</span>
-                    </div>
-                }
-            </div>
-        </div>
-    </div>
-}
-
-@code {
-    private List<SecurityAuditLog> _logs = new();
-    private bool _loading = true;
-    private string _searchTerm = "";
-    private string _actionFilter = "";
-    private SecurityAuditLog? _selectedLog;
-
-    private IEnumerable<string> DistinctActions => _logs.Select(l => l.Action).Distinct().OrderBy(a => a);
-
-    private IReadOnlyList<SecurityAuditLog> FilteredLogs =>
-        _logs.Where(l =>
-                (string.IsNullOrEmpty(_actionFilter) || l.Action == _actionFilter) &&
-                (string.IsNullOrWhiteSpace(_searchTerm) ||
-                 l.Username.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
-                 (l.Details?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)))
-            .ToList();
-
-    protected override async Task OnInitializedAsync()
-    {
-        _logs = await SecurityService.GetAuditLogsAsync(200);
-        _loading = false;
-    }
-
-    private static string FormatAction(string action) => action switch
-    {
-        "USER_ACTIVATED" => "Usuario activado",
-        "USER_DEACTIVATED" => "Usuario desactivado",
-        "ROLE_ASSIGNED" => "Rol asignado",
-        "ROLE_REMOVED" => "Rol removido",
-        "ROLE_CREATED" => "Rol creado",
-        "ROLE_DELETED" => "Rol eliminado",
-        "PERMISSION_CHANGED" => "Permisos modificados",
-        _ => action
-    };
-}
-
-
-
-
