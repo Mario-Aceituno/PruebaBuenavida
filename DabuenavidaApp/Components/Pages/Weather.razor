@@ -1,26 +1,52 @@
-public async Task<IReadOnlyList<CommentDto>> GetCommentsByArticleAsync(Guid articleId)
+FUNCIÓN DE ELIMINAR 
+--------------------
+public async Task<bool> DeleteCommentAsync(Guid commentId)
 {
-    var currentUserId = await _securityService.GetCurrentUserIdAsync();
-    var all = await _db.ArticleComments
-        .Include(c => c.User)
-        .Where(c => c.ArticleId == articleId)
-        .OrderBy(c => c.CreatedAt)
+    var userId = await _securityService.GetCurrentUserIdAsync();
+    if (userId == Guid.Empty) return false;
+
+    var root = await _db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
+    if (root is null || root.UserId != userId) return false;
+
+    // Traemos todo el árbol de comentarios del artículo una sola vez;
+    // el BFS se hace en memoria para no repetir Contains() sobre BD (eso disparaba el error "WITH").
+    var allInArticle = await _db.ArticleComments
+        .Where(c => c.ArticleId == root.ArticleId)
         .ToListAsync();
 
-    if (all.Count == 0) return new List<CommentDto>();
+    var toDelete = new List<ArticleComment> { root };
+    var frontier = new HashSet<Guid> { root.Id };
+    while (frontier.Count > 0)
+    {
+        var children = allInArticle
+            .Where(c => c.ParentCommentId is Guid pid && frontier.Contains(pid))
+            .ToList();
+        if (children.Count == 0) break;
+        toDelete.AddRange(children);
+        frontier = children.Select(c => c.Id).ToHashSet();
+    }
 
-    var likeCounts = await _db.ArticleCommentLikes
-        .Where(l => _db.ArticleComments.Any(c => c.Id == l.CommentId && c.ArticleId == articleId))
-        .GroupBy(l => l.CommentId)
-        .Select(g => new { CommentId = g.Key, Count = g.Count() })
-        .ToDictionaryAsync(x => x.CommentId, x => x.Count);
+    var articleId = root.ArticleId;
+    await using var tx = await _db.Database.BeginTransactionAsync();
+    try
+    {
+        for (int i = toDelete.Count - 1; i >= 0; i--)
+        {
+            _db.ArticleComments.Remove(toDelete[i]);
+            await _db.SaveChangesAsync();
+        }
+        await tx.CommitAsync();
+    }
+    catch
+    {
+        await tx.RollbackAsync();
+        throw;
+    }
 
-    var likedByMe = currentUserId != Guid.Empty
-        ? (await _db.ArticleCommentLikes
-            .Where(l => l.UserId == currentUserId && _db.ArticleComments.Any(c => c.Id == l.CommentId && c.ArticleId == articleId))
-            .Select(l => l.CommentId)
-            .ToListAsync()).ToHashSet()
-        : new HashSet<Guid>();
-
-    // ... el resto (byId, GetRootId, roots, foreach de aplanado) queda exactamente igual
+    var deletedIds = toDelete.Select(c => c.Id).ToArray();
+    await _commentBroadcaster.CommentDeletedAsync(articleId, deletedIds);
+    return true;
 }
+
+
+
