@@ -1,5 +1,162 @@
-new() { Id = ScreenIds.CategoryDetail, Code = "CATEGORY_DETAIL", Name = "Categoría Detalle", Route = "/categorias/{id}", Icon = "folder-tree", DisplayOrder = 4, ParentScreenId = ScreenIds.Categories },
+using System.Security.Claims;
+using CorpWiki.Domain.Entities;
+using CorpWiki.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 
-new() { Id = ScreenIds.CollectionDetail, Code = "COLLECTION_DETAIL", Name = "Colección Detalle", Route = "/colecciones/{id}", Icon = "library", DisplayOrder = 6, ParentScreenId = ScreenIds.Collections },
+namespace CorpWiki.Web.Security;
 
-new() { Id = ScreenIds.TagDetail, Code = "TAG_DETAIL", Name = "Etiqueta Detalle", Route = "/etiquetas/{id}", Icon = "tag", DisplayOrder = 5, ParentScreenId = ScreenIds.Tags },
+public class MustBeArticleOwnerRequirement : IAuthorizationRequirement { }
+
+/// <summary>
+/// Autoriza edición/borrado de un artículo puntual: el autor vinculado (Author.SecurityUserId)
+/// o un usuario con permiso ADMIN en la pantalla ARTICLES pueden operar sobre él.
+/// </summary>
+public class ArticleOwnershipHandler : AuthorizationHandler<MustBeArticleOwnerRequirement, Article>
+{
+    private readonly DaviWikiDbContext _db;
+
+    public ArticleOwnershipHandler(DaviWikiDbContext db)
+    {
+        _db = db;
+    }
+
+    protected override async Task HandleRequirementAsync(
+        AuthorizationHandlerContext context, MustBeArticleOwnerRequirement requirement, Article resource)
+    {
+        var user = context.User;
+
+        // Un administrador de contenido (permiso ADMIN en ARTICLES) puede editar cualquier artículo,
+        // sin importar quién sea el autor.
+        var isContentAdmin = user.Claims.Any(c =>
+            c.Type == "Permission:ARTICLES" && c.Value == "ADMIN");
+
+        if (isContentAdmin)
+        {
+            context.Succeed(requirement);
+            return;
+        }
+
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdClaim, out var userId))
+            return; // no autenticado o claim corrupto: no se otorga
+
+        var isOwner = await _db.Authors
+            .AsNoTracking()
+            .AnyAsync(a => a.Id == resource.AuthorId && a.SecurityUserId == userId);
+
+        if (isOwner)
+        {
+            context.Succeed(requirement);
+        }
+    }
+}
+
+
+
+
+
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddDaviWikiPolicies();
+    options.AddPolicy("MustBeArticleOwner", policy =>
+        policy.Requirements.Add(new MustBeArticleOwnerRequirement()));
+
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+
+builder.Services.AddSingleton<IAuthorizationHandler, ScreenPermissionHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, ArticleOwnershipHandler>(); // ← nuevo, Scoped porque usa DbContext
+
+
+
+
+
+
+
+@page "/articulos/{ArticleId:guid}/editar"
+@attribute [Authorize(Policy = "ARTICLE_EDITOR:WRITE")]
+@inject IAuthorizationService AuthorizationService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IWikiDataService Data
+
+@if (_loading)
+{
+    <p>Cargando...</p>
+}
+else if (!_canEdit)
+{
+    <div class="empty-state">
+        <Icon Name="shield-off" Class="empty-state__icon" />
+        <h2>No podés editar este artículo</h2>
+        <p>Solo el autor original o un administrador de contenido pueden modificarlo.</p>
+        <a class="btn btn--primary" href="/articulos">Volver al listado</a>
+    </div>
+}
+else
+{
+    @* formulario de edición normal *@
+}
+
+@code {
+    [Parameter] public Guid ArticleId { get; set; }
+
+    private Article? _article;
+    private bool _canEdit;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _article = await Data.GetArticleByIdAsync(ArticleId);
+
+        if (_article is not null)
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var result = await AuthorizationService.AuthorizeAsync(authState.User, _article, "MustBeArticleOwner");
+            _canEdit = result.Succeeded;
+        }
+
+        _loading = false;
+    }
+}
+
+
+
+
+
+private async Task SaveChanges()
+{
+    var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+    var result = await AuthorizationService.AuthorizeAsync(authState.User, _article!, "MustBeArticleOwner");
+
+    if (!result.Succeeded)
+    {
+        await SecurityService.LogAuditAsync(null, authState.User.FindFirst(ClaimTypes.Name)?.Value ?? "unknown",
+            "PERMISSION_DENIED", $"Intento de editar artículo {ArticleId} sin ser autor ni admin.");
+        return;
+    }
+
+    await Data.UpdateArticleAsync(_article!);
+}
+
+
+
+
+// Program.cs
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/";
+        options.AccessDeniedPath = "/";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always; // solo HTTPS
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = true;
+    });
+
+
