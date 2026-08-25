@@ -1,232 +1,51 @@
-@inject NavigationManager Navigation
+using System.Security.Claims;
+using CorpWiki.Domain.Entities;
+using CorpWiki.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 
-<nav class="security-nav" aria-label="Navegación de Seguridad">
-    <div class="security-nav__label">
-        Seguridad
-    </div>
+namespace CorpWiki.Web.Security;
 
-    <div class="security-nav__items">
+public class MustBeArticleOwnerRequirement : IAuthorizationRequirement { }
 
-        <NavLink href="/admin/seguridad/usuarios"
-                 Match="NavLinkMatch.Prefix"
-                 class="security-nav__item"
-                 ActiveClass="security-nav__item--active">
-            <Icon Name="users" />
-            <span>Usuarios</span>
-        </NavLink>
-
-        <NavLink href="/admin/seguridad/roles"
-                 Match="NavLinkMatch.Prefix"
-                 class="security-nav__item"
-                 ActiveClass="security-nav__item--active">
-            <Icon Name="shield" />
-            <span>Roles</span>
-        </NavLink>
-
-        <NavLink href="/admin/seguridad/auditoria"
-                 Match="NavLinkMatch.Prefix"
-                 class="security-nav__item"
-                 ActiveClass="security-nav__item--active">
-            <Icon Name="history" />
-            <span>Auditoría</span>
-        </NavLink>
-
-    </div>
-</nav>
-
-
-
-
-
-
-/* =========================================================
-   SECURITY NAVIGATION
-   ========================================================= */
-
-.security-nav {
-    display: flex;
-    align-items: center;
-    gap: var(--space-5);
-    margin-bottom: var(--space-6);
-    padding-bottom: var(--space-2);
-    border-bottom: 1px solid var(--border-default);
-}
-
-.security-nav__label {
-    font-size: var(--fs-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-tertiary);
-    white-space: nowrap;
-}
-
-.security-nav__items {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-}
-
-.security-nav__item {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 8px 12px;
-    border-radius: var(--radius-md);
-    color: var(--text-tertiary);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    text-decoration: none;
-    transition:
-        background var(--transition-fast),
-        color var(--transition-fast);
-}
-
-.security-nav__item .icon {
-    width: 16px;
-    height: 16px;
-}
-
-.security-nav__item:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-}
-
-.security-nav__item--active {
-    color: var(--brand-500);
-    background: var(--bg-surface-2);
-}
-
-@media (max-width: 720px) {
-    .security-nav {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: var(--space-2);
-    }
-
-    .security-nav__items {
-        width: 100%;
-        overflow-x: auto;
-    }
-
-    .security-nav__item {
-        white-space: nowrap;
-    }
-}
-
-
-
-
-
-private async Task ConfirmToggle()
+/// <summary>
+/// Autoriza edición/borrado de un artículo puntual: el autor vinculado (Author.SecurityUserId)
+/// o un usuario con permiso ADMIN en la pantalla ARTICLES pueden operar sobre él.
+/// </summary>
+public class ArticleOwnershipHandler : AuthorizationHandler<MustBeArticleOwnerRequirement, Article>
 {
-    var user = _confirmingUser;
+    private readonly DaviWikiDbContext _db;
 
-    if (user is null || !_canWrite)
-        return;
-
-    _confirmingUser = null;
-
-    try
+    public ArticleOwnershipHandler(DaviWikiDbContext db)
     {
-        var previousState = user.IsActive;
+        _db = db;
+    }
 
-        var success = await SecurityService.ToggleUserActiveAsync(user.Id);
+    protected override async Task HandleRequirementAsync(
+        AuthorizationHandlerContext context, MustBeArticleOwnerRequirement requirement, Article resource)
+    {
+        var user = context.User;
 
-        if (!success)
+        var isContentAdmin = user.Claims.Any(c =>
+            c.Type == "Permission:ARTICLES" && c.Value == "ADMIN");
+
+        if (isContentAdmin)
         {
-            _toastMessage = "No se pudo actualizar el estado del usuario.";
-            _showToast = true;
+            context.Succeed(requirement);
             return;
         }
 
-        // Volvemos a consultar el usuario para evitar
-        // depender de un estado local desactualizado.
-        var updatedUser = await SecurityService.GetUserByIdAsync(user.Id);
-
-        if (updatedUser is not null)
-        {
-            user.IsActive = updatedUser.IsActive;
-        }
-        else
-        {
-            user.IsActive = !previousState;
-        }
-
-        await SecurityService.LogAuditAsync(
-            user.Id,
-            _actingUser,
-            user.IsActive
-                ? "USER_ACTIVATED"
-                : "USER_DEACTIVATED",
-            $"Usuario afectado: {user.Username}");
-
-        _toastMessage = user.IsActive
-            ? "Usuario activado correctamente."
-            : "Usuario desactivado correctamente.";
-
-        _showToast = true;
-    }
-    catch (Exception)
-    {
-        _toastMessage = "Ocurrió un error al actualizar el usuario.";
-        _showToast = true;
-    }
-    finally
-    {
-        StateHasChanged();
-    }
-}
-
-
-
-
-private async Task ToggleActive()
-{
-    _confirmingToggle = false;
-
-    if (_user is null || !_canWrite)
-        return;
-
-    try
-    {
-        var success = await SecurityService.ToggleUserActiveAsync(_user.Id);
-
-        if (!success)
-        {
-            _toastMessage = "No se pudo actualizar el estado del usuario.";
-            _showToast = true;
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdClaim, out var userId))
             return;
-        }
 
-        var updatedUser = await SecurityService.GetUserByIdAsync(_user.Id);
+        var isOwner = await _db.Authors
+            .AsNoTracking()
+            .AnyAsync(a => a.Id == resource.AuthorId && a.SecurityUserId == userId);
 
-        if (updatedUser is not null)
+        if (isOwner)
         {
-            _user.IsActive = updatedUser.IsActive;
+            context.Succeed(requirement);
         }
-
-        await SecurityService.LogAuditAsync(
-            _user.Id,
-            _actingUser,
-            _user.IsActive
-                ? "USER_ACTIVATED"
-                : "USER_DEACTIVATED",
-            $"Usuario afectado: {_user.Username}");
-
-        _toastMessage = _user.IsActive
-            ? "Usuario activado correctamente."
-            : "Usuario desactivado correctamente.";
-
-        _showToast = true;
-    }
-    catch (Exception)
-    {
-        _toastMessage = "Ocurrió un error al actualizar el usuario.";
-        _showToast = true;
-    }
-    finally
-    {
-        StateHasChanged();
     }
 }
