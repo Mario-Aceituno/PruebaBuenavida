@@ -1,51 +1,388 @@
-using System.Security.Claims;
-using CorpWiki.Domain.Entities;
-using CorpWiki.Infrastructure.Persistence;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
+@page "/articulos/editar/{ArticleId:guid}"
+@attribute [Authorize(Policy = "ARTICLE_EDITOR:WRITE")]
+@rendermode InteractiveServer
+@inject IWikiDataService Data
+@inject IToastService Toast
+@inject NavigationManager Nav
 
-namespace CorpWiki.Web.Security;
+<PageTitle>DaviWiki - Editar Artículo</PageTitle>
 
-public class MustBeArticleOwnerRequirement : IAuthorizationRequirement { }
-
-/// <summary>
-/// Autoriza edición/borrado de un artículo puntual: el autor vinculado (Author.SecurityUserId)
-/// o un usuario con permiso ADMIN en la pantalla ARTICLES pueden operar sobre él.
-/// </summary>
-public class ArticleOwnershipHandler : AuthorizationHandler<MustBeArticleOwnerRequirement, Article>
+@if (_notFound)
 {
-    private readonly DaviWikiDbContext _db;
+    <div class="empty-state">
+        <Icon Name="file-text" Class="empty-state__icon" />
+        <h3>No encontramos este artículo</h3>
+        <a class="btn btn--primary" href="/articulos">Volver a Artículos</a>
+    </div>
+}
+else if (!_canEdit)
+{
+    <div class="empty-state">
+        <Icon Name="shield-off" Class="empty-state__icon" />
+        <h3>No podés editar este artículo</h3>
+        <p>Solo el autor original o un administrador de contenido pueden modificarlo.</p>
+        <a class="btn btn--primary" href="/articulos">Volver a Artículos</a>
+    </div>
+}
+else
+{
+    <Breadcrumb Items="_breadcrumb" />
 
-    public ArticleOwnershipHandler(DaviWikiDbContext db)
+    <div class="page-header">
+        <div>
+            <h1>Editar Artículo</h1>
+            <p>Estás editando "@_original?.Title". Los cambios se guardan sobre el artículo real.</p>
+        </div>
+        <div class="page-header__actions">
+            <CorpWiki.Web.Security.RequirePermission Screen="ARTICLE" Permission="READ">
+                <a class="btn btn--secondary" href="@($"/articulo/{_original?.Slug}")">
+                    <Icon Name="external-link" /> Ver artículo
+                </a>
+            </CorpWiki.Web.Security.RequirePermission>
+        </div>
+    </div>
+
+    <div class="two-col-grid">
+        <div class="card article-form">
+            <EditForm Model="_model" OnValidSubmit="Save">
+                <DataAnnotationsValidator />
+
+                <div class="form-group">
+                    <label class="form-label" for="art-title">Título <span class="form-required">*</span></label>
+                    <InputText id="art-title" class="input" @bind-Value="_model.Title" />
+                    <ValidationMessage For="() => _model.Title" class="form-hint form-hint--error" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="art-summary">Resumen <span class="form-required">*</span></label>
+                    <InputTextArea id="art-summary" class="input" rows="3" @bind-Value="_model.Summary" />
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="art-category">Categoría <span class="form-required">*</span></label>
+                        <select id="art-category" class="input" @bind="_model.CategoryId">
+                            @foreach (var category in _categories)
+                            {
+                                <option value="@category.Id">@category.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Etiquetas</label>
+                    <div class="tag-cloud">
+                        @foreach (var tag in _tags)
+                        {
+                            var active = _model.TagIds.Contains(tag.Id);
+                            <button type="button" class="@(active ? "chip chip--active" : "chip")" @onclick="() => ToggleTag(tag.Id)">
+                                @tag.Name
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="art-cover">Portada</label>
+                        <InputFile id="art-cover" class="input" accept="image/*" OnChange="OnCoverSelected" />
+                        @if (_uploadingCover)
+                        {
+                            <span class="hint">Subiendo imagen...</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_coverPreviewUrl))
+                        {
+                            <img src="@_coverPreviewUrl" alt="Vista previa de portada" class="cover-preview" />
+                        }
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="art-status">Estado</label>
+                        <select id="art-status" class="input" @bind="_model.Status">
+                            <option value="Draft">Borrador</option>
+                            <option value="InReview">En revisión</option>
+                            <option value="Published">Publicado</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label class="checkbox-row">
+                    <input type="checkbox" @bind="_model.IsFeatured" />
+                    <span>Marcar como artículo destacado</span>
+                </label>
+
+                <div class="form-group">
+                    <label class="form-label">Contenido</label>
+                    <Editra @bind-Blocks="_model.Content" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="callout callout--danger">
+                        <Icon Name="alert-triangle" />
+                        <p>@_error</p>
+                    </div>
+                }
+
+                <div class="form-actions">
+                    <a class="btn btn--secondary" href="/articulos">Cancelar</a>
+                    <CorpWiki.Web.Security.RequirePermission Screen="ARTICLE_EDITOR" Permission="WRITE">
+                        <button type="submit" class="btn btn--primary">
+                            <Icon Name="check-circle" /> Guardar cambios
+                        </button>
+                    </CorpWiki.Web.Security.RequirePermission>
+                </div>
+            </EditForm>
+        </div>
+
+        <aside>
+            <div class="widget card">
+                <h4 class="widget__title"><Icon Name="history" /> Historial de versiones</h4>
+                <div class="version-timeline">
+                    @foreach (var version in (_original?.Versions ?? new()).OrderByDescending(v => v.EditedAt))
+                    {
+                        <div class="version-row">
+                            <span class="version-row__dot"></span>
+                            <div>
+                                <p class="version-row__label">@version.VersionLabel</p>
+                                <p class="version-row__summary">@version.ChangeSummary</p>
+                                <p class="version-row__date">@version.EditedAt.ToString("d MMM yyyy, HH:mm")</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </aside>
+    </div>
+}
+
+
+
+
+
+
+
+using CorpWiki.Application.Common.Models;
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Application.UseCases.Files;
+using CorpWiki.Domain.Entities;
+using CorpWiki.Web.Components.Shared;
+using CorpWiki.Web.Services;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Forms;
+using CorpWiki.Web.Security;
+using Microsoft.Extensions.Logging;
+
+namespace CorpWiki.Web.Components.Pages
+{
+    public partial class EditarArticulo
     {
-        _db = db;
-    }
+        [Parameter] public Guid ArticleId { get; set; }
 
-    protected override async Task HandleRequirementAsync(
-        AuthorizationHandlerContext context, MustBeArticleOwnerRequirement requirement, Article resource)
-    {
-        var user = context.User;
+        [Inject] private UploadFileUseCase UploadFile { get; set; } = default!;
+        [Inject] private IFileStorageService Storage { get; set; } = default!;
+        [Inject] private ICurrentUserContext CurrentUser { get; set; } = default!;
+        [Inject] private ISecurityService SecurityService { get; set; } = default!;
+        [Inject] private ILogger<EditarArticulo> Logger { get; set; } = default!;
+        [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
+        [Inject] private IAuthorizationService AuthorizationService { get; set; } = default!;
 
-        var isContentAdmin = user.Claims.Any(c =>
-            c.Type == "Permission:ARTICLES" && c.Value == "ADMIN");
+        private Article? _original;
+        private bool _notFound;
+        private bool _canEdit;
 
-        if (isContentAdmin)
+        private List<Category> _categories = new();
+        private List<Author> _authors = new();
+        private List<Tag> _tags = new();
+        private List<BreadcrumbItem> _breadcrumb = new();
+
+        private readonly EditArticleModel _model = new();
+        private string? _error;
+
+        protected override async Task OnInitializedAsync()
         {
-            context.Succeed(requirement);
-            return;
+            _original = await Data.GetArticleByIdAsync(ArticleId);
+            if (_original is null)
+            {
+                _notFound = true;
+                return;
+            }
+
+            _canEdit = await CheckOwnershipAsync();
+            if (!_canEdit)
+            {
+                return;
+            }
+
+            _categories = (await Data.GetCategoriesAsync()).OrderBy(c => c.Name).ToList();
+            _tags = (await Data.GetPopularTagsAsync(40)).OrderBy(t => t.Name).ToList();
+
+            _breadcrumb = new()
+            {
+                new("Inicio", "/"),
+                new("Artículos", "/articulos"),
+                new(_original.Title, null)
+            };
+
+            _model.Title = _original.Title;
+            _model.Summary = _original.Summary;
+            _model.CategoryId = _original.CategoryId;
+            _model.AuthorId = _original.AuthorId;
+            _model.TagIds = new List<Guid>(_original.TagIds);
+            _model.CoverImageMediaId = _original.CoverImageMediaId;
+            if (_original.CoverImageMediaId is Guid mediaId)
+            {
+                var media = await Data.GetMediaFileAsync(mediaId);
+                if (media is not null) _coverPreviewUrl = Storage.GetPublicUrl(media.StorageUrl);
+            }
+
+            _model.Status = _original.Status.ToString();
+            _model.IsFeatured = _original.IsFeatured;
+            _model.Content = _original.Content
+                .OrderBy(b => b.Order)
+                .Select(b => new ArticleContentBlock
+                {
+                    Id = b.Id,
+                    Type = b.Type,
+                    Order = b.Order,
+                    Text = b.Text,
+                    Meta = b.Meta,
+                    Urls = new List<string>(b.Urls),
+                    TableRows = b.TableRows.Select(r => new List<string>(r)).ToList()
+                }).ToList();
         }
 
-        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!Guid.TryParse(userIdClaim, out var userId))
-            return;
-
-        var isOwner = await _db.Authors
-            .AsNoTracking()
-            .AnyAsync(a => a.Id == resource.AuthorId && a.SecurityUserId == userId);
-
-        if (isOwner)
+        private async Task<bool> CheckOwnershipAsync()
         {
-            context.Succeed(requirement);
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var result = await AuthorizationService.AuthorizeAsync(authState.User, _original!, "MustBeArticleOwner");
+            return result.Succeeded;
+        }
+
+        private bool _uploadingCover;
+        private string? _coverPreviewUrl;
+
+        private async Task OnCoverSelected(InputFileChangeEventArgs e)
+        {
+            var file = e.File;
+            if (file is null) return;
+
+            _uploadingCover = true;
+            StateHasChanged();
+
+            try
+            {
+                await using var stream = file.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+                var request = new FileUploadRequest
+                {
+                    Content = stream,
+                    FileName = file.Name,
+                    ContentType = file.ContentType,
+                    SizeInBytes = file.Size,
+                    Category = FileCategory.ArticleCover
+                };
+
+                var uploadResult = await UploadFile.ExecuteAsync(request);
+                if (!uploadResult.IsSuccess)
+                {
+                    _error = uploadResult.ErrorMessage;
+                    return;
+                }
+
+                var mediaFile = new MediaFile
+                {
+                    Id = Guid.NewGuid(),
+                    FileName = file.Name,
+                    Type = MediaType.Image,
+                    StorageUrl = uploadResult.Key!,
+                    SizeInBytes = file.Size,
+                    AuthorId = _model.AuthorId,
+                    UploadedAt = DateTime.UtcNow
+                };
+
+                var createdMedia = await Data.CreateMediaFileAsync(mediaFile);
+                _model.CoverImageMediaId = createdMedia.Id;
+                _coverPreviewUrl = Storage.GetPublicUrl(createdMedia.StorageUrl);
+            }
+            finally
+            {
+                _uploadingCover = false;
+                StateHasChanged();
+            }
+        }
+
+        private void ToggleTag(Guid tagId)
+        {
+            if (!_model.TagIds.Remove(tagId))
+            {
+                _model.TagIds.Add(tagId);
+            }
+        }
+
+        private async Task Save()
+        {
+            _error = null;
+
+            if (string.IsNullOrWhiteSpace(_model.Title) || string.IsNullOrWhiteSpace(_model.Summary))
+            {
+                _error = "El título y el resumen son obligatorios.";
+                return;
+            }
+
+            if (!await CheckOwnershipAsync())
+            {
+                _error = "Ya no tenés permiso para editar este artículo.";
+
+                await SecurityService.LogAuditAsync(
+                    CurrentUser.UserId == Guid.Empty ? null : CurrentUser.UserId,
+                    CurrentUser.Username,
+                    "PERMISSION_DENIED",
+                    $"Intento de editar artículo {ArticleId} sin ser autor ni admin.");
+
+                Logger.LogWarning("Edición bloqueada: {Username} intentó modificar artículo {ArticleId} sin autorización.",
+                    CurrentUser.Username, ArticleId);
+
+                return;
+            }
+
+            Enum.TryParse<ArticleStatus>(_model.Status, out var parsedStatus);
+
+            var updated = await Data.UpdateArticleAsync(
+                ArticleId,
+                _model.Title,
+                _model.Summary,
+                _model.CategoryId,
+                _model.AuthorId,
+                _model.CoverImageMediaId,
+                _model.IsFeatured,
+                parsedStatus,
+                _model.Content,
+                _model.TagIds);
+
+            if (updated is null)
+            {
+                _error = "No se pudo guardar: el artículo ya no existe.";
+                return;
+            }
+
+            Toast.Show("Artículo Editado.", ToastVariant.Success, "user-check");
+            Nav.NavigateTo($"/articulo/{updated.Slug}");
+        }
+
+        private class EditArticleModel
+        {
+            [System.ComponentModel.DataAnnotations.Required]
+            public string Title { get; set; } = string.Empty;
+            public string Summary { get; set; } = string.Empty;
+            public Guid CategoryId { get; set; }
+            public Guid AuthorId { get; set; }
+            public List<Guid> TagIds { get; set; } = new();
+            public Guid? CoverImageMediaId { get; set; }
+            public string Status { get; set; } = "Draft";
+            public bool IsFeatured { get; set; }
+            public List<ArticleContentBlock> Content { get; set; } = new();
         }
     }
 }
