@@ -36,21 +36,3 @@ public class ArticleOwnershipHandler : AuthorizationHandler<MustBeArticleOwnerRe
         }
     }
 }
-
-
-
-
-
-
-services.AddDbContext<DaviWikiDbContext>(options =>
-{
-    // ... exactamente igual que ahora, sin cambios
-});
-
-// Registro adicional solo para consumidores que necesitan
-// una instancia aislada (ej. authorization handlers)
-services.AddDbContextFactory<DaviWikiDbContext>(options =>
-{
-    // misma configuración de arriba (puedes extraerla a un método local
-    // para no duplicar el switch, ver nota abajo)
-}, ServiceLifetime.Scoped);
