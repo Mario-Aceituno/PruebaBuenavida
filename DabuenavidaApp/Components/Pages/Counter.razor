@@ -1,3 +1,14 @@
+using System.Security.Claims;
+using CorpWiki.Domain.Entities;
+using CorpWiki.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Web.Security;
+
+public class MustBeArticleOwnerRequirement : IAuthorizationRequirement { }
+
+//Handler que sirve para añadir política de autorización de edición sobre un artículo solamente al autor
 public class ArticleOwnershipHandler : AuthorizationHandler<MustBeArticleOwnerRequirement, Article>
 {
     private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
@@ -11,6 +22,7 @@ public class ArticleOwnershipHandler : AuthorizationHandler<MustBeArticleOwnerRe
         AuthorizationHandlerContext context, MustBeArticleOwnerRequirement requirement, Article resource)
     {
         var user = context.User;
+
         var isContentAdmin = user.Claims.Any(c =>
             c.Type == "Permission:ARTICLES" && c.Value == "ADMIN");
 
@@ -24,7 +36,6 @@ public class ArticleOwnershipHandler : AuthorizationHandler<MustBeArticleOwnerRe
         if (!Guid.TryParse(userIdClaim, out var userId))
             return;
 
-        // Contexto propio, aislado — nunca compite con EfWikiDataService
         await using var db = await _dbFactory.CreateDbContextAsync();
         var isOwner = await db.Authors
             .AsNoTracking()
