@@ -1,97 +1,196 @@
-EDITAR 
-------------
-
-public async Task<bool> UpdateCommentAsync(Guid commentId, string content)
+NOTIFICATION ITEM
+--------------------
+// En EfWikiDataService, método privado de mapeo
+private static NotificationItem ToNotificationItem(Notification n)
 {
-    var userId = await _securityService.GetCurrentUserIdAsync();
-    if (userId == Guid.Empty) return false;
-    if (string.IsNullOrWhiteSpace(content)) return false;
+    var actorName = n.Actor?.FullName ?? "Alguien";
 
-    var comment = await _db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
-    if (comment is null || comment.UserId != userId) return false;
-
-    comment.Content = content.Trim();
-    comment.UpdatedAt = DateTime.UtcNow;
-    await _db.SaveChangesAsync();
-
-    var updated = await _db.ArticleComments.Include(c => c.User).FirstAsync(c => c.Id == commentId);
-
-    var likesCount = await _db.ArticleCommentLikes.CountAsync(l => l.CommentId == commentId);
-    var isLikedByCurrentUser = await _db.ArticleCommentLikes.AnyAsync(l => l.CommentId == commentId && l.UserId == userId);
-
-    var dto = new CommentDto
+    var (title, message, icon) = n.Type switch
     {
-        Id = updated.Id,
-        ParentCommentId = updated.ParentCommentId,
-        Content = updated.Content,
-        CreatedAt = updated.CreatedAt,
-        UpdatedAt = updated.UpdatedAt,
-        UserId = updated.UserId,
-        AuthorName = updated.User?.FullName ?? "Usuario",
-        AuthorInitials = GetInitials(updated.User?.FullName),
-        AuthorColorFrom = updated.User?.AvatarColorFrom ?? "#6366f1",
-        AuthorColorTo = updated.User?.AvatarColorTo ?? "#8b5cf6",
-        LikesCount = likesCount,
-        IsLikedByCurrentUser = isLikedByCurrentUser,
-        CanEditOrDelete = true,
+        NotificationType.CommentOnArticle => (
+            "Nuevo comentario",
+            $"{actorName} comentó en un artículo que sigues.",
+            "message-circle"),
+
+        NotificationType.ReplyToComment => (
+            "Nueva respuesta",
+            $"{actorName} respondió a tu comentario.",
+            "corner-down-right"),
+
+        NotificationType.CommentLike => (
+            "Le gustó tu comentario",
+            $"A {actorName} le gustó tu comentario.",
+            "thumbs-up"),
+
+        _ => ("Notificación", "Tienes una nueva notificación.", "bell")
     };
 
-    await _commentBroadcaster.CommentUpdatedAsync(updated.ArticleId, dto);
-    return true;
+    return new NotificationItem
+    {
+        Id = n.Id,
+        Title = title,
+        Message = message,
+        Icon = icon,
+        Url = n.Comment is not null ? $"/articulo/{n.Comment.ArticleId}#comment-{n.CommentId}" : null,
+        CreatedAt = n.CreatedAt,
+        IsRead = n.IsRead
+    };
 }
 
 
-BORRAR 
------------ 
-public async Task<bool> DeleteCommentAsync(Guid commentId)
+EF WIKI
+-------------
+public async Task<IReadOnlyList<NotificationItem>> GetNotificationsAsync()
 {
-    var userId = await _securityService.GetCurrentUserIdAsync();
-    if (userId == Guid.Empty) return false;
+    var userId = _currentUser.UserId; // ajusta al accessor real
 
-    var root = await _db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
-    if (root is null || root.UserId != userId) return false;
-
-    var allInArticle = await _db.ArticleComments
-        .Where(c => c.ArticleId == root.ArticleId)
+    var notifications = await _db.Notifications
+        .Where(n => n.RecipientUserId == userId)
+        .Include(n => n.Actor)
+        .Include(n => n.Comment)
+        .OrderByDescending(n => n.CreatedAt)
+        .Take(30) // límite razonable para el dropdown
         .ToListAsync();
 
-    var toDelete = new List<ArticleComment> { root };
-    var frontier = new HashSet<Guid> { root.Id };
-    while (frontier.Count > 0)
+    return notifications.Select(ToNotificationItem).ToList();
+}
+
+public async Task<int> GetUnreadNotificationsCountAsync()
+{
+    var userId = _currentUser.UserId;
+
+    return await _db.Notifications
+        .CountAsync(n => n.RecipientUserId == userId && !n.IsRead);
+}
+
+public async Task MarkNotificationAsReadAsync(Guid id)
+{
+    var userId = _currentUser.UserId;
+
+    var notification = await _db.Notifications
+        .FirstOrDefaultAsync(n => n.Id == id && n.RecipientUserId == userId);
+
+    if (notification is null || notification.IsRead) return;
+
+    notification.IsRead = true;
+    notification.ReadAt = DateTime.UtcNow;
+    await _db.SaveChangesAsync();
+}
+
+public async Task MarkAllNotificationsAsReadAsync()
+{
+    var userId = _currentUser.UserId;
+    var now = DateTime.UtcNow;
+
+    await _db.Notifications
+        .Where(n => n.RecipientUserId == userId && !n.IsRead)
+        .ExecuteUpdateAsync(s => s
+            .SetProperty(n => n.IsRead, true)
+            .SetProperty(n => n.ReadAt, now));
+}
+
+
+-------------------------
+// Ejemplo dentro de AddCommentAsync / ReplyToCommentAsync / LikeCommentAsync
+// (ajusta nombres reales de tus métodos existentes)
+
+private async Task CreateAndBroadcastNotificationAsync(
+    Guid recipientUserId, Guid actorUserId, Guid commentId, NotificationType type)
+{
+    // Evita auto-notificarte (comentar tu propio artículo, dar like a tu propio comentario, etc.)
+    if (recipientUserId == actorUserId) return;
+
+    var notification = new Notification
     {
-        var children = allInArticle
-            .Where(c => c.ParentCommentId is Guid pid && frontier.Contains(pid))
-            .ToList();
-        if (children.Count == 0) break;
-        toDelete.AddRange(children);
-        frontier = children.Select(c => c.Id).ToHashSet();
+        Id = Guid.NewGuid(),
+        RecipientUserId = recipientUserId,
+        ActorUserId = actorUserId,
+        CommentId = commentId,
+        Type = type,
+        IsRead = false,
+        CreatedAt = DateTime.UtcNow
+    };
+
+    _db.Notifications.Add(notification);
+    await _db.SaveChangesAsync();
+
+    // Recargar con Actor/Comment para poder mapear a NotificationItem
+    await _db.Entry(notification).Reference(n => n.Actor).LoadAsync();
+    await _db.Entry(notification).Reference(n => n.Comment).LoadAsync();
+
+    var item = ToNotificationItem(notification);
+    await _notificationBroadcaster.RaiseNotificationCreatedAsync(recipientUserId, item);
+}
+
+----------------------------
+// Application
+public interface INotificationBroadcaster
+{
+    Task RaiseNotificationCreatedAsync(Guid recipientUserId, NotificationItem item);
+}
+
+public interface INotificationRealtimeNotifier
+{
+    event Func<NotificationItem, Task>? NotificationCreated;
+    Task InvokeAllAsync(Guid recipientUserId, NotificationItem item);
+}
+
+-----------------------------
+// Web
+public class NotificationBroadcaster : INotificationBroadcaster
+{
+    private readonly INotificationRealtimeNotifier _notifier;
+    public NotificationBroadcaster(INotificationRealtimeNotifier notifier) => _notifier = notifier;
+
+    public Task RaiseNotificationCreatedAsync(Guid recipientUserId, NotificationItem item)
+        => _notifier.InvokeAllAsync(recipientUserId, item);
+}
+
+public class NotificationRealtimeNotifier : INotificationRealtimeNotifier
+{
+    public event Func<NotificationItem, Task>? NotificationCreated;
+
+    // Guardamos el userId destinatario junto con cada suscriptor para filtrar
+    private readonly List<(Guid UserId, Func<NotificationItem, Task> Handler)> _subscribers = new();
+
+    public void Subscribe(Guid userId, Func<NotificationItem, Task> handler)
+        => _subscribers.Add((userId, handler));
+
+    public void Unsubscribe(Func<NotificationItem, Task> handler)
+        => _subscribers.RemoveAll(s => s.Handler == handler);
+
+    public async Task InvokeAllAsync(Guid recipientUserId, NotificationItem item)
+    {
+        foreach (var (userId, handler) in _subscribers.Where(s => s.UserId == recipientUserId).ToList())
+            await handler(item);
     }
+}
 
-    var articleId = root.ArticleId;
+TOPBAR RAZOR 
+----------------
+[Inject] private INotificationRealtimeNotifier _notificationNotifier { get; set; } = default!;
+[Inject] private AuthenticationStateProvider _authStateProvider { get; set; } = default!; // ya lo tienes
 
-    // La transacción manual debe envolverse en la execution strategy configurada
-    // (EnableRetryOnFailure), o EF Core rechaza el BeginTransactionAsync directo.
-    var strategy = _db.Database.CreateExecutionStrategy();
-    await strategy.ExecuteAsync(async () =>
+private Func<NotificationItem, Task>? _onNotificationReceived;
+
+protected override async Task OnInitializedAsync()
+{
+    // ... tu código existente ...
+
+    _onNotificationReceived = async item =>
     {
-        await using var tx = await _db.Database.BeginTransactionAsync();
-        try
-        {
-            for (int i = toDelete.Count - 1; i >= 0; i--)
-            {
-                _db.ArticleComments.Remove(toDelete[i]);
-                await _db.SaveChangesAsync();
-            }
-            await tx.CommitAsync();
-        }
-        catch
-        {
-            await tx.RollbackAsync();
-            throw;
-        }
-    });
+        _notifications.Insert(0, item);
+        _unreadCount++;
+        await InvokeAsync(StateHasChanged);
+    };
 
-    var deletedIds = toDelete.Select(c => c.Id).ToArray();
-    await _commentBroadcaster.CommentDeletedAsync(articleId, deletedIds);
-    return true;
+    var userId = Guid.Parse(authState.User.FindFirst("sub")?.Value ?? Guid.Empty.ToString()); // ajusta claim real
+    ((NotificationRealtimeNotifier)_notificationNotifier).Subscribe(userId, _onNotificationReceived);
+}
+
+public void Dispose()
+{
+    if (_onNotificationReceived is not null)
+        ((NotificationRealtimeNotifier)_notificationNotifier).Unsubscribe(_onNotificationReceived);
+    // ... tu Dispose existente ...
 }
