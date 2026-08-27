@@ -1,565 +1,103 @@
-// ==========================================
-// Archivo: CorpWiki.Infrastructure / InfrastructureServiceExtensions.cs
-// ==========================================
+@page "/admin/seguridad/usuarios/{UserId:guid}"
+@attribute [Authorize(Policy = "ADMIN:READ")]
+@rendermode InteractiveServer
+@inject ISecurityService SecurityService
+@inject ICurrentUserContext CurrentUser
 
-using Amazon.S3;
-using CorpWiki.Application.Interfaces;
-using CorpWiki.Infrastructure.Helpers;
-//using CorpWiki.Infrastructure.Options;
-using CorpWiki.Infrastructure.Persistence;
-using CorpWiki.Infrastructure.Security;
-using CorpWiki.Infrastructure.Services;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using CorpWiki.Application.UseCases.Files;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Logging;
-namespace CorpWiki.Infrastructure;
+<AdminNav />
 
-/// <summary>
-/// Registra todos los servicios de infraestructura: DbContext, proveedores de DB,
-/// Active Directory, servicios de seguridad y almacenamiento de archivos.
-/// </summary>
-public static class InfrastructureServiceExtensions
+@if (_loading)
 {
-    public static IServiceCollection AddDaviWikiInfrastructure(
-        this IServiceCollection services, IConfiguration configuration)
-    {
-        // --- 1. Configurar DbContext con el proveedor de base de datos seleccionado ---
-        var provider = configuration["DatabaseProvider"] ?? "MySQL";
-        var connectionString = configuration.GetConnectionString(provider);
+    <p>Cargando...</p>
+}
+else if (_user is null)
+{
+    <div class="empty-state"><p>No se encontró el usuario.</p></div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <h1>@_user.FullName</h1>
+            <p>@_user.Username · @_user.Email · @_user.Department</p>
+        </div>
+    </div>
 
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException(
-                $"No se encontró ConnectionString para el proveedor '{provider}'. " +
-                $"Verificá la sección ConnectionStrings:{provider} en appsettings.json.");
-        }
+    <div class="card admin-section">
+        <h3 class="admin-section__title"><Icon Name="shield" /> Roles asignados</h3>
 
-        // IMPORTANTE: se usa AddDbContextFactory en lugar de AddDbContext.
-        //
-        // En Blazor Server / Interactive, un "scope" de DI dura TODO el circuito
-        // (toda la sesión del usuario en pestaña), no una sola request HTTP como
-        // en una API tradicional. Si el DbContext se registra como Scoped puro
-        // (AddDbContext), todos los servicios Scoped del circuito (SecurityService,
-        // EfWikiDataService, etc.) terminan compartiendo LA MISMA instancia de
-        // DbContext. Como DbContext no es thread-safe ni reentrante, en cuanto dos
-        // componentes disparan awaits concurrentes sobre ese mismo contexto
-        // (típicamente en el primer render / refresh, cuando el layout, el guard de
-        // permisos y la página cargan datos casi al mismo tiempo) EF Core lanza:
-        //   "A second operation was started on this context before a previous
-        //    operation completed."
-        // y esa excepción suele quedar silenciada en algún catch/guard, dejando la
-        // UI vacía sin explicación.
-        //
-        // AddDbContextFactory registra IDbContextFactory<DaviWikiDbContext> como
-        // singleton (que es seguro de compartir) y además sigue registrando
-        // DaviWikiDbContext scoped por compatibilidad con código existente que lo
-        // inyecte directo (p. ej. el seeding en Program.cs). Los servicios que
-        // hacen I/O concurrente deben migrar a pedir el factory y crear su propio
-        // contexto por operación con CreateDbContextAsync().
-        services.AddDbContextFactory<DaviWikiDbContext>(options =>
-        {
-            switch (provider.ToUpperInvariant())
+        <div class="role-chip-list">
+            @foreach (var r in _userRoles)
             {
-                case "MYSQL":
-                    var serverVersion = ServerVersion.AutoDetect(connectionString);
-                    options.UseMySql(connectionString, serverVersion, mysql =>
-                    {
-                        mysql.MigrationsAssembly(typeof(DaviWikiDbContext).Assembly.FullName);
-                        mysql.EnableRetryOnFailure(3);
-                    });
-                    break;
-
-                case "SQLSERVER":
-                    options.UseSqlServer(connectionString, sql =>
-                    {
-                        sql.MigrationsAssembly(typeof(DaviWikiDbContext).Assembly.FullName);
-                        sql.EnableRetryOnFailure(3);
-                    });
-                    break;
-
-                case "POSTGRESQL":
-                    options.UseNpgsql(connectionString, npg =>
-                    {
-                        npg.MigrationsAssembly(typeof(DaviWikiDbContext).Assembly.FullName);
-                        npg.EnableRetryOnFailure(3);
-                    });
-                    break;
-
-                default:
-                    throw new InvalidOperationException(
-                        $"Proveedor de base de datos no soportado: '{provider}'. " +
-                        "Valores válidos: MySQL, SQLServer, PostgreSQL.");
+                <RoleBadge Role="r" Removable="_canWrite" OnRemove="() => RemoveRole(r.Id)" />
             }
-            options.LogTo(Console.WriteLine, LogLevel.Information).EnableSensitiveDataLogging();
-        });
-
-        // --- 2. Registrar el validador de Active Directory (real o simulado) ---
-        var simulateAdString = configuration["Security:SimulateAD"];
-        var simulateAd = bool.TryParse(simulateAdString, out var parsed) && parsed;
-
-        if (simulateAd)
-        {
-            services.AddScoped<IActiveDirectoryValidator, SimulatedAdService>();
-        }
-        else
-        {
-            services.AddScoped<IActiveDirectoryValidator, ActiveDirectoryService>();
-        }
-
-        // --- 3. Registrar servicios de seguridad ---
-        services.AddScoped<ISecurityService, SecurityService>();
-        services.AddScoped<IAuthenticationService, AuthenticationService>();
-
-        services.Configure<FileStorageOptions>(
-            configuration.GetSection(FileStorageOptions.SectionName));
-        services.AddHttpContextAccessor();
-
-        // --- 4. Registrar servicio de almacenamiento de archivos ---
-        var storageOptions = configuration
-            .GetSection(FileStorageOptions.SectionName)
-            .Get<FileStorageOptions>();
-
-        if (string.Equals(storageOptions?.Provider, "CloudflareR2", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(storageOptions?.Provider, "S3", StringComparison.OrdinalIgnoreCase))
-        {
-            services.AddSingleton<IAmazonS3>(_ =>
+            @if (_userRoles.Count == 0)
             {
-                var config = new AmazonS3Config
-                {
-                    ServiceURL = storageOptions.ServiceUrl,
-                    ForcePathStyle = true // requerido por R2
-                };
+                <span class="role-chip-list__empty">Sin roles asignados todavía.</span>
+            }
+        </div>
 
-                return new AmazonS3Client(storageOptions.AccessKey, storageOptions.SecretKey, config);
-            });
-
-            services.AddScoped<IFileStorageService, CloudflareR2StorageService>();
-        }
-        else
+        @if (_canWrite && _availableRoles.Any())
         {
-            services.AddScoped<IFileStorageService, LocalFileStorageService>();
+            <div class="role-assign-row">
+                <select class="input" @bind="_selectedRoleId">
+                    <option value="">Seleccioná un rol...</option>
+                    @foreach (var r in _availableRoles)
+                    {
+                        <option value="@r.Id">@r.Name</option>
+                    }
+                </select>
+                <button class="btn btn--primary btn--sm" disabled="@(_selectedRoleId == Guid.Empty)" @onclick="AssignRole">
+                    <Icon Name="plus" /> Asignar rol
+                </button>
+            </div>
         }
-
-        // --- 5. Registrar casos de uso de archivos ---
-        var allowedExtensions = new HashSet<string>(
-            storageOptions?.AllowedExtensions ?? Array.Empty<string>(),
-            StringComparer.OrdinalIgnoreCase);
-
-        services.AddScoped<UploadFileUseCase>(sp =>
-            new UploadFileUseCase(
-                sp.GetRequiredService<IFileStorageService>(),
-                storageOptions?.MaxFileSizeInBytes ?? 20 * 1024 * 1024,
-                allowedExtensions));
-
-        services.AddScoped<DeleteFileUseCase>();
-
-        return services;
-    }
+    </div>
 }
 
+@code {
+    [Parameter] public Guid UserId { get; set; }
 
+    private SecurityUser? _user;
+    private List<SecurityRole> _userRoles = new();
+    private List<SecurityRole> _allRoles = new();
+    private List<SecurityRole> _availableRoles => _allRoles.Where(r => _userRoles.All(ur => ur.Id != r.Id)).ToList();
+    private Guid _selectedRoleId = Guid.Empty;
+    private bool _loading = true;
+    private bool _canWrite;
 
-
-
-
-
-using CorpWiki.Application.Interfaces;
-using CorpWiki.Domain.Entities.Security;
-using CorpWiki.Infrastructure.Persistence;
-using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using System.Security.Claims;
-
-namespace CorpWiki.Infrastructure.Security;
-
-/// <summary>
-/// Implementación del servicio RBAC: gestión de usuarios, roles, permisos y auditoría.
-/// Ubicado en Infrastructure porque accede directamente al DbContext.
-///
-/// IMPORTANTE: este servicio es Scoped (vive todo el circuito de Blazor Server).
-/// Para evitar que dos operaciones concurrentes (p. ej. el layout pidiendo el
-/// usuario actual mientras una página carga datos) compitan por el mismo
-/// DbContext, cada método crea su propio contexto aislado vía
-/// IDbContextFactory en lugar de reutilizar un DbContext inyectado.
-/// </summary>
-public class SecurityService : ISecurityService
-{
-    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
-    private readonly ILogger<SecurityService> _logger;
-    private readonly AuthenticationStateProvider _authStateProvider;
-
-    public SecurityService(
-        IDbContextFactory<DaviWikiDbContext> dbFactory,
-        ILogger<SecurityService> logger,
-        AuthenticationStateProvider authStateProvider)
+    protected override async Task OnInitializedAsync()
     {
-        _dbFactory = dbFactory;
-        _logger = logger;
-        _authStateProvider = authStateProvider;
+        await CurrentUser.EnsureLoadedAsync();
+        _canWrite = CurrentUser.HasPermission("ADMIN", "WRITE");
+
+        _user = await SecurityService.GetUserByIdAsync(UserId);
+        _userRoles = await SecurityService.GetUserRolesAsync(UserId);
+        _allRoles = await SecurityService.GetAllRolesAsync();
+        _loading = false;
     }
 
-    // =========================================================================
-    // USUARIOS
-    // =========================================================================
-
-    public async Task<SecurityUser?> GetUserByUsernameAsync(string username)
+    private async Task AssignRole()
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityUsers
-            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-            .FirstOrDefaultAsync(u => u.Username == username);
+        if (!_canWrite || _selectedRoleId == Guid.Empty || _user is null) return;
+
+        await SecurityService.AssignRoleToUserAsync(UserId, _selectedRoleId, CurrentUser.Username);
+        var role = _allRoles.First(r => r.Id == _selectedRoleId);
+        await SecurityService.LogAuditAsync(UserId, _user.Username, "ROLE_ASSIGNED", $"Rol asignado: {role.Name}");
+
+        _selectedRoleId = Guid.Empty;
+        _userRoles = await SecurityService.GetUserRolesAsync(UserId);
     }
 
-    public async Task<SecurityUser?> GetUserByIdAsync(Guid userId)
+    private async Task RemoveRole(Guid roleId)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityUsers
-            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-            .FirstOrDefaultAsync(u => u.Id == userId);
-    }
+        if (!_canWrite || _user is null) return;
 
-    public async Task<Guid> GetCurrentUserIdAsync()
-    {
-        // No toca la base de datos: no necesita contexto.
-        var authState = await _authStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
+        var role = _allRoles.First(r => r.Id == roleId);
+        await SecurityService.RemoveRoleFromUserAsync(UserId, roleId);
+        await SecurityService.LogAuditAsync(UserId, _user.Username, "ROLE_REMOVED", $"Rol removido: {role.Name}");
 
-        if (user?.Identity == null || !user.Identity.IsAuthenticated)
-            return Guid.Empty;
-
-        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ??
-                          user.FindFirst("sub")?.Value ??
-                          user.FindFirst("UserId")?.Value;
-
-        if (!string.IsNullOrEmpty(userIdClaim) && Guid.TryParse(userIdClaim, out var userId))
-        {
-            return userId;
-        }
-
-        return Guid.Empty;
-    }
-
-    public async Task<List<SecurityUser>> GetAllUsersAsync()
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityUsers
-            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-            .OrderBy(u => u.FullName)
-            .ToListAsync();
-    }
-
-    public async Task<SecurityUser> ProvisionUserAsync(
-        string username, string peopleSoftId, string fullName, string email,
-        string department = "", string position = "")
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var user = new SecurityUser
-        {
-            Id = Guid.NewGuid(),
-            Username = username,
-            PeopleSoftId = peopleSoftId,
-            FullName = fullName,
-            Email = email,
-            Department = department,
-            Position = position,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            LastLoginAt = DateTime.UtcNow
-        };
-
-        db.SecurityUsers.Add(user);
-
-        // Asignar rol "Lector" por defecto al auto-provisionarse.
-        db.SecurityUserRoles.Add(new SecurityUserRole
-        {
-            UserId = user.Id,
-            RoleId = DatabaseSeeder.RoleIds.Reader,
-            AssignedAt = DateTime.UtcNow,
-            AssignedBy = "SYSTEM"
-        });
-
-        await db.SaveChangesAsync();
-        _logger.LogInformation("Usuario auto-provisionado: {Username} ({PeopleSoft})", username, peopleSoftId);
-
-        return user;
-    }
-
-    public async Task UpdateLastLoginAsync(Guid userId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var user = await db.SecurityUsers.FindAsync(userId);
-        if (user != null)
-        {
-            user.LastLoginAt = DateTime.UtcNow;
-            await db.SaveChangesAsync();
-        }
-    }
-
-    public async Task<bool> ToggleUserActiveAsync(Guid userId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var user = await db.SecurityUsers.FindAsync(userId);
-        if (user == null) return false;
-
-        user.IsActive = !user.IsActive;
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<bool> UpdateUserAsync(Guid userId, string fullName, string email, string department, string position, string peopleSoftId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var user = await db.SecurityUsers.FindAsync(userId);
-        if (user == null) return false;
-
-        user.FullName = fullName;
-        user.Email = email;
-        user.Department = department;
-        user.Position = position;
-        user.PeopleSoftId = peopleSoftId;
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    // =========================================================================
-    // ROLES
-    // =========================================================================
-
-    public async Task<List<SecurityRole>> GetAllRolesAsync()
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityRoles
-            .Include(r => r.UserRoles)
-            .OrderBy(r => r.Name)
-            .ToListAsync();
-    }
-
-    public async Task<SecurityRole?> GetRoleByIdAsync(Guid roleId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityRoles
-            .Include(r => r.RolePermissions).ThenInclude(rp => rp.Permission)
-            .Include(r => r.RolePermissions).ThenInclude(rp => rp.Screen)
-            .FirstOrDefaultAsync(r => r.Id == roleId);
-    }
-
-    public async Task<SecurityRole> CreateRoleAsync(string name, string description)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var role = new SecurityRole
-        {
-            Id = Guid.NewGuid(),
-            Name = name,
-            Description = description,
-            IsSystemRole = false,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        db.SecurityRoles.Add(role);
-        await db.SaveChangesAsync();
-        _logger.LogInformation("Rol creado: {RoleName}", name);
-        return role;
-    }
-
-    public async Task<bool> UpdateRoleAsync(Guid roleId, string name, string description)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var role = await db.SecurityRoles.FindAsync(roleId);
-        if (role == null || role.IsSystemRole) return false;
-
-        role.Name = name;
-        role.Description = description;
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<bool> DeleteRoleAsync(Guid roleId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var role = await db.SecurityRoles.FindAsync(roleId);
-        if (role == null || role.IsSystemRole) return false;
-
-        db.SecurityRoles.Remove(role);
-        await db.SaveChangesAsync();
-        _logger.LogInformation("Rol eliminado: {RoleName}", role.Name);
-        return true;
-    }
-
-    public async Task<bool> AssignRoleToUserAsync(Guid userId, Guid roleId, string assignedBy)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var exists = await db.SecurityUserRoles
-            .AnyAsync(ur => ur.UserId == userId && ur.RoleId == roleId);
-
-        if (exists) return false;
-
-        db.SecurityUserRoles.Add(new SecurityUserRole
-        {
-            UserId = userId,
-            RoleId = roleId,
-            AssignedAt = DateTime.UtcNow,
-            AssignedBy = assignedBy
-        });
-
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<bool> RemoveRoleFromUserAsync(Guid userId, Guid roleId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var userRole = await db.SecurityUserRoles
-            .FirstOrDefaultAsync(ur => ur.UserId == userId && ur.RoleId == roleId);
-
-        if (userRole == null) return false;
-
-        db.SecurityUserRoles.Remove(userRole);
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<List<SecurityRole>> GetUserRolesAsync(Guid userId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityUserRoles
-            .Where(ur => ur.UserId == userId)
-            .Include(ur => ur.Role)
-            .Select(ur => ur.Role)
-            .ToListAsync();
-    }
-
-    // =========================================================================
-    // PERMISOS
-    // =========================================================================
-
-    public async Task<List<SecurityPermission>> GetAllPermissionsAsync()
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityPermissions.OrderBy(p => p.Name).ToListAsync();
-    }
-
-    // =========================================================================
-    // PANTALLAS
-    // =========================================================================
-
-    public async Task<List<SecurityScreen>> GetAllScreensAsync()
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityScreens
-            .OrderBy(s => s.DisplayOrder)
-            .ToListAsync();
-    }
-
-    // =========================================================================
-    // PERMISOS POR ROL Y PANTALLA
-    // =========================================================================
-
-    public async Task<List<SecurityRolePermission>> GetRolePermissionsAsync(Guid roleId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityRolePermissions
-            .Where(rp => rp.RoleId == roleId)
-            .Include(rp => rp.Permission)
-            .Include(rp => rp.Screen)
-            .ToListAsync();
-    }
-
-    public async Task SetRolePermissionAsync(Guid roleId, Guid screenId, Guid permissionId, bool granted)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var existing = await db.SecurityRolePermissions
-            .FirstOrDefaultAsync(rp =>
-                rp.RoleId == roleId &&
-                rp.ScreenId == screenId &&
-                rp.PermissionId == permissionId);
-
-        if (granted && existing == null)
-        {
-            db.SecurityRolePermissions.Add(new SecurityRolePermission
-            {
-                RoleId = roleId,
-                PermissionId = permissionId,
-                ScreenId = screenId
-            });
-        }
-        else if (!granted && existing != null)
-        {
-            db.SecurityRolePermissions.Remove(existing);
-        }
-
-        await db.SaveChangesAsync();
-    }
-
-    public async Task<bool> UserHasPermissionAsync(Guid userId, string screenCode, string permissionCode)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityUserRoles
-            .Where(ur => ur.UserId == userId)
-            .SelectMany(ur => ur.Role.RolePermissions)
-            .AnyAsync(rp =>
-                rp.Screen.Code == screenCode &&
-                rp.Permission.Code == permissionCode);
-    }
-
-    public async Task<Dictionary<string, List<string>>> GetUserScreenPermissionsAsync(Guid userId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var permissions = await db.SecurityUserRoles
-            .Where(ur => ur.UserId == userId)
-            .SelectMany(ur => ur.Role.RolePermissions)
-            .Include(rp => rp.Screen)
-            .Include(rp => rp.Permission)
-            .Select(rp => new { ScreenCode = rp.Screen.Code, PermissionCode = rp.Permission.Code })
-            .Distinct()
-            .ToListAsync();
-
-        return permissions
-            .GroupBy(p => p.ScreenCode)
-            .ToDictionary(
-                g => g.Key,
-                g => g.Select(x => x.PermissionCode).ToList());
-    }
-
-    // =========================================================================
-    // AUDITORÍA
-    // =========================================================================
-
-    public async Task LogAuditAsync(Guid? userId, string username, string action, string details = "", string ipAddress = "")
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        db.SecurityAuditLogs.Add(new SecurityAuditLog
-        {
-            Id = Guid.NewGuid(),
-            UserId = userId,
-            Username = username,
-            Action = action,
-            Details = details,
-            IpAddress = ipAddress,
-            OccurredAt = DateTime.UtcNow
-        });
-
-        await db.SaveChangesAsync();
-    }
-
-    public async Task<List<SecurityAuditLog>> GetAuditLogsAsync(int count = 100)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.SecurityAuditLogs
-            .OrderByDescending(a => a.OccurredAt)
-            .Take(count)
-            .Include(a => a.User)
-            .ToListAsync();
+        _userRoles = await SecurityService.GetUserRolesAsync(UserId);
     }
 }
 
@@ -570,1261 +108,512 @@ public class SecurityService : ISecurityService
 
 
 
+@* Web/Components/Shared/Security/RoleBadge.razor *@
+<span class="badge badge--brand role-badge">
+    <Icon Name="shield" />
+    @Role.Name
+    @if (Removable)
+    {
+        <button type="button" class="role-badge__remove" @onclick="OnRemove" @onclick:stopPropagation title="Quitar rol">
+            <Icon Name="x" />
+        </button>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public SecurityRole Role { get; set; } = default!;
+    [Parameter] public bool Removable { get; set; }
+    [Parameter] public EventCallback OnRemove { get; set; }
+}
 
 
-using CorpWiki.Application.DTOs;
-using CorpWiki.Application.Interfaces;
-using CorpWiki.Application.Interfaces.Repositories;
-using CorpWiki.Domain.Entities;
-using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using System;
-using System.Configuration;
-using System.Threading.Tasks;
 
-namespace CorpWiki.Infrastructure.Persistence;
 
-/// <summary>
-/// Implementación EF Core del servicio principal (Paso 5).
-/// Orquesta la transaccionalidad y las relaciones complejas.
-///
-/// IMPORTANTE: este servicio es Scoped (vive todo el circuito de Blazor Server).
-/// Antes recibía un único DaviWikiDbContext también Scoped, compartido con
-/// SecurityService y con cualquier otro servicio del mismo circuito. Como
-/// DbContext no admite operaciones concurrentes, en el primer render (varios
-/// componentes disparando OnInitializedAsync casi al mismo tiempo) esto
-/// producía "A second operation was started on this context before a previous
-/// operation completed" de forma intermitente.
-///
-/// Ahora cada método público crea su propio DbContext aislado a través de
-/// IDbContextFactory. Los métodos que antes mezclaban _db con los repositorios
-/// dentro de una misma transacción (CreateArticleAsync, UpdateArticleAsync)
-/// dejaron de usar los repositorios internamente: si dos objetos usan
-/// instancias de DbContext distintas no pueden compartir una misma
-/// transacción, así que esas operaciones ahora trabajan directo sobre el
-/// DbSet del contexto local (db.Articles, etc.) para mantener la
-/// transaccionalidad intacta.
-/// </summary>
-public class EfWikiDataService : IWikiDataService
+
+
+@* Web/Components/Shared/Security/StatusBadge.razor *@
+<span class="badge @(IsActive ? "badge--success" : "badge--muted")">
+    <span class="status-dot @(IsActive ? "status-dot--active" : "status-dot--inactive")"></span>
+    @(IsActive ? "Activo" : "Inactivo")
+</span>
+
+@code {
+    [Parameter] public bool IsActive { get; set; }
+}
+
+
+
+
+
+
+@page "/admin/seguridad/usuarios"
+@attribute [Authorize(Policy = "ADMIN:READ")]
+@rendermode InteractiveServer
+@inject ISecurityService SecurityService
+@inject ICurrentUserContext CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>DaviWiki - Usuarios</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1>Gestión de Usuarios</h1>
+        <p>@_filteredUsers.Count usuarios registrados</p>
+    </div>
+    @if (_canWrite)
+    {
+        <button class="btn btn--primary" @onclick="() => _showCreateModal = true">
+            <Icon Name="plus" /> Nuevo Usuario
+        </button>
+    }
+</div>
+
+<AdminNav />
+
+<div class="admin-toolbar">
+    <div class="admin-search">
+        <Icon Name="search" />
+        <input class="input" placeholder="Buscar por nombre, usuario o email..." @bind="_searchTerm" @bind:event="oninput" />
+    </div>
+
+    <div class="pill-group">
+        <button class="pill @(_statusFilter == "all" ? "pill--active" : "")" @onclick='() => _statusFilter = "all"'>Todos</button>
+        <button class="pill @(_statusFilter == "active" ? "pill--active" : "")" @onclick='() => _statusFilter = "active"'>Activos</button>
+        <button class="pill @(_statusFilter == "inactive" ? "pill--active" : "")" @onclick='() => _statusFilter = "inactive"'>Inactivos</button>
+    </div>
+</div>
+
+@if (_loading)
 {
-    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
-    private readonly ISecurityService _securityService;
-    private readonly IArticleRepository _articleRepo;
-    private readonly ICategoryRepository _categoryRepo;
-    private readonly ITagRepository _tagRepo;
-    private readonly IAuthorRepository _authorRepo;
-    private readonly IMediaFileRepository _mediaRepo;
-    private readonly CorpWiki.Application.Helpers.ISlugGenerator _slugGenerator;
-    private readonly ICommentBroadcaster _commentBroadcaster;
-
-    public EfWikiDataService(
-        IDbContextFactory<DaviWikiDbContext> dbFactory,
-        ISecurityService securityService,
-        IArticleRepository articleRepo,
-        ICategoryRepository categoryRepo,
-        ITagRepository tagRepo,
-        IAuthorRepository authorRepo,
-        IMediaFileRepository mediaRepo,
-        CorpWiki.Application.Helpers.ISlugGenerator slugGenerator,
-        ICommentBroadcaster commentBroadcaster)
-    {
-        _dbFactory = dbFactory;
-        _securityService = securityService;
-        _articleRepo = articleRepo;
-        _categoryRepo = categoryRepo;
-        _tagRepo = tagRepo;
-        _authorRepo = authorRepo;
-        _mediaRepo = mediaRepo;
-        _slugGenerator = slugGenerator;
-        _commentBroadcaster = commentBroadcaster;
-    }
-
-    // Estos pasamanos siguen usando sus repositorios propios (no comparten
-    // transacción con nada más), así que no necesitan tocarse.
-    public async Task<IReadOnlyList<Article>> GetArticlesAsync() => await _articleRepo.GetAllAsync();
-    public async Task<Article?> GetArticleByIdAsync(Guid id, bool track = false) => await _articleRepo.GetByIdAsync(id, track);
-    public async Task<Article?> GetArticleBySlugAsync(string slug, bool track = false) => await _articleRepo.GetBySlugAsync(slug, track);
-
-    public async Task<bool> IsFavoriteAsync(Guid articleId)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty)
-            return false;
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.ArticleFavorites.AnyAsync(f => f.UserId == userId && f.ArticleId == articleId);
-    }
-
-    private static string GetInitials(string? fullName)
-    {
-        if (string.IsNullOrWhiteSpace(fullName))
-            return "US";
-
-        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return string.Join("", parts.Take(2).Select(s => s[0])).ToUpper();
-    }
-
-    public async Task IncrementArticleViewCountAsync(Guid articleId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var article = await db.Articles.FindAsync(articleId);
-        if (article != null)
-        {
-            article.ViewCount++;
-            await db.SaveChangesAsync();
-        }
-    }
-
-    public async Task<bool> ToggleFavoriteAsync(Guid articleId)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty)
-            return false;
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var favorite = await db.ArticleFavorites.FirstOrDefaultAsync(f => f.UserId == userId && f.ArticleId == articleId);
-        if (favorite != null)
-        {
-            db.ArticleFavorites.Remove(favorite);
-            await db.SaveChangesAsync();
-            return false;
-        }
-
-        var newFavorite = new ArticleFavorite
-        {
-            UserId = userId,
-            ArticleId = articleId,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        await db.ArticleFavorites.AddAsync(newFavorite);
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<bool> HasUserRatedAsync(Guid articleId)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) return false;
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.ArticleRatings
-            .AnyAsync(r => r.ArticleId == articleId && r.UserId == userId);
-    }
-
-    public async Task<double?> GetUserRatingAsync(Guid articleId)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) return null;
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var score = await db.ArticleRatings
-            .Where(r => r.ArticleId == articleId && r.UserId == userId)
-            .Select(r => (byte?)r.Score)
-            .FirstOrDefaultAsync();
-
-        // Score se guarda en unidades de 0.5 (byte 1-10) -> convertir a double real
-        return score is null ? null : score.Value / 2.0;
-    }
-
-    public async Task RateArticleAsync(Guid articleId, double score)
-    {
-        if (score < 0.5 || score > 5.0 || (score * 2) % 1 != 0)
-            throw new ArgumentOutOfRangeException(nameof(score), "La puntuación debe ir de 0.5 a 5.0 en pasos de 0.5.");
-
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty)
-            throw new UnauthorizedAccessException("Debes iniciar sesión para calificar.");
-
-        var byteScore = (byte)Math.Round(score * 2);
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var existing = await db.ArticleRatings
-            .FirstOrDefaultAsync(r => r.ArticleId == articleId && r.UserId == userId);
-
-        if (existing is null)
-        {
-            db.ArticleRatings.Add(new ArticleRating
-            {
-                Id = Guid.NewGuid(),
-                ArticleId = articleId,
-                UserId = userId,
-                Score = byteScore,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-        else
-        {
-            existing.Score = byteScore; // actualiza en lugar de duplicar o crear una nueva
-        }
-
-        await db.SaveChangesAsync();
-        await RecalculateArticleRatingAsync(db, articleId);
-    }
-
-    // Recalcular promedio (convirtiendo cada Score de unidades de 0.5 a real) y cantidad.
-    // Recibe el mismo "db" que la llamada que lo originó para no abrir un segundo
-    // contexto en medio de la misma operación lógica.
-    private async Task RecalculateArticleRatingAsync(DaviWikiDbContext db, Guid articleId)
-    {
-        var ratings = await db.ArticleRatings
-            .Where(r => r.ArticleId == articleId)
-            .Select(r => (int)r.Score)
-            .ToListAsync();
-
-        var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == articleId);
-        if (article is not null)
-        {
-            article.Rating = ratings.Count == 0 ? 0 : ratings.Average(s => s / 2.0);
-            article.RatingCount = ratings.Count;
-
-            await db.SaveChangesAsync();
-        }
-    }
-
-    public async Task<IReadOnlyList<Article>> GetFeaturedArticlesAsync(int count = 10)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var articles = await db.Articles
-            .Where(a => a.ViewCount > 0 || a.RatingCount > 0)
-            .ToListAsync();
-
-        if (articles.Count == 0) return Array.Empty<Article>();
-
-        var maxViews = articles.Max(a => a.ViewCount);
-        var maxRatingCount = articles.Max(a => a.RatingCount);
-
-        double Score(Article a)
-        {
-            var viewsNorm = maxViews == 0 ? 0 : (double)a.ViewCount / maxViews;
-            var ratingCountNorm = maxRatingCount == 0 ? 0 : (double)a.RatingCount / maxRatingCount;
-            var ratingNorm = a.Rating / 5.0;
-
-            return (viewsNorm * 0.4) + (ratingNorm * 0.4) + (ratingCountNorm * 0.2);
-        }
-
-        var topFeatured = articles
-            .OrderByDescending(Score)
-            .Take(count)
-            .ToList();
-
-        foreach (var article in topFeatured)
-        {
-            article.IsFeatured = true;
-        }
-
-        return topFeatured;
-    }
-
-    public async Task<IReadOnlyList<Article>> GetArticlesByCategoryAsync(Guid categoryId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Articles.Where(a => a.CategoryId == categoryId).AsNoTracking().ToListAsync();
-    }
-
-    public async Task<IReadOnlyList<Article>> GetArticlesByTagAsync(Guid tagId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.ArticleTags.Where(at => at.TagId == tagId)
-            .Join(db.Articles, at => at.ArticleId, a => a.Id, (at, a) => a)
-            .AsNoTracking().ToListAsync();
-    }
-
-    public async Task<IReadOnlyList<Article>> GetArticlesByAuthorAsync(Guid authorId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Articles.Where(a => a.AuthorId == authorId).AsNoTracking().ToListAsync();
-    }
-
-    public async Task<IReadOnlyList<Article>> GetRecentArticlesAsync(int count = 8)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Articles.OrderByDescending(a => a.CreatedAt).Take(count).AsNoTracking().ToListAsync();
-    }
-
-    public async Task<IReadOnlyList<Article>> GetPopularArticlesAsync(int count = 8)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Articles.OrderByDescending(a => a.ViewCount).Take(count).AsNoTracking().ToListAsync();
-    }
-
-    public async Task<IReadOnlyList<Article>> GetRelatedArticlesAsync(Guid articleId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.ArticleRelateds.Where(ar => ar.ArticleId == articleId)
-            .Join(db.Articles, ar => ar.RelatedArticleId, a => a.Id, (ar, a) => a)
-            .AsNoTracking().ToListAsync();
-    }
-
-    public async Task<ArticleCardDto> ToCardDtoAsync(Article article)
-    {
-        var category = await _categoryRepo.GetByIdAsync(article.CategoryId);
-        var author = await _authorRepo.GetByIdAsync(article.AuthorId);
-        return new ArticleCardDto { Article = article, Category = category!, Author = author! };
-    }
-
-    public async Task<IReadOnlyList<ArticleCardDto>> ToCardDtosAsync(IEnumerable<Article> articles)
-    {
-        var result = new List<ArticleCardDto>();
-        foreach (var a in articles) result.Add(await ToCardDtoAsync(a));
-        return result;
-    }
-
-    // Notifications - Fase 2
-    public Task<IReadOnlyList<NotificationItem>> GetNotificationsAsync() => Task.FromResult<IReadOnlyList<NotificationItem>>(new List<NotificationItem>());
-    public Task<int> GetUnreadNotificationsCountAsync() => Task.FromResult(0);
-    public Task MarkNotificationAsReadAsync(Guid id) => Task.CompletedTask;
-    public Task MarkAllNotificationsAsReadAsync() => Task.CompletedTask;
-
-    public async Task<IReadOnlyList<Category>> GetCategoriesAsync()
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Categories.Select(c => new Category
-        {
-            Id = c.Id,
-            Name = c.Name,
-            Slug = c.Slug,
-            Description = c.Description,
-            Icon = c.Icon,
-            Color = c.Color,
-            ArticlesCount = db.Articles.Count(a => a.CategoryId == c.Id)
-        }).ToListAsync();
-    }
-
-    public async Task<Category?> GetCategoryByIdAsync(Guid id) => await _categoryRepo.GetByIdAsync(id);
-    public async Task<Category?> GetCategoryBySlugAsync(string slug) => await _categoryRepo.GetBySlugAsync(slug);
-
-    public async Task<IReadOnlyList<Category>> GetFeaturedCategoriesAsync(int count = 8)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Categories.AsNoTracking().Select(c => new Category
-        {
-            Id = c.Id,
-            Name = c.Name,
-            Slug = c.Slug,
-            Description = c.Description,
-            Icon = c.Icon,
-            Color = c.Color,
-            IsFeatured = c.IsFeatured,
-            ArticlesCount = db.Articles.Count(a => a.CategoryId == c.Id)
-        }).OrderByDescending(c => c.ArticlesCount).Take(count).ToListAsync();
-    }
-
-    public async Task<IReadOnlyList<Tag>> GetTagsAsync() => await _tagRepo.GetAllAsync();
-    public async Task<Tag?> GetTagByIdAsync(Guid id) => await _tagRepo.GetByIdAsync(id);
-    public async Task<Tag?> GetTagBySlugAsync(string slug) => await _tagRepo.GetBySlugAsync(slug);
-
-    public async Task<IReadOnlyList<Tag>> GetPopularTagsAsync(int count = 30)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Tags.OrderByDescending(t => t.UsageCount).Take(count).AsNoTracking().ToListAsync();
-    }
-
-    public async Task<IReadOnlyList<Author>> GetAuthorsAsync()
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Authors.AsNoTracking().Select(a => new Author
-        {
-            Id = a.Id,
-            FullName = a.FullName,
-            Role = a.Role,
-            Department = a.Department,
-            Initials = a.Initials,
-            AvatarColorFrom = a.AvatarColorFrom,
-            AvatarColorTo = a.AvatarColorTo,
-            Badges = a.Badges,
-            ArticlesCount = db.Articles.Count(art => art.AuthorId == a.Id)
-        }).ToListAsync();
-    }
-
-    public async Task<Author?> GetAuthorByIdAsync(Guid id) => await _authorRepo.GetByIdAsync(id);
-
-    public async Task<Author> CreateAuthorAsync(string fullName, string email, string? avatarUrl = null, string? bio = null, string? department = null, Guid? securityUserId = null)
-    {
-        var initials = GetInitials(fullName);
-        var author = new Author
-        {
-            Id = Guid.NewGuid(),
-            FullName = fullName,
-            Initials = initials,
-            Bio = bio ?? string.Empty,
-            Department = department ?? string.Empty,
-            Role = "Lector",
-            SecurityUserId = securityUserId,
-            JoinedAt = DateTime.UtcNow
-        };
-
-        return await _authorRepo.AddAsync(author);
-    }
-
-    public async Task<MediaFile?> GetMediaFileAsync(Guid id) => await _mediaRepo.GetByIdAsync(id);
-    public async Task<MediaFile> CreateMediaFileAsync(MediaFile mediaFile) => await _mediaRepo.AddAsync(mediaFile);
-    public async Task<MediaFile> UpdateMediaFileAsync(MediaFile mediaFile) => await _mediaRepo.UpdateAsync(mediaFile);
-    public async Task<IReadOnlyList<MediaFile>> GetMediaFilesAsync() => await _mediaRepo.GetAllAsync();
-    public async Task<MediaFile?> GetMediaFileByIdAsync(Guid id) => await _mediaRepo.GetByIdAsync(id);
-    public async Task<IReadOnlyList<MediaFile>> GetMediaFilesByTypeAsync(MediaType type) => await _mediaRepo.GetByTypeAsync(type);
-
-    public async Task<Article?> UpdateArticleAsync(
-        Guid id,
-        string title,
-        string summary,
-        Guid categoryId,
-        Guid authorId,
-        Guid? coverImageMediaId,
-        bool isFeatured,
-        ArticleStatus status,
-        List<ArticleContentBlock>? content = null,
-        IEnumerable<Guid>? tagIds = null,
-        IEnumerable<Guid>? relatedArticleIds = null,
-        IEnumerable<Guid>? attachmentMediaIds = null)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var strategy = db.Database.CreateExecutionStrategy();
-
-        return await strategy.ExecuteAsync(async () =>
-        {
-            await using var transaction = await db.Database.BeginTransactionAsync();
-            try
-            {
-                // Se usa db.Articles directo (no _articleRepo) para que la lectura,
-                // el update y todo lo demás vivan en la misma transacción/contexto.
-                var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == id);
-                if (article == null) return null;
-
-                article.Title = title;
-                article.Summary = summary;
-                article.CategoryId = categoryId;
-                article.CoverImageMediaId = coverImageMediaId;
-                article.IsFeatured = isFeatured;
-                article.Status = status;
-
-                if (content != null)
+    <p>Cargando usuarios...</p>
+}
+else
+{
+    <div class="card admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Roles</th>
+                    <th>Estado</th>
+                    <th class="admin-table__actions-col">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in _filteredUsers)
                 {
-                    article.Content = content;
+                    <tr>
+                        <td>
+                            <div class="admin-table__user">
+                                <span class="avatar avatar--sm" style="background: linear-gradient(135deg, @u.AvatarColorFrom, @u.AvatarColorTo)">
+                                    @GetInitials(u.FullName)
+                                </span>
+                                <div>
+                                    <p class="admin-table__user-name">@u.FullName</p>
+                                    <p class="admin-table__user-meta">@u.Email · @u.Department</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="role-chip-list role-chip-list--compact">
+                                @foreach (var r in GetRolesFor(u.Id))
+                                {
+                                    <RoleBadge Role="r" />
+                                }
+                                @if (!GetRolesFor(u.Id).Any())
+                                {
+                                    <span class="role-chip-list__empty">Sin rol</span>
+                                }
+                            </div>
+                        </td>
+                        <td><StatusBadge IsActive="u.IsActive" /></td>
+                        <td>
+                            <div class="admin-table__actions">
+                                <button class="icon-btn icon-btn--ghost" title="Ver detalle / asignar rol" @onclick="() => GoToDetail(u.Id)">
+                                    <Icon Name="user-cog" />
+                                </button>
+                                @if (_canWrite)
+                                {
+                                    <button class="icon-btn icon-btn--ghost" title="@(u.IsActive ? "Desactivar" : "Activar")" @onclick="() => ToggleActive(u)">
+                                        <Icon Name="@(u.IsActive ? "user-x" : "user-check")" />
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
                 }
+            </tbody>
+        </table>
+    </div>
+}
 
-                await db.SaveChangesAsync();
+@code {
+    private List<SecurityUser> _users = new();
+    private Dictionary<Guid, List<SecurityRole>> _rolesByUser = new();
+    private bool _loading = true;
+    private bool _canWrite;
+    private bool _showCreateModal;
+    private string _searchTerm = "";
+    private string _statusFilter = "all";
 
-                if (tagIds != null)
-                {
-                    var incomingTags = tagIds.ToHashSet();
-                    var existingTagLinks = await db.ArticleTags
-                        .Where(at => at.ArticleId == id)
-                        .ToListAsync();
+    private IEnumerable<SecurityUser> _filteredUsers => _users
+        .Where(u => _statusFilter == "all" || (_statusFilter == "active" && u.IsActive) || (_statusFilter == "inactive" && !u.IsActive))
+        .Where(u => string.IsNullOrWhiteSpace(_searchTerm) ||
+            u.FullName.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+            u.Username.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+            u.Email.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase));
 
-                    var toRemove = existingTagLinks
-                        .Where(at => !incomingTags.Contains(at.TagId))
-                        .ToList();
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUser.EnsureLoadedAsync();
+        _canWrite = CurrentUser.HasPermission("ADMIN", "WRITE");
 
-                    if (toRemove.Count > 0)
+        _users = await SecurityService.GetAllUsersAsync();
+
+        foreach (var u in _users)
+            _rolesByUser[u.Id] = await SecurityService.GetUserRolesAsync(u.Id);
+
+        _loading = false;
+    }
+
+    private List<SecurityRole> GetRolesFor(Guid userId) =>
+        _rolesByUser.TryGetValue(userId, out var roles) ? roles : new();
+
+    private void GoToDetail(Guid id) => Navigation.NavigateTo($"/admin/seguridad/usuarios/{id}");
+
+    private async Task ToggleActive(SecurityUser u)
+    {
+        if (!_canWrite) return;
+
+        var success = await SecurityService.ToggleUserActiveAsync(u.Id);
+        if (!success) return;
+
+        var refreshed = await SecurityService.GetUserByIdAsync(u.Id);
+        if (refreshed is null) return;
+
+        u.IsActive = refreshed.IsActive;
+
+        await SecurityService.LogAuditAsync(u.Id, CurrentUser.Username,
+            u.IsActive ? "USER_ACTIVATED" : "USER_DEACTIVATED", $"Usuario afectado: {u.Username}");
+    }
+
+    private static string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "U";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1 ? parts[0][..1].ToUpper() : $"{parts[0][0]}{parts[1][0]}".ToUpper();
+    }
+}
+
+
+
+
+
+
+
+/* ===== Toolbar (búsqueda + pills) ===== */
+.admin-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-5);
+}
+
+.admin-search {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 0 var(--space-3);
+    flex: 1;
+    min-width: 240px;
+    max-width: 360px;
+}
+.admin-search .input {
+    border: none;
+    background: transparent;
+    padding-left: 0;
+}
+.admin-search .input:focus { box-shadow: none; }
+
+.pill-group { display: flex; gap: var(--space-2); }
+.pill {
+    padding: 6px var(--space-4);
+    border-radius: var(--radius-full);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.pill:hover { background: var(--bg-surface-3); }
+.pill--active {
+    background: var(--brand-500);
+    border-color: var(--brand-500);
+    color: white;
+}
+
+/* ===== Tabla de administración ===== */
+.admin-table-wrap { overflow-x: auto; }
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.admin-table thead th {
+    text-align: left;
+    padding: var(--space-3);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--border-default);
+}
+.admin-table tbody td {
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+}
+.admin-table tbody tr {
+    transition: background var(--transition-fast);
+}
+.admin-table tbody tr:hover { background: var(--bg-hover); }
+
+.admin-table__user { display: flex; align-items: center; gap: var(--space-3); }
+.admin-table__user-name { font-weight: 600; font-size: var(--fs-sm); color: var(--text-primary); }
+.admin-table__user-meta { font-size: var(--fs-xs); color: var(--text-tertiary); }
+.admin-table__actions { display: flex; gap: var(--space-1); }
+.admin-table__actions-col { width: 100px; }
+
+/* ===== Role badges con botón de quitar ===== */
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.role-badge__remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    transition: background var(--transition-fast);
+}
+.role-badge__remove:hover { background: rgba(0,0,0,0.15); }
+
+.role-chip-list--compact { gap: var(--space-1); margin-bottom: 0; }
+
+/* ===== Badge de estado (Activo/Inactivo) ===== */
+.badge--success { background: rgba(34,197,94,0.12); color: #16A34A; }
+.badge--muted { background: var(--bg-surface-3); color: var(--text-tertiary); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.status-dot--active { background: #16A34A; }
+.status-dot--inactive { background: var(--text-tertiary); }
+
+/* ===== Tarjetas de rol expandibles ===== */
+.role-card {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-3);
+    overflow: hidden;
+    transition: border-color var(--transition-fast);
+}
+.role-card:hover { border-color: var(--border-default); }
+.role-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4);
+    cursor: pointer;
+}
+.role-card__body {
+    padding: 0 var(--space-4) var(--space-4);
+    border-top: 1px solid var(--border-subtle);
+    animation: expandIn var(--transition-base) ease;
+}
+@keyframes expandIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Modal ===== */
+.modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+    padding: var(--space-4);
+}
+.modal-panel {
+    background: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    max-width: 560px;
+    width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow-md);
+}
+.modal-panel__header {
+    padding: var(--space-5);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.modal-panel__body {
+    padding: var(--space-5);
+    overflow-y: auto;
+}
+.modal-panel__footer {
+    padding: var(--space-4) var(--space-5);
+    border-top: 1px solid var(--border-subtle);
+    display: flex; justify-content: flex-end; gap: var(--space-2);
+}
+
+.permission-group {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    margin-bottom: var(--space-3);
+}
+.permission-group__header {
+    display: flex; align-items: center; gap: var(--space-2);
+    font-weight: 600;
+    margin-bottom: var(--space-2);
+}
+.permission-group__count {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    margin-left: auto;
+}
+.permission-checkbox-row {
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: 4px 0;
+    font-size: var(--fs-sm);
+}
+
+
+
+
+
+
+
+@* Web/Components/Shared/Security/CreateRoleModal.razor *@
+<div class="modal-overlay" @onclick="Close">
+    <div class="modal-panel" @onclick:stopPropagation>
+        <div class="modal-panel__header">
+            <h3>Crear Rol</h3>
+            <button class="icon-btn icon-btn--ghost" @onclick="Close"><Icon Name="x" /></button>
+        </div>
+
+        <div class="modal-panel__body">
+            <div class="form-group">
+                <label class="form-label">Nombre del Rol <span class="form-required">*</span></label>
+                <input class="input" @bind="_name" placeholder="Ej: Certificador de Contenido" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Descripción</label>
+                <input class="input" @bind="_description" placeholder="¿Qué hace este rol?" />
+            </div>
+
+            <label class="form-label" style="margin-top: var(--space-4); display:block">Permisos por pantalla</label>
+
+            @foreach (var screen in _screens)
+            {
+                var screenPerms = _permissions.Select(p => (screen.Id, p.Id)).ToList();
+                var checkedCount = screenPerms.Count(k => _selected.Contains(k));
+
+                <div class="permission-group">
+                    <div class="permission-group__header">
+                        <input type="checkbox"
+                               checked="@(checkedCount == _permissions.Count)"
+                               @onchange="@(e => ToggleGroup(screen, (bool)e.Value!))" />
+                        <span>@screen.Name</span>
+                        <span class="permission-group__count">(@checkedCount/@_permissions.Count)</span>
+                    </div>
+
+                    @foreach (var perm in _permissions)
                     {
-                        db.ArticleTags.RemoveRange(toRemove);
+                        var key = (screen.Id, perm.Id);
+                        <label class="permission-checkbox-row">
+                            <input type="checkbox" checked="@_selected.Contains(key)" @onchange="@(e => ToggleOne(key, (bool)e.Value!))" />
+                            @perm.Name
+                        </label>
                     }
-
-                    var existingTagIds = existingTagLinks.Select(at => at.TagId).ToHashSet();
-                    var newTags = incomingTags
-                        .Except(existingTagIds)
-                        .Select(tId => new ArticleTag { ArticleId = id, TagId = tId });
-
-                    if (newTags.Any())
-                    {
-                        await db.ArticleTags.AddRangeAsync(newTags);
-                    }
-
-                    await db.SaveChangesAsync();
-                }
-
-                if (relatedArticleIds != null)
-                {
-                    var incomingRelated = relatedArticleIds.ToHashSet();
-                    await db.ArticleRelateds
-                        .Where(ar => ar.ArticleId == id && !incomingRelated.Contains(ar.RelatedArticleId))
-                        .ExecuteDeleteAsync();
-
-                    var existingRelated = await db.ArticleRelateds
-                        .Where(ar => ar.ArticleId == id).Select(ar => ar.RelatedArticleId).ToListAsync();
-
-                    var newRelated = incomingRelated.Except(existingRelated)
-                        .Select(rId => new ArticleRelated { ArticleId = id, RelatedArticleId = rId });
-
-                    if (newRelated.Any())
-                    {
-                        await db.ArticleRelateds.AddRangeAsync(newRelated);
-                        await db.SaveChangesAsync();
-                    }
-                }
-
-                if (attachmentMediaIds != null)
-                {
-                    var incomingAttachments = attachmentMediaIds.ToHashSet();
-                    await db.ArticleAttachments
-                        .Where(aa => aa.ArticleId == id && !incomingAttachments.Contains(aa.MediaFileId))
-                        .ExecuteDeleteAsync();
-
-                    var existingAttachments = await db.ArticleAttachments
-                        .Where(aa => aa.ArticleId == id).Select(aa => aa.MediaFileId).ToListAsync();
-
-                    var newAttachments = incomingAttachments.Except(existingAttachments)
-                        .Select(mId => new ArticleAttachment { ArticleId = id, MediaFileId = mId });
-
-                    if (newAttachments.Any())
-                    {
-                        await db.ArticleAttachments.AddRangeAsync(newAttachments);
-                        await db.SaveChangesAsync();
-                    }
-                }
-
-                await transaction.CommitAsync();
-                await PopulateNotMappedListsAsync(db, article);
-
-                return article;
+                </div>
             }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
-        });
+        </div>
+
+        <div class="modal-panel__footer">
+            <button class="btn btn--ghost" @onclick="Close">Cancelar</button>
+            <button class="btn btn--primary" disabled="@string.IsNullOrWhiteSpace(_name)" @onclick="Create">
+                <Icon Name="check-circle" /> Crear Rol
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnCreated { get; set; }
+    [Inject] private ISecurityService SecurityService { get; set; } = default!;
+    [Inject] private ICurrentUserContext CurrentUser { get; set; } = default!;
+
+    private string _name = "";
+    private string _description = "";
+    private List<SecurityScreen> _screens = new();
+    private List<SecurityPermission> _permissions = new();
+    private HashSet<(Guid, Guid)> _selected = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _screens = (await SecurityService.GetAllScreensAsync()).OrderBy(s => s.DisplayOrder).ToList();
+        _permissions = await SecurityService.GetAllPermissionsAsync();
     }
 
-    public async Task<bool> DeleteMediaFileAsync(Guid id)
+    private void ToggleGroup(SecurityScreen screen, bool value)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var mediaFile = await db.MediaFiles.FindAsync(id);
-        if (mediaFile is null)
-            return false;
-
-        db.MediaFiles.Remove(mediaFile);
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<Article> CreateArticleAsync(
-        string title,
-        string summary,
-        Guid categoryId,
-        Guid authorId,
-        Guid? coverImageMediaId,
-        bool isFeatured,
-        ArticleStatus status,
-        List<ArticleContentBlock>? content = null,
-        IEnumerable<Guid>? tagIds = null,
-        IEnumerable<Guid>? relatedArticleIds = null,
-        IEnumerable<Guid>? attachmentMediaIds = null)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var strategy = db.Database.CreateExecutionStrategy();
-
-        return await strategy.ExecuteAsync(async () =>
+        foreach (var p in _permissions)
         {
-            await using var transaction = await db.Database.BeginTransactionAsync();
-            try
-            {
-                var article = new Article
-                {
-                    Id = Guid.NewGuid(),
-                    Title = title,
-                    Summary = summary,
-                    CategoryId = categoryId,
-                    AuthorId = authorId,
-                    CoverImageMediaId = coverImageMediaId,
-                    IsFeatured = isFeatured,
-                    Status = status,
-                    Content = content ?? new List<ArticleContentBlock>()
-                };
-
-                db.Articles.Add(article);
-                await db.SaveChangesAsync();
-
-                if (tagIds != null && tagIds.Any())
-                {
-                    await db.ArticleTags.AddRangeAsync(tagIds.Select(tId => new ArticleTag { ArticleId = article.Id, TagId = tId }));
-                    await db.SaveChangesAsync();
-                }
-
-                if (relatedArticleIds != null && relatedArticleIds.Any())
-                {
-                    await db.ArticleRelateds.AddRangeAsync(relatedArticleIds.Select(rId => new ArticleRelated { ArticleId = article.Id, RelatedArticleId = rId }));
-                    await db.SaveChangesAsync();
-                }
-
-                if (attachmentMediaIds != null && attachmentMediaIds.Any())
-                {
-                    await db.ArticleAttachments.AddRangeAsync(attachmentMediaIds.Select(mId => new ArticleAttachment { ArticleId = article.Id, MediaFileId = mId }));
-                    await db.SaveChangesAsync();
-                }
-
-                await transaction.CommitAsync();
-                await PopulateNotMappedListsAsync(db, article);
-                return article;
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
-        });
-    }
-
-    private async Task PopulateNotMappedListsAsync(DaviWikiDbContext db, Article article)
-    {
-        article.TagIds = await db.ArticleTags.Where(at => at.ArticleId == article.Id).Select(at => at.TagId).ToListAsync();
-        article.RelatedArticleIds = await db.ArticleRelateds.Where(ar => ar.ArticleId == article.Id).Select(ar => ar.RelatedArticleId).ToListAsync();
-        article.AttachmentMediaIds = await db.ArticleAttachments.Where(aa => aa.ArticleId == article.Id).Select(aa => aa.MediaFileId).ToListAsync();
-    }
-
-    private async Task PopulateCollectionArticleIdAsync(DaviWikiDbContext db, Collection collection)
-    {
-        collection.ArticleIds = await db.CollectionArticles
-            .Where(ca => ca.CollectionId == collection.Id)
-            .Select(ca => ca.ArticleId)
-            .ToListAsync();
-    }
-
-    public async Task<IReadOnlyList<CommentDto>> GetCommentsByArticleAsync(Guid articleId)
-    {
-        var currentUserId = await _securityService.GetCurrentUserIdAsync();
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var all = await db.ArticleComments
-            .Include(c => c.User)
-            .Where(c => c.ArticleId == articleId)
-            .OrderBy(c => c.CreatedAt)
-            .ToListAsync();
-
-        if (all.Count == 0) return new List<CommentDto>();
-
-        var likeCounts = await db.ArticleCommentLikes
-            .Where(l => db.ArticleComments.Any(c => c.Id == l.CommentId && c.ArticleId == articleId))
-            .GroupBy(l => l.CommentId)
-            .Select(g => new { CommentId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.CommentId, x => x.Count);
-
-        var likedByMe = currentUserId != Guid.Empty
-            ? (await db.ArticleCommentLikes
-                .Where(l => l.UserId == currentUserId && db.ArticleComments.Any(c => c.Id == l.CommentId && c.ArticleId == articleId))
-                .Select(l => l.CommentId)
-                .ToListAsync()).ToHashSet()
-            : new HashSet<Guid>();
-
-        // Mapa comentario -> raiz de su hilo, y comentario -> autor (para menciones)
-        var byId = all.ToDictionary(c => c.Id);
-        Guid GetRootId(ArticleComment c)
-        {
-            var current = c;
-            while (current.ParentCommentId is Guid pid && byId.TryGetValue(pid, out var parent))
-                current = parent;
-            return current.Id;
-        }
-
-        CommentDto Map(ArticleComment c)
-        {
-            var dto = new CommentDto
-            {
-                Id = c.Id,
-                ParentCommentId = c.ParentCommentId,
-                Content = c.Content,
-                CreatedAt = c.CreatedAt,
-                UpdatedAt = c.UpdatedAt,
-                AuthorName = c.User?.FullName ?? "Usuario",
-                AuthorInitials = GetInitials(c.User?.FullName),
-                AuthorColorFrom = c.User?.AvatarColorFrom ?? "#6366f1",
-                AuthorColorTo = c.User?.AvatarColorTo ?? "#8b5cf6",
-                LikesCount = likeCounts.TryGetValue(c.Id, out var lc) ? lc : 0,
-                IsLikedByCurrentUser = likedByMe.Contains(c.Id),
-                CanEditOrDelete = currentUserId != Guid.Empty && c.UserId == currentUserId,
-                UserId = c.UserId
-            };
-            return dto;
-        }
-
-        var roots = all.Where(c => c.ParentCommentId == null)
-            .OrderBy(c => c.CreatedAt)
-            .Select(Map)
-            .ToList();
-
-        var rootsById = roots.ToDictionary(r => r.Id);
-        // Aplanar: cualquier comentario cuya raiz de hilo sea un root, va a Replies de ese root
-        foreach (var c in all.Where(c => c.ParentCommentId != null).OrderBy(c => c.CreatedAt))
-        {
-            var rootId = GetRootId(c);
-            if (!rootsById.TryGetValue(rootId, out var rootDto)) continue;
-            var replyDto = Map(c);
-            // Si respondió a otra respuesta (no a la raíz), guardar mención
-            if (c.ParentCommentId != rootId && byId.TryGetValue(c.ParentCommentId!.Value, out var directParent))
-            {
-                replyDto.ReplyingToCommentId = directParent.Id;
-                replyDto.ReplyingToAuthorName = directParent.User?.FullName ?? "Usuario";
-            }
-            rootDto.Replies.Add(replyDto);
-        }
-
-        return roots;
-    }
-
-    public async Task<CommentDto> CreateCommentAsync(Guid articleId, Guid? parentCommentId, string content)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) throw new InvalidOperationException("Usuario no autenticado.");
-        if (string.IsNullOrWhiteSpace(content)) throw new ArgumentException("El comentario no puede estar vacio.");
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var comment = new ArticleComment
-        {
-            Id = Guid.NewGuid(),
-            ArticleId = articleId,
-            UserId = userId,
-            ParentCommentId = parentCommentId,
-            Content = content.Trim(),
-            CreatedAt = DateTime.UtcNow,
-            IsDeleted = false
-        };
-
-        db.ArticleComments.Add(comment);
-        await db.SaveChangesAsync();
-        await CreateNotificationForNewCommentAsync(db, comment, userId);
-
-        var saved = await db.ArticleComments.Include(c => c.User)
-            .FirstAsync(c => c.Id == comment.Id);
-
-        var dto = new CommentDto
-        {
-            Id = saved.Id,
-            ParentCommentId = saved.ParentCommentId,
-            Content = saved.Content,
-            CreatedAt = saved.CreatedAt,
-            UserId = saved.UserId,
-            AuthorName = saved.User?.FullName ?? "Usuario",
-            AuthorInitials = GetInitials(saved.User?.FullName),
-            AuthorColorFrom = saved.User?.AvatarColorFrom ?? "#6366f1",
-            AuthorColorTo = saved.User?.AvatarColorTo ?? "#8b5cf6",
-            CanEditOrDelete = true
-        };
-
-        await _commentBroadcaster.CommentAddedAsync(articleId, dto);
-        return dto;
-    }
-
-    public async Task<bool> UpdateCommentAsync(Guid commentId, string content)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) return false;
-        if (string.IsNullOrWhiteSpace(content)) return false;
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var comment = await db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
-        if (comment is null || comment.UserId != userId) return false;
-
-        comment.Content = content.Trim();
-        comment.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-
-        var updated = await db.ArticleComments.Include(c => c.User).FirstAsync(c => c.Id == commentId);
-        var likesCount = await db.ArticleCommentLikes.CountAsync(l => l.CommentId == commentId);
-        var isLikedByCurrentUser = await db.ArticleCommentLikes.AnyAsync(l => l.CommentId == commentId && l.UserId == userId);
-
-        var dto = new CommentDto
-        {
-            Id = updated.Id,
-            ParentCommentId = updated.ParentCommentId,
-            Content = updated.Content,
-            CreatedAt = updated.CreatedAt,
-            UpdatedAt = updated.UpdatedAt,
-            UserId = updated.UserId,
-            AuthorName = updated.User?.FullName ?? "Usuario",
-            AuthorInitials = GetInitials(updated.User?.FullName),
-            AuthorColorFrom = updated.User?.AvatarColorFrom ?? "#6366f1",
-            AuthorColorTo = updated.User?.AvatarColorTo ?? "#8b5cf6",
-            LikesCount = likesCount,
-            IsLikedByCurrentUser = isLikedByCurrentUser,
-            CanEditOrDelete = true,
-        };
-
-        await _commentBroadcaster.CommentUpdatedAsync(updated.ArticleId, dto);
-        return true;
-    }
-
-    public async Task<bool> DeleteCommentAsync(Guid commentId)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) return false;
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var root = await db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
-        if (root is null || root.UserId != userId) return false;
-
-        var allInArticle = await db.ArticleComments
-            .Where(c => c.ArticleId == root.ArticleId)
-            .ToListAsync();
-
-        var toDelete = new List<ArticleComment> { root };
-        var frontier = new HashSet<Guid> { root.Id };
-
-        while (frontier.Count > 0)
-        {
-            var children = allInArticle
-                .Where(c => c.ParentCommentId is Guid pid && frontier.Contains(pid))
-                .ToList();
-
-            if (children.Count == 0) break;
-
-            toDelete.AddRange(children);
-            frontier = children.Select(c => c.Id).ToHashSet();
-        }
-
-        var articleId = root.ArticleId;
-
-        // La transacción manual debe envolverse en la execution strategy configurada
-        // (EnableRetryOnFailure), o EF Core rechaza el BeginTransactionAsync directo.
-        var strategy = db.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
-        {
-            await using var tx = await db.Database.BeginTransactionAsync();
-            try
-            {
-                for (int i = toDelete.Count - 1; i >= 0; i--)
-                {
-                    db.ArticleComments.Remove(toDelete[i]);
-                    await db.SaveChangesAsync();
-                }
-
-                await tx.CommitAsync();
-            }
-            catch
-            {
-                await tx.RollbackAsync();
-                throw;
-            }
-        });
-
-        var deletedIds = toDelete.Select(c => c.Id).ToArray();
-        await _commentBroadcaster.CommentDeletedAsync(articleId, deletedIds);
-        return true;
-    }
-
-    public async Task<bool> ToggleCommentLikeAsync(Guid commentId)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) return false;
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var existing = await db.ArticleCommentLikes
-            .FirstOrDefaultAsync(l => l.CommentId == commentId && l.UserId == userId);
-
-        bool liked;
-        if (existing != null)
-        {
-            db.ArticleCommentLikes.Remove(existing);
-            liked = false;
-        }
-        else
-        {
-            db.ArticleCommentLikes.Add(new ArticleCommentLike
-            {
-                CommentId = commentId,
-                UserId = userId,
-                CreatedAt = DateTime.UtcNow
-            });
-            liked = true;
-        }
-
-        await db.SaveChangesAsync();
-
-        if (liked)
-        {
-            var comment = await db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
-            if (comment != null && comment.UserId != userId)
-            {
-                db.Notifications.Add(new Notification
-                {
-                    Id = Guid.NewGuid(),
-                    RecipientUserId = comment.UserId,
-                    ActorUserId = userId,
-                    CommentId = comment.Id,
-                    Type = NotificationType.CommentLike,
-                    CreatedAt = DateTime.UtcNow
-                });
-
-                await db.SaveChangesAsync();
-            }
-        }
-
-        var likesCount = await db.ArticleCommentLikes.CountAsync(l => l.CommentId == commentId);
-        var articleId = (await db.ArticleComments.FirstAsync(c => c.Id == commentId)).ArticleId;
-        await _commentBroadcaster.CommentLikeToggledAsync(articleId, commentId, likesCount, userId, liked);
-        return liked;
-    }
-
-    private async Task CreateNotificationForNewCommentAsync(DaviWikiDbContext db, ArticleComment comment, Guid actorUserId)
-    {
-        if (comment.ParentCommentId is null)
-        {
-            var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == comment.ArticleId);
-            if (article is null) return;
-
-            var author = await db.Authors.FirstOrDefaultAsync(a => a.Id == article.AuthorId);
-            if (author?.SecurityUserId is not Guid recipientId || recipientId == actorUserId) return;
-
-            db.Notifications.Add(new Notification
-            {
-                Id = Guid.NewGuid(),
-                RecipientUserId = recipientId,
-                ActorUserId = actorUserId,
-                CommentId = comment.Id,
-                Type = NotificationType.CommentOnArticle,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            await db.SaveChangesAsync();
-        }
-        else
-        {
-            var parent = await db.ArticleComments.FirstOrDefaultAsync(c => c.Id == comment.ParentCommentId);
-            if (parent is null || parent.UserId == actorUserId) return;
-
-            db.Notifications.Add(new Notification
-            {
-                Id = Guid.NewGuid(),
-                RecipientUserId = parent.UserId,
-                ActorUserId = actorUserId,
-                CommentId = comment.Id,
-                Type = NotificationType.ReplyToComment,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            await db.SaveChangesAsync();
+            var key = (screen.Id, p.Id);
+            if (value) _selected.Add(key); else _selected.Remove(key);
         }
     }
 
-    public async Task<IReadOnlyList<Collection>> GetCollectionsAsync()
+    private void ToggleOne((Guid, Guid) key, bool value)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Collections.ToListAsync();
+        if (value) _selected.Add(key); else _selected.Remove(key);
     }
 
-    public async Task<Collection?> GetCollectionBySlugAsync(string slug)
+    private async Task Create()
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var collection = await db.Collections.FirstOrDefaultAsync(c => c.Slug == slug);
-        if (collection != null) await PopulateCollectionArticleIdAsync(db, collection);
-        return collection;
-    }
+        if (string.IsNullOrWhiteSpace(_name)) return;
 
-    public Task<IReadOnlyList<Collection>> GetFeaturedCollectionsAsync(int count = 6) => Task.FromResult<IReadOnlyList<Collection>>(new List<Collection>());
-    public Task<IReadOnlyList<NewsItem>> GetNewsAsync(int count = 5) => Task.FromResult<IReadOnlyList<NewsItem>>(new List<NewsItem>());
-    public Task<IReadOnlyList<ActivityItem>> GetRecentActivityAsync(int count = 20) => Task.FromResult<IReadOnlyList<ActivityItem>>(new List<ActivityItem>());
+        var role = await SecurityService.CreateRoleAsync(_name.Trim(), _description.Trim());
 
-    public async Task<IReadOnlyList<Article>> GetHistoryArticlesAsync(int count = 20)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty)
-            return new List<Article>();
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var query = from h in db.ArticleHistories
-                    where h.UserId == userId
-                    group h by h.ArticleId into g
-                    select new { ArticleId = g.Key, LastViewedAt = g.Max(h => h.ViewedAt) };
-
-        var ordered = from lv in query
-                      join a in db.Articles on lv.ArticleId equals a.Id
-                      orderby lv.LastViewedAt descending
-                      select a;
-
-        var articles = await ordered.Take(count).ToListAsync();
-
-        foreach (var article in articles)
-            await PopulateNotMappedListsAsync(db, article);
-
-        return articles;
-    }
-
-    public async Task RegisterArticleViewAsync(Guid articleId)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty) return;
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var existing = await db.ArticleHistories
-            .FirstOrDefaultAsync(h => h.UserId == userId && h.ArticleId == articleId);
-
-        if (existing != null)
-            existing.ViewedAt = DateTime.UtcNow;
-        else
-            db.ArticleHistories.Add(new ArticleHistory
-            {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                ArticleId = articleId,
-                ViewedAt = DateTime.UtcNow
-            });
-
-        await db.SaveChangesAsync();
-    }
-
-    public async Task<IReadOnlyDictionary<Guid, DateTime>> GetHistoryLastViewAsync(int count = 20)
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty)
-            return new Dictionary<Guid, DateTime>();
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var lastViews = await db.ArticleHistories
-            .Where(h => h.UserId == userId)
-            .GroupBy(h => h.ArticleId)
-            .Select(g => new { ArticleId = g.Key, LastViewedAt = g.Max(h => h.ViewedAt) })
-            .OrderByDescending(x => x.LastViewedAt)
-            .Take(count)
-            .ToListAsync();
-
-        return lastViews.ToDictionary(x => x.ArticleId, x => x.LastViewedAt);
-    }
-
-    public async Task<IReadOnlyList<Article>> GetFavoriteArticlesAsync()
-    {
-        var userId = await _securityService.GetCurrentUserIdAsync();
-        if (userId == Guid.Empty)
-            return new List<Article>();
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var favoriteArticles = await db.ArticleFavorites.Include(f => f.Article)
-            .Where(f => f.UserId == userId).OrderByDescending(f => f.CreatedAt).Select(f => f.Article).ToListAsync();
-
-        foreach (var article in favoriteArticles)
+        foreach (var (screenId, permId) in _selected)
         {
-            await PopulateNotMappedListsAsync(db, article);
+            await SecurityService.SetRolePermissionAsync(role.Id, screenId, permId, true);
         }
 
-        return favoriteArticles;
+        await SecurityService.LogAuditAsync(null, CurrentUser.Username, "ROLE_CREATED",
+            $"Rol creado: {role.Name} con {_selected.Count} permiso(s).");
+
+        await OnCreated.InvokeAsync();
+        await Close();
     }
 
-    public async Task<StatsSnapshot> GetStatsAsync()
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
+    private async Task Close() => await OnClose.InvokeAsync();
+}
 
-        var totalArticles = await db.Articles.CountAsync();
-        var totalCategories = await db.Categories.CountAsync();
-        var totalTags = await db.Tags.CountAsync();
-        var totalMediaFiles = await db.MediaFiles.CountAsync();
-        var totalAuthors = await db.Authors.CountAsync();
-        var totalViews = await db.Articles.SumAsync(a => (int?)a.ViewCount) ?? 0;
-        var featureArticles = await db.Articles.CountAsync(a => a.IsFeatured);
 
-        return new StatsSnapshot
-        {
-            TotalArticles = totalArticles,
-            TotalCategories = totalCategories,
-            TotalTags = totalTags,
-            TotalMediaFiles = totalMediaFiles,
-            TotalAuthors = totalAuthors,
-            TotalViews = totalViews,
-            FeaturedArticles = featureArticles,
-            WeeklyActivity = new List<WeeklyActivityPoint>() // Actividad semanal (Verificar en BD si existe!)
-        };
-    }
 
-    public async Task<IReadOnlyList<SearchResultDto>> SearchAsync(string query, int maxResults = 20)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
 
-        var articles = await db.Articles
-            .Where(a => EF.Functions.Like(a.SearchText, $"%{query}%"))
-            .AsNoTracking()
-            .Take(maxResults)
-            .ToListAsync();
-
-        var results = new List<SearchResultDto>();
-        foreach (var a in articles)
-        {
-            results.Add(new SearchResultDto { Title = a.Title, Subtitle = a.Summary, Url = $"/articulo/{a.Slug}", Icon = "file-text" });
-        }
-
-        return results;
-    }
-
-    public async Task<Category> CreateCategoryAsync(string name, string description, string icon, string color)
-    {
-        var category = new Category { Id = Guid.NewGuid(), Name = name, Description = description, Icon = icon, Color = color, Slug = _slugGenerator.GenerateSlug(name) };
-        return await _categoryRepo.AddAsync(category);
-    }
-
-    public async Task<Category?> UpdateCategoryAsync(Guid id, string name, string description, string icon, string color)
-    {
-        var cat = await _categoryRepo.GetByIdAsync(id);
-        if (cat == null) return null;
-        cat.Name = name; cat.Description = description; cat.Icon = icon; cat.Color = color;
-        return await _categoryRepo.UpdateAsync(cat);
-    }
-
-    public async Task<Tag?> UpdateTagAsync(Guid id, string name)
-    {
-        var tag = await _tagRepo.GetByIdAsync(id);
-        if (tag == null) return null;
-
-        var trimmedName = name.Trim();
-        tag.Name = trimmedName;
-        tag.Slug = trimmedName.ToLowerInvariant().Replace(" ", "-");
-
-        return await _tagRepo.UpdateAsync(tag);
-    }
-
-    public async Task<Collection?> UpdateCollectionAsync(Guid id, string name, string description, string icon, string coverImageUrl)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var collection = await db.Collections.FindAsync(id);
-        if (collection == null) return null;
-
-        collection.Name = name.Trim();
-        collection.Slug = Slugify(name);
-        collection.Description = description?.Trim() ?? string.Empty;
-        collection.Icon = string.IsNullOrWhiteSpace(icon) ? "library" : icon;
-        collection.CoverImageUrl = coverImageUrl?.Trim() ?? string.Empty;
-
-        await db.SaveChangesAsync();
-        return collection;
-    }
-
-    public async Task<bool> DeleteCollectionAsync(Guid id)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var collection = await db.Collections.FindAsync(id);
-        if (collection == null) return false;
-
-        db.Collections.Remove(collection); // cascade elimina collection_articles
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<Collection?> GetCollectionByIdAsync(Guid id)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Collections.FindAsync(id);
-    }
-
-    public async Task<IReadOnlyList<Article>> GetArticlesInCollectionAsync(Guid collectionId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var articleIds = await db.CollectionArticles
-            .Where(ca => ca.CollectionId == collectionId)
-            .Select(ca => ca.ArticleId)
-            .ToListAsync();
-
-        var articles = await db.Articles
-            .Where(a => articleIds.Contains(a.Id))
-            .ToListAsync();
-
-        foreach (var article in articles)
-            await PopulateNotMappedListsAsync(db, article);
-
-        return articles;
-    }
-
-    public async Task<bool> RemoveArticleFromCollectionAsync(Guid collectionId, Guid articleId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var link = await db.CollectionArticles
-            .FirstOrDefaultAsync(ca => ca.CollectionId == collectionId && ca.ArticleId == articleId);
-        if (link == null) return false;
-
-        db.CollectionArticles.Remove(link);
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<bool> AddArticleToCollectionAsync(Guid collectionId, Guid articleId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var exists = await db.CollectionArticles
-            .AnyAsync(ca => ca.CollectionId == collectionId && ca.ArticleId == articleId);
-        if (exists) return false;
-
-        db.CollectionArticles.Add(new CollectionArticle { CollectionId = collectionId, ArticleId = articleId });
-        await db.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<Collection> CreateCollectionAsync(string name, string description, string icon, string coverImageUrl)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var collection = new Collection
-        {
-            Id = Guid.NewGuid(),
-            Name = name.Trim(),
-            Slug = Slugify(name),
-            Description = description?.Trim() ?? string.Empty,
-            Icon = string.IsNullOrWhiteSpace(icon) ? "library" : icon,
-            CoverImageUrl = coverImageUrl?.Trim() ?? string.Empty,
-            ArticleIds = new List<Guid>(),
-            IsFeatured = false
-        };
-
-        db.Collections.Add(collection);
-        await db.SaveChangesAsync();
-
-        return collection;
-    }
-
-    private static string Slugify(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
-
-        var s = value.Trim().ToLowerInvariant();
-        var sb = new System.Text.StringBuilder();
-
-        foreach (var c in s)
-        {
-            if (char.IsLetterOrDigit(c))
-            {
-                sb.Append(c);
-            }
-            else if (sb.Length > 0 && sb[sb.Length - 1] != '-')
-            {
-                sb.Append('-');
-            }
-        }
-
-        return sb.ToString().Trim('-');
-    }
-
-    public async Task<Tag> CreateTagAsync(string name)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        var trimmedName = name.Trim();
-        var slug = trimmedName.ToLowerInvariant().Replace(" ", "-");
-
-        var newTag = new Tag
-        {
-            Id = Guid.NewGuid(),
-            Name = trimmedName,
-            Slug = slug
-        };
-
-        db.Tags.Add(newTag);
-        await db.SaveChangesAsync();
-
-        return newTag;
-    }
+@if (_showCreateModal)
+{
+    <CreateRoleModal OnClose="() => _showCreateModal = false" OnCreated="ReloadRoles" />
 }
