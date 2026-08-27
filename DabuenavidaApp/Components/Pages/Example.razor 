@@ -1,0 +1,450 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using WikiEngine.Data;
+using WikiEngine.Models;
+using WikiEngine.Services;
+
+namespace WikiEngine.Services
+{
+    public class EfWikiDataService : IWikiDataService
+    {
+        private readonly WikiDbContext _db;
+        private readonly IRepository<Article> _articleRepo;
+        private readonly IRepository<Category> _categoryRepo;
+        private readonly IRepository<Tag> _tagRepo;
+        private readonly ISlugGenerator _slugGenerator;
+
+        public EfWikiDataService(
+            WikiDbContext db,
+            IRepository<Article> articleRepo,
+            IRepository<Category> categoryRepo,
+            IRepository<Tag> tagRepo,
+            ISlugGenerator slugGenerator)
+        {
+            _db = db;
+            _articleRepo = articleRepo;
+            _categoryRepo = categoryRepo;
+            _tagRepo = tagRepo;
+            _slugGenerator = slugGenerator;
+        }
+
+        public async Task<IReadOnlyList<Article>> GetArticlesAsync()
+        {
+            var list = await _articleRepo.GetAllAsync();
+            foreach (var a in list)
+            {
+                await PopulateNotMappedListsAsync(a);
+            }
+            return list;
+        }
+
+        public async Task<Article?> GetArticleByIdAsync(Guid id)
+        {
+            var article = await _articleRepo.GetByIdAsync(id);
+            if (article != null)
+            {
+                await PopulateNotMappedListsAsync(article);
+            }
+            return article;
+        }
+
+        public async Task<Article?> GetArticleBySlugAsync(string slug)
+        {
+            var list = await _articleRepo.GetAllAsync();
+            var article = list.FirstOrDefault(a => a.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
+            if (article != null)
+            {
+                await PopulateNotMappedListsAsync(article);
+            }
+            return article;
+        }
+
+        public async Task<Article> CreateArticleAsync(Article article)
+        {
+            article.Id = article.Id == Guid.Empty ? Guid.NewGuid() : article.Id;
+            article.Slug = _slugGenerator.GenerateSlug(article.Title);
+            article.CreatedAt = DateTime.UtcNow;
+            article.UpdatedAt = DateTime.UtcNow;
+
+            var created = await _articleRepo.AddAsync(article);
+
+            // Guardar categorías secundarias
+            if (article.CategoryIds != null)
+            {
+                foreach (var catId in article.CategoryIds)
+                {
+                    _db.ArticleCategories.Add(new ArticleCategory { ArticleId = created.Id, CategoryId = catId });
+                }
+            }
+
+            // Guardar tags
+            if (article.Tags != null)
+            {
+                foreach (var tagName in article.Tags)
+                {
+                    var slug = tagName.Trim().ToLowerInvariant().Replace(" ", "-");
+                    var tag = await _db.Tags.FirstOrDefaultAsync(t => t.Slug == slug);
+                    if (tag == null)
+                    {
+                        tag = new Tag { Id = Guid.NewGuid(), Name = tagName.Trim(), Slug = slug };
+                        _db.Tags.Add(tag);
+                        await _db.SaveChangesAsync();
+                    }
+                    _db.ArticleTags.Add(new ArticleTag { ArticleId = created.Id, TagId = tag.Id });
+                }
+            }
+
+            await _db.SaveChangesAsync();
+            await PopulateNotMappedListsAsync(created);
+            return created;
+        }
+
+        public async Task<Article?> UpdateArticleAsync(Article article)
+        {
+            var existing = await _articleRepo.GetByIdAsync(article.Id);
+            if (existing == null) return null;
+
+            existing.Title = article.Title;
+            existing.Slug = _slugGenerator.GenerateSlug(article.Title);
+            existing.Summary = article.Summary;
+            existing.ContentMarkdown = article.ContentMarkdown;
+            existing.CategoryId = article.CategoryId;
+            existing.Author = article.Author;
+            existing.Status = article.Status;
+            existing.UpdatedAt = DateTime.UtcNow;
+            existing.ViewCount = article.ViewCount;
+
+            await _articleRepo.UpdateAsync(existing);
+
+            // Actualizar categorías secundarias
+            var oldCats = await _db.ArticleCategories.Where(ac => ac.ArticleId == article.Id).ToListAsync();
+            _db.ArticleCategories.RemoveRange(oldCats);
+
+            if (article.CategoryIds != null)
+            {
+                foreach (var catId in article.CategoryIds)
+                {
+                    _db.ArticleCategories.Add(new ArticleCategory { ArticleId = article.Id, CategoryId = catId });
+                }
+            }
+
+            // Actualizar tags
+            var oldTags = await _db.ArticleTags.Where(at => at.ArticleId == article.Id).ToListAsync();
+            _db.ArticleTags.RemoveRange(oldTags);
+
+            if (article.Tags != null)
+            {
+                foreach (var tagName in article.Tags)
+                {
+                    var slug = tagName.Trim().ToLowerInvariant().Replace(" ", "-");
+                    var tag = await _db.Tags.FirstOrDefaultAsync(t => t.Slug == slug);
+                    if (tag == null)
+                    {
+                        tag = new Tag { Id = Guid.NewGuid(), Name = tagName.Trim(), Slug = slug };
+                        _db.Tags.Add(tag);
+                        await _db.SaveChangesAsync();
+                    }
+                    _db.ArticleTags.Add(new ArticleTag { ArticleId = article.Id, TagId = tag.Id });
+                }
+            }
+
+            await _db.SaveChangesAsync();
+            await PopulateNotMappedListsAsync(existing);
+            return existing;
+        }
+
+        public async Task<bool> DeleteArticleAsync(Guid id)
+        {
+            var article = await _articleRepo.GetByIdAsync(id);
+            if (article == null) return false;
+
+            // Eliminar relaciones explícitamente si es necesario
+            var cats = await _db.ArticleCategories.Where(ac => ac.ArticleId == id).ToListAsync();
+            _db.ArticleCategories.RemoveRange(cats);
+
+            var tags = await _db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
+            _db.ArticleTags.RemoveRange(tags);
+
+            var colArticles = await _db.CollectionArticles.Where(ca => ca.ArticleId == id).ToListAsync();
+            _db.CollectionArticles.RemoveRange(colArticles);
+
+            var comments = await _db.Comments.Where(c => c.ArticleId == id).ToListAsync();
+            _db.Comments.RemoveRange(comments);
+
+            await _articleRepo.DeleteAsync(id);
+            await _db.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<IReadOnlyList<Category>> GetCategoriesAsync()
+        {
+            return await _categoryRepo.GetAllAsync();
+        }
+
+        public async Task<Category?> GetCategoryByIdAsync(Guid id)
+        {
+            return await _categoryRepo.GetByIdAsync(id);
+        }
+
+        public async Task<Category?> GetCategoryBySlugAsync(string slug)
+        {
+            var list = await _categoryRepo.GetAllAsync();
+            return list.FirstOrDefault(c => c.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public async Task<IReadOnlyList<Tag>> GetTagsAsync()
+        {
+            return await _tagRepo.GetAllAsync();
+        }
+
+        public async Task<Tag?> GetTagBySlugAsync(string slug)
+        {
+            var list = await _tagRepo.GetAllAsync();
+            return list.FirstOrDefault(t => t.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public async Task<IReadOnlyList<Collection>> GetCollectionsAsync()
+        {
+            var collections = await _db.Collections.ToListAsync();
+            foreach (var col in collections)
+            {
+                col.ArticleIds = await _db.CollectionArticles
+                    .Where(ca => ca.CollectionId == col.Id)
+                    .Select(ca => ca.ArticleId)
+                    .ToListAsync();
+            }
+            return collections;
+        }
+
+        public async Task<Collection?> GetCollectionBySlugAsync(string slug)
+        {
+            var collection = await _db.Collections.FirstOrDefaultAsync(c => c.Slug == slug);
+            if (collection != null)
+            {
+                collection.ArticleIds = await _db.CollectionArticles
+                    .Where(ca => ca.CollectionId == collection.Id)
+                    .Select(ca => ca.ArticleId)
+                    .ToListAsync();
+            }
+            return collection;
+        }
+
+        public async Task IncrementViewCountAsync(Guid articleId)
+        {
+            var article = await _articleRepo.GetByIdAsync(articleId);
+            if (article != null)
+            {
+                article.ViewCount++;
+                await _articleRepo.UpdateAsync(article);
+            }
+        }
+
+        public async Task<IReadOnlyList<Comment>> GetCommentsForArticleAsync(Guid articleId)
+        {
+            return await _db.Comments
+                .Where(c => c.ArticleId == articleId)
+                .OrderByDescending(c => c.CreatedAt)
+                .ToListAsync();
+        }
+
+        public async Task<Comment> AddCommentAsync(Guid articleId, string author, string content)
+        {
+            var comment = new Comment
+            {
+                Id = Guid.NewGuid(),
+                ArticleId = articleId,
+                Author = author,
+                Content = content,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _db.Comments.Add(comment);
+            await _db.SaveChangesAsync();
+            return comment;
+        }
+
+        public async Task<bool> DeleteCommentAsync(Guid commentId)
+        {
+            var comment = await _db.Comments.FindAsync(commentId);
+            if (comment == null) return false;
+
+            _db.Comments.Remove(comment);
+            await _db.SaveChangesAsync();
+            return true;
+        }
+
+        private async Task PopulateNotMappedListsAsync(Article article)
+        {
+            article.CategoryIds = await _db.ArticleCategories
+                .Where(ac => ac.ArticleId == article.Id)
+                .Select(ac => ac.CategoryId)
+                .ToListAsync();
+
+            var tagIds = await _db.ArticleTags
+                .Where(at => at.ArticleId == article.Id)
+                .Select(at => at.TagId)
+                .ToListAsync();
+
+            article.Tags = await _db.Tags
+                .Where(t => tagIds.Contains(t.Id))
+                .Select(t => t.Name)
+                .ToListAsync();
+        }
+
+        public async Task<Category> CreateCategoryAsync(string name, string description, string icon, string color)
+        {
+            var category = new Category { Id = Guid.NewGuid(), Name = name, Description = description, Icon = icon, Color = color, Slug = _slugGenerator.GenerateSlug(name) };
+            return await _categoryRepo.AddAsync(category);
+        }
+
+        public async Task<Category?> UpdateCategoryAsync(Guid id, string name, string description, string icon, string color)
+        {
+            var cat = await _categoryRepo.GetByIdAsync(id);
+            if (cat == null) return null;
+            cat.Name = name; cat.Description = description; cat.Icon = icon; cat.Color = color;
+            return await _categoryRepo.UpdateAsync(cat);
+        }
+
+        public async Task<Tag?> UpdateTagAsync(Guid id, string name)
+        {
+            var tag = await _tagRepo.GetByIdAsync(id);
+            if (tag == null) return null;
+
+            var trimmedName = name.Trim();
+            tag.Name = trimmedName;
+            tag.Slug = trimmedName.ToLowerInvariant().Replace(" ", "-");
+
+            return await _tagRepo.UpdateAsync(tag);
+        }
+
+        public async Task<Collection?> UpdateCollectionAsync(Guid id, string name, string description, string icon, string coverImageUrl)
+        {
+            var collection = await _db.Collections.FindAsync(id);
+            if (collection == null) return null;
+
+            collection.Name = name.Trim();
+            collection.Slug = Slugify(name);
+            collection.Description = description?.Trim() ?? string.Empty;
+            collection.Icon = string.IsNullOrWhiteSpace(icon) ? "library" : icon;
+            collection.CoverImageUrl = coverImageUrl?.Trim() ?? string.Empty;
+
+            await _db.SaveChangesAsync();
+            return collection;
+        }
+
+        public async Task<bool> DeleteCollectionAsync(Guid id)
+        {
+            var collection = await _db.Collections.FindAsync(id);
+            if (collection == null) return false;
+
+            _db.Collections.Remove(collection); // cascade elimina collection_articles
+            await _db.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<Collection?> GetCollectionByIdAsync(Guid id) =>
+            await _db.Collections.FindAsync(id);
+
+        public async Task<IReadOnlyList<Article>> GetArticlesInCollectionAsync(Guid collectionId)
+        {
+            var articleIds = await _db.CollectionArticles
+                .Where(ca => ca.CollectionId == collectionId)
+                .Select(ca => ca.ArticleId)
+                .ToListAsync();
+
+            var articles = await _db.Articles
+                .Where(a => articleIds.Contains(a.Id))
+                .ToListAsync();
+
+            foreach (var article in articles)
+                await PopulateNotMappedListsAsync(article);
+
+            return articles;
+        }
+
+        public async Task<bool> RemoveArticleFromCollectionAsync(Guid collectionId, Guid articleId)
+        {
+            var link = await _db.CollectionArticles
+                .FirstOrDefaultAsync(ca => ca.CollectionId == collectionId && ca.ArticleId == articleId);
+            if (link == null) return false;
+
+            _db.CollectionArticles.Remove(link);
+            await _db.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> AddArticleToCollectionAsync(Guid collectionId, Guid articleId)
+        {
+            var exists = await _db.CollectionArticles
+                .AnyAsync(ca => ca.CollectionId == collectionId && ca.ArticleId == articleId);
+            if (exists) return false;
+
+            _db.CollectionArticles.Add(new CollectionArticle { CollectionId = collectionId, ArticleId = articleId });
+            await _db.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<Collection> CreateCollectionAsync(string name, string description, string icon, string coverImageUrl)
+        {
+            var collection = new Collection
+            {
+                Id = Guid.NewGuid(),
+                Name = name.Trim(),
+                Slug = Slugify(name),
+                Description = description?.Trim() ?? string.Empty,
+                Icon = string.IsNullOrWhiteSpace(icon) ? "library" : icon,
+                CoverImageUrl = coverImageUrl?.Trim() ?? string.Empty,
+                ArticleIds = new List<Guid>(),
+                IsFeatured = false
+            };
+
+            _db.Collections.Add(collection);
+            await _db.SaveChangesAsync();
+
+            return collection;
+        }
+
+        private static string Slugify(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+
+            var s = value.Trim().ToLowerInvariant();
+            var sb = new System.Text.StringBuilder();
+
+            foreach (var c in s)
+            {
+                if (char.IsLetterOrDigit(c))
+                {
+                    sb.Append(c);
+                }
+                else if (sb.Length > 0 && sb[sb.Length - 1] != '-')
+                {
+                    sb.Append('-');
+                }
+            }
+
+            return sb.ToString().Trim('-');
+        }
+
+        public async Task<Tag> CreateTagAsync(string name)
+        {
+            var trimmedName = name.Trim();
+            var slug = trimmedName.ToLowerInvariant().Replace(" ", "-");
+
+            var newTag = new Tag
+            {
+                Id = Guid.NewGuid(),
+                Name = trimmedName,
+                Slug = slug
+            };
+
+            _db.Tags.Add(newTag);
+            await _db.SaveChangesAsync();
+
+            return newTag;
+        }
+    }
+}
