@@ -1,196 +1,28 @@
-NOTIFICATION ITEM
---------------------
-// En EfWikiDataService, método privado de mapeo
-private static NotificationItem ToNotificationItem(Notification n)
+private async Task CreateNotificationForNewCommentAsync(ArticleComment comment, Guid actorUserId)
 {
-    var actorName = n.Actor?.FullName ?? "Alguien";
-
-    var (title, message, icon) = n.Type switch
+    if (comment.ParentCommentId is null)
     {
-        NotificationType.CommentOnArticle => (
-            "Nuevo comentario",
-            $"{actorName} comentó en un artículo que sigues.",
-            "message-circle"),
+        var article = await _db.Articles.FirstOrDefaultAsync(a => a.Id == comment.ArticleId);
+        if (article is null) return;
 
-        NotificationType.ReplyToComment => (
-            "Nueva respuesta",
-            $"{actorName} respondió a tu comentario.",
-            "corner-down-right"),
+        var author = await _db.Authors.FirstOrDefaultAsync(a => a.Id == article.AuthorId);
+        if (author?.SecurityUserId is not Guid recipientId || recipientId == actorUserId) return;
 
-        NotificationType.CommentLike => (
-            "Le gustó tu comentario",
-            $"A {actorName} le gustó tu comentario.",
-            "thumbs-up"),
-
-        _ => ("Notificación", "Tienes una nueva notificación.", "bell")
-    };
-
-    return new NotificationItem
-    {
-        Id = n.Id,
-        Title = title,
-        Message = message,
-        Icon = icon,
-        Url = n.Comment is not null ? $"/articulo/{n.Comment.ArticleId}#comment-{n.CommentId}" : null,
-        CreatedAt = n.CreatedAt,
-        IsRead = n.IsRead
-    };
-}
-
-
-EF WIKI
--------------
-public async Task<IReadOnlyList<NotificationItem>> GetNotificationsAsync()
-{
-    var userId = _currentUser.UserId; // ajusta al accessor real
-
-    var notifications = await _db.Notifications
-        .Where(n => n.RecipientUserId == userId)
-        .Include(n => n.Actor)
-        .Include(n => n.Comment)
-        .OrderByDescending(n => n.CreatedAt)
-        .Take(30) // límite razonable para el dropdown
-        .ToListAsync();
-
-    return notifications.Select(ToNotificationItem).ToList();
-}
-
-public async Task<int> GetUnreadNotificationsCountAsync()
-{
-    var userId = _currentUser.UserId;
-
-    return await _db.Notifications
-        .CountAsync(n => n.RecipientUserId == userId && !n.IsRead);
-}
-
-public async Task MarkNotificationAsReadAsync(Guid id)
-{
-    var userId = _currentUser.UserId;
-
-    var notification = await _db.Notifications
-        .FirstOrDefaultAsync(n => n.Id == id && n.RecipientUserId == userId);
-
-    if (notification is null || notification.IsRead) return;
-
-    notification.IsRead = true;
-    notification.ReadAt = DateTime.UtcNow;
-    await _db.SaveChangesAsync();
-}
-
-public async Task MarkAllNotificationsAsReadAsync()
-{
-    var userId = _currentUser.UserId;
-    var now = DateTime.UtcNow;
-
-    await _db.Notifications
-        .Where(n => n.RecipientUserId == userId && !n.IsRead)
-        .ExecuteUpdateAsync(s => s
-            .SetProperty(n => n.IsRead, true)
-            .SetProperty(n => n.ReadAt, now));
-}
-
-
--------------------------
-// Ejemplo dentro de AddCommentAsync / ReplyToCommentAsync / LikeCommentAsync
-// (ajusta nombres reales de tus métodos existentes)
-
-private async Task CreateAndBroadcastNotificationAsync(
-    Guid recipientUserId, Guid actorUserId, Guid commentId, NotificationType type)
-{
-    // Evita auto-notificarte (comentar tu propio artículo, dar like a tu propio comentario, etc.)
-    if (recipientUserId == actorUserId) return;
-
-    var notification = new Notification
-    {
-        Id = Guid.NewGuid(),
-        RecipientUserId = recipientUserId,
-        ActorUserId = actorUserId,
-        CommentId = commentId,
-        Type = type,
-        IsRead = false,
-        CreatedAt = DateTime.UtcNow
-    };
-
-    _db.Notifications.Add(notification);
-    await _db.SaveChangesAsync();
-
-    // Recargar con Actor/Comment para poder mapear a NotificationItem
-    await _db.Entry(notification).Reference(n => n.Actor).LoadAsync();
-    await _db.Entry(notification).Reference(n => n.Comment).LoadAsync();
-
-    var item = ToNotificationItem(notification);
-    await _notificationBroadcaster.RaiseNotificationCreatedAsync(recipientUserId, item);
-}
-
-----------------------------
-// Application
-public interface INotificationBroadcaster
-{
-    Task RaiseNotificationCreatedAsync(Guid recipientUserId, NotificationItem item);
-}
-
-public interface INotificationRealtimeNotifier
-{
-    event Func<NotificationItem, Task>? NotificationCreated;
-    Task InvokeAllAsync(Guid recipientUserId, NotificationItem item);
-}
-
------------------------------
-// Web
-public class NotificationBroadcaster : INotificationBroadcaster
-{
-    private readonly INotificationRealtimeNotifier _notifier;
-    public NotificationBroadcaster(INotificationRealtimeNotifier notifier) => _notifier = notifier;
-
-    public Task RaiseNotificationCreatedAsync(Guid recipientUserId, NotificationItem item)
-        => _notifier.InvokeAllAsync(recipientUserId, item);
-}
-
-public class NotificationRealtimeNotifier : INotificationRealtimeNotifier
-{
-    public event Func<NotificationItem, Task>? NotificationCreated;
-
-    // Guardamos el userId destinatario junto con cada suscriptor para filtrar
-    private readonly List<(Guid UserId, Func<NotificationItem, Task> Handler)> _subscribers = new();
-
-    public void Subscribe(Guid userId, Func<NotificationItem, Task> handler)
-        => _subscribers.Add((userId, handler));
-
-    public void Unsubscribe(Func<NotificationItem, Task> handler)
-        => _subscribers.RemoveAll(s => s.Handler == handler);
-
-    public async Task InvokeAllAsync(Guid recipientUserId, NotificationItem item)
-    {
-        foreach (var (userId, handler) in _subscribers.Where(s => s.UserId == recipientUserId).ToList())
-            await handler(item);
+        await CreateAndBroadcastNotificationAsync(
+            recipientUserId: recipientId,
+            actorUserId: actorUserId,
+            commentId: comment.Id,
+            type: NotificationType.CommentOnArticle);
     }
-}
-
-TOPBAR RAZOR 
-----------------
-[Inject] private INotificationRealtimeNotifier _notificationNotifier { get; set; } = default!;
-[Inject] private AuthenticationStateProvider _authStateProvider { get; set; } = default!; // ya lo tienes
-
-private Func<NotificationItem, Task>? _onNotificationReceived;
-
-protected override async Task OnInitializedAsync()
-{
-    // ... tu código existente ...
-
-    _onNotificationReceived = async item =>
+    else
     {
-        _notifications.Insert(0, item);
-        _unreadCount++;
-        await InvokeAsync(StateHasChanged);
-    };
+        var parent = await _db.ArticleComments.FirstOrDefaultAsync(c => c.Id == comment.ParentCommentId);
+        if (parent is null || parent.UserId == actorUserId) return;
 
-    var userId = Guid.Parse(authState.User.FindFirst("sub")?.Value ?? Guid.Empty.ToString()); // ajusta claim real
-    ((NotificationRealtimeNotifier)_notificationNotifier).Subscribe(userId, _onNotificationReceived);
-}
-
-public void Dispose()
-{
-    if (_onNotificationReceived is not null)
-        ((NotificationRealtimeNotifier)_notificationNotifier).Unsubscribe(_onNotificationReceived);
-    // ... tu Dispose existente ...
+        await CreateAndBroadcastNotificationAsync(
+            recipientUserId: parent.UserId,
+            actorUserId: actorUserId,
+            commentId: comment.Id,
+            type: NotificationType.ReplyToComment);
+    }
 }
