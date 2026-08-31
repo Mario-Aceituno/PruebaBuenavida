@@ -26,3 +26,61 @@ SELECT
 FROM TableDependencies
 GROUP BY HierarchyLevel, TableName
 ORDER BY HierarchyLevel DESC;
+
+
+
+
+
+BEGIN TRANSACTION;
+
+BEGIN TRY
+    -- 1. Definir el ID del artículo a eliminar
+    DECLARE @ArticleId UNIQUEIDENTIFIER = '4705-A68F-00DD96A143DE'; -- Reemplaza con tu GUID/ID real
+
+    -------------------------------------------------------------------
+    -- PASO 1 (DeletionOrder = 1): Tablas de nivel 2 de profundidad
+    -------------------------------------------------------------------
+
+    -- Eliminar likes vinculados a los comentarios del artículo
+    DELETE FROM dbo.article_comment_likes 
+    WHERE comment_id IN (
+        SELECT id FROM dbo.article_comments WHERE article_id = @ArticleId
+    );
+
+    -- Eliminar notificaciones vinculadas al artículo
+    DELETE FROM dbo.notifications 
+    WHERE article_id = @ArticleId;
+
+    -------------------------------------------------------------------
+    -- PASO 2 (DeletionOrder = 2): Tablas con relación directa al artículo
+    -------------------------------------------------------------------
+
+    DELETE FROM dbo.article_attachments WHERE article_id = @ArticleId;
+    DELETE FROM dbo.article_comments WHERE article_id = @ArticleId;
+    DELETE FROM dbo.article_content_blocks WHERE article_id = @ArticleId;
+    DELETE FROM dbo.article_favorites WHERE article_id = @ArticleId;
+    DELETE FROM dbo.article_history WHERE article_id = @ArticleId;
+    DELETE FROM dbo.article_ratings WHERE article_id = @ArticleId;
+    DELETE FROM dbo.article_related WHERE article_id = @ArticleId OR related_article_id = @ArticleId;
+    DELETE FROM dbo.article_tags WHERE article_id = @ArticleId;
+    DELETE FROM dbo.article_versions WHERE article_id = @ArticleId;
+    DELETE FROM dbo.collection_articles WHERE article_id = @ArticleId;
+
+    -------------------------------------------------------------------
+    -- PASO 3 (DeletionOrder = 3): Tabla principal
+    -------------------------------------------------------------------
+
+    DELETE FROM dbo.articles WHERE id = @ArticleId;
+
+    -- Si todo fue correcto, confirmamos cambios
+    COMMIT TRANSACTION;
+    PRINT 'El artículo y todas sus relaciones fueron eliminados correctamente.';
+
+END TRY
+BEGIN CATCH
+    -- Si ocurre algún error, deshacemos la operación completa
+    ROLLBACK TRANSACTION;
+    PRINT 'Ocurrió un error. No se eliminó ningún registro.';
+    THROW;
+END CATCH;
+
