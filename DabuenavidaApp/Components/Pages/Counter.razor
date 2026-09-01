@@ -1,78 +1,107 @@
-/* ===== AdminNav / security-nav — estilos base (desktop y default) ===== */
-.security-nav {
+<div class="permission-flat-list">
+    @foreach (var s in _screens)
+    {
+        <div class="permission-item-row">
+            <div class="permission-item-row__name">@s.Name</div>
+            <div class="segmented segmented--sm" role="group" aria-label="@($"Nivel de acceso para {s.Name}")">
+                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "none" ? "segmented__btn--active" : "")"
+                        @onclick='() => ApplyNewRolePreset(s.Id, "none")'>Sin acceso</button>
+                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "read" ? "segmented__btn--active" : "")"
+                        @onclick='() => ApplyNewRolePreset(s.Id, "read")'>Lectura</button>
+                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "write" ? "segmented__btn--active" : "")"
+                        @onclick='() => ApplyNewRolePreset(s.Id, "write")'>Editor</button>
+                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "admin" ? "segmented__btn--active" : "")"
+                        @onclick='() => ApplyNewRolePreset(s.Id, "admin")'>Total</button>
+            </div>
+        </div>
+    }
+</div>
+
+
+
+
+<div class="modal__section-title">
+    <span>Permisos del rol — por pantalla</span>
+    <span class="modal__section-count">@_newRolePermissionCount de @_maxPossiblePermissions seleccionados</span>
+</div>
+
+<div class="matrix-bulk" style="margin-bottom: var(--space-3)">
+    <div class="security-search" style="max-width:none; flex:1">
+        <Icon Name="search" />
+        <input type="text" placeholder="Buscar pantalla..." aria-label="Buscar pantalla" @bind="_screenSearchModal" @bind:event="oninput" />
+    </div>
+    <span>Aplicar a todas:</span>
+    <div class="segmented" role="group" aria-label="Aplicar nivel a todas las pantallas">
+        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("none")'>Sin acceso</button>
+        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("read")'>Lectura</button>
+        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("write")'>Editor</button>
+        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("admin")'>Total</button>
+    </div>
+</div>
+
+<div class="permission-flat-list">
+    @foreach (var s in FilteredScreensModal)
+    {
+        <div class="permission-item-row">
+            <div class="permission-item-row__name">@s.Name</div>
+            <div class="segmented segmented--sm" role="group" aria-label="@($"Nivel de acceso para {s.Name}")">
+                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "none" ? "segmented__btn--active" : "")"
+                        @onclick='() => ApplyNewRolePreset(s.Id, "none")'>Sin acceso</button>
+                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "read" ? "segmented__btn--active" : "")"
+                        @onclick='() => ApplyNewRolePreset(s.Id, "read")'>Lectura</button>
+                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "write" ? "segmented__btn--active" : "")"
+                        @onclick='() => ApplyNewRolePreset(s.Id, "write")'>Editor</button>
+                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "admin" ? "segmented__btn--active" : "")"
+                        @onclick='() => ApplyNewRolePreset(s.Id, "admin")'>Total</button>
+            </div>
+        </div>
+    }
+</div>
+
+
+
+
+
+private string _screenSearchModal = "";
+
+private IReadOnlyList<SecurityScreen> FilteredScreensModal =>
+    string.IsNullOrWhiteSpace(_screenSearchModal)
+        ? _screens
+        : _screens.Where(s => s.Name.Contains(_screenSearchModal, StringComparison.OrdinalIgnoreCase)).ToList();
+
+private void ApplyPresetToAllNewRole(string preset)
+{
+    foreach (var s in FilteredScreensModal) ApplyNewRolePreset(s.Id, preset);
+}
+
+
+
+
+
+
+.permission-flat-list {
   display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border-default);
-}
-
-.security-nav__label {
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.security-nav__items {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.security-nav__item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 8px 14px;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  color: var(--text-tertiary);
+  overflow: hidden;
+}
+
+.permission-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.permission-item-row:last-child { border-bottom: none; }
+.permission-item-row:nth-child(even) { background: var(--bg-surface-2); }
+
+.permission-item-row__name {
   font-size: var(--fs-sm);
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.security-nav__item .icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.security-nav__item:hover {
+  font-weight: 500;
   color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.security-nav__item--active {
-  color: var(--brand-500);
-  background: var(--bg-surface-2);
-}
-
-
-
-
-
-@media (max-width: 720px) {
-  .security-header { flex-direction: column; }
-  .security-toolbar__count { margin-left: 0; }
-  .entity-header { flex-direction: column; align-items: flex-start; }
-  .bulk-action-bar { flex-direction: column; align-items: flex-start; }
-
-  /* El nav pasa de fila a columna, con los items en scroll horizontal */
-  .security-nav {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-  }
-
-  .security-nav__items {
-    width: 100%;
-    overflow-x: auto;
-  }
 }
