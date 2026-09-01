@@ -1,334 +1,43 @@
-@page "/admin/seguridad/usuarios/{UserId:guid}"
-@attribute [Authorize(Policy = "ADMIN:READ")]
-
-@inject ISecurityService SecurityService
-@inject AuthenticationStateProvider AuthStateProvider
-@using CorpWiki.Domain.Entities.Security
-@using CorpWiki.Web.Security
-@using CorpWiki.Web.Components.Shared.Security
-
-<PageTitle>DaviWiki - Detalle de usuario</PageTitle>
-
-<AdminNav />
-
-@if (_loading)
+protected override async Task OnInitializedAsync()
 {
-    <div class="skeleton" style="height:80px; border-radius:var(--radius-lg)"></div>
+    var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+    _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
+    _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
+
+    _users = await SecurityService.GetAllUsersAsync();
+    _allRoles = await SecurityService.GetAllRolesAsync();
+
+    // Secuencial: el DbContext es scoped y NO admite llamadas concurrentes.
+    // Si el listado crece mucho, la solución correcta es un método batch en el
+    // servicio, ej: GetUserRolesForUsersAsync(IEnumerable<Guid> userIds) con un
+    // solo query (.Where(ur => ids.Contains(ur.UserId)).Include(...)) — dejo la
+    // firma sugerida más abajo.
+    _userRoles = new Dictionary<Guid, List<SecurityRole>>();
+    foreach (var u in _users)
+    {
+        _userRoles[u.Id] = (await SecurityService.GetUserRolesAsync(u.Id)).ToList();
+    }
+
+    _loading = false;
 }
-else if (_user is null)
+
+
+
+
+
+// ISecurityService
+Task<Dictionary<Guid, List<SecurityRole>>> GetUserRolesForUsersAsync(IEnumerable<Guid> userIds);
+
+// Implementación (un solo query con Include)
+public async Task<Dictionary<Guid, List<SecurityRole>>> GetUserRolesForUsersAsync(IEnumerable<Guid> userIds)
 {
-    <SecurityEmptyState IconName="user" Title="Usuario no encontrado"
-                        Description="El usuario que buscás no existe o fue eliminado." />
-}
-else
-{
-    <SecurityPageHeader BackHref="/admin/seguridad/usuarios" BackText="Usuarios" Title="Detalle de usuario">
-        @if (_canWrite)
-        {
-            <button class="btn @(_user.IsActive ? "btn--danger" : "btn--primary") btn--sm" @onclick="() => _confirmingToggle = true">
-                @(_user.IsActive ? "Desactivar" : "Activar")
-            </button>
-        }
-    </SecurityPageHeader>
+    var ids = userIds.ToList();
+    var rows = await _db.SecurityUserRoles
+        .Where(ur => ids.Contains(ur.UserId))
+        .Include(ur => ur.Role)
+        .ToListAsync();
 
-    <div class="card" style="padding: var(--space-6)">
-        <div class="entity-header">
-            <span class="avatar entity-header__avatar" style="background: linear-gradient(135deg, @_user.AvatarColorFrom, @_user.AvatarColorTo)">
-                @GetInitials(_user.FullName)
-            </span>
-            <div>
-                <h2 style="margin-bottom:2px">@_user.FullName</h2>
-                <div class="entity-header__meta">
-                    <span>@_user.Username</span>
-                    <span>•</span>
-                    <span>@_user.Email</span>
-                    <span>•</span>
-                    <span>@_user.Department @(string.IsNullOrEmpty(_user.Position) ? "" : $" - {_user.Position}")</span>
-                </div>
-            </div>
-            <div style="margin-left:auto">
-                <SecurityStatusBadge Active="_user.IsActive" />
-            </div>
-        </div>
-
-        <div class="security-tabs" role="tablist" aria-label="Secciones del usuario">
-            <button role="tab"
-                    id="tab-role" aria-controls="panel-role"
-                    aria-selected="@(_tab == "role" ? "true" : "false")"
-                    class="security-tab @(_tab == "role" ? "security-tab--active" : "")"
-                    @onclick='() => _tab = "role"'>
-                Roles y permisos
-            </button>
-            <button role="tab"
-                    id="tab-info" aria-controls="panel-info"
-                    aria-selected="@(_tab == "info" ? "true" : "false")"
-                    class="security-tab @(_tab == "info" ? "security-tab--active" : "")"
-                    @onclick='() => _tab = "info"'>
-                Información
-            </button>
-        </div>
-
-        @if (_tab == "role")
-        {
-            <div class="card admin-section" id="panel-role" role="tabpanel" aria-labelledby="tab-role">
-                <h3 class="admin-section__title"><Icon Name="shield" /> Roles asignados</h3>
-                <p class="admin-section__desc">Un usuario puede tener uno o más roles activos al mismo tiempo. Los permisos efectivos son la suma de todos sus roles.</p>
-
-                <div class="role-chip-list">
-                    @if (SelectedRoles.Count == 0)
-                    {
-                        <span class="role-chip-list__empty">Sin roles asignados.</span>
-                    }
-                    else
-                    {
-                        @foreach (var r in SelectedRoles)
-                        {
-                            <span class="chip chip--active">
-                                @r.Name
-                                @if (_canWrite)
-                                {
-                                    <button type="button" class="chip__remove" aria-label="@($"Quitar rol {r.Name}")" @onclick="() => RemoveRole(r.Id)">
-                                        <Icon Name="x" />
-                                    </button>
-                                }
-                            </span>
-                        }
-                    }
-                </div>
-
-                @if (_canWrite)
-                {
-                    <div class="role-assign-row">
-                        <select class="input" @bind="_roleToAdd" aria-label="Agregar rol">
-                            <option value="">Agregar rol...</option>
-                            @foreach (var r in AvailableRolesToAdd)
-                            {
-                                <option value="@r.Id">@r.Name</option>
-                            }
-                        </select>
-                        <button class="btn btn--secondary btn--sm" disabled="@string.IsNullOrEmpty(_roleToAdd)" @onclick="AddRole">
-                            <Icon Name="plus" /> Agregar
-                        </button>
-                    </div>
-
-                    @if (_isDirty)
-                    {
-                        <div class="role-assign-actions">
-                            <span class="role-assign-actions__hint"><Icon Name="alert-triangle" /> Tenés cambios sin guardar</span>
-                            <button class="btn btn--ghost btn--sm" @onclick="DiscardRoleChanges">Descartar</button>
-                            <button class="btn btn--primary btn--sm" @onclick="RequestRoleChange">Guardar cambios</button>
-                        </div>
-                    }
-                }
-            </div>
-        }
-        else
-        {
-            <div class="card admin-section" id="panel-info" role="tabpanel" aria-labelledby="tab-info">
-                <h3 class="admin-section__title"><Icon Name="user" /> Información</h3>
-                <div class="drawer__row">
-                    <span class="drawer__row-label">Nombre completo</span>
-                    <span class="drawer__row-value">@_user.FullName</span>
-                </div>
-                <div class="drawer__row">
-                    <span class="drawer__row-label">Usuario</span>
-                    <span class="drawer__row-value">@_user.Username</span>
-                </div>
-                <div class="drawer__row">
-                    <span class="drawer__row-label">Correo</span>
-                    <span class="drawer__row-value">@_user.Email</span>
-                </div>
-                <div class="drawer__row">
-                    <span class="drawer__row-label">Departamento / Cargo</span>
-                    <span class="drawer__row-value">@_user.Department @(string.IsNullOrEmpty(_user.Position) ? "" : $" - {_user.Position}")</span>
-                </div>
-            </div>
-        }
-    </div>
-
-    <SecurityConfirmDialog Visible="_confirmingToggle"
-                           Title="@(_user?.IsActive == true ? "Desactivar usuario" : "Activar usuario")"
-                           Message="@($"...{_user?.FullName} {(_user?.IsActive == true ? "perderá acceso al sistema" : "recuperará acceso al sistema")}. ¿Continuar?")"
-                           ConfirmText="@(_user?.IsActive == true ? "Desactivar" : "Activar")"
-                           Dangerous="@(_user?.IsActive == true)"
-                           OnConfirm="ToggleActive"
-                           OnCancel="() => _confirmingToggle = false" />
-
-    <SecurityConfirmDialog Visible="_confirmingRoleChange"
-                           Title="Cambiar roles"
-                           Message="@RoleChangeMessage"
-                           ConfirmText="Confirmar cambios"
-                           OnConfirm="ChangeRole"
-                           OnCancel="() => _confirmingRoleChange = false" />
-
-    @if (_showToast)
-    {
-        <div class="toast" role="status" aria-live="polite"><Icon Name="check-circle" /> @_toastMessage</div>
-    }
-}
-
-@code {
-    [Parameter] public Guid UserId { get; set; }
-
-    private SecurityUser? _user;
-    private List<SecurityRole> _allRoles = new();
-    private HashSet<Guid> _savedRoleIds = new();
-    private HashSet<Guid> _selectedRoleIds = new();
-    private string _roleToAdd = "";
-    private bool _loading = true;
-    private bool _canWrite;
-    private string _actingUser = "unknown";
-    private string _tab = "role";
-    private bool _confirmingToggle;
-    private bool _confirmingRoleChange;
-    private bool _showToast;
-    private string _toastMessage = "";
-
-    private bool _isDirty => !_selectedRoleIds.SetEquals(_savedRoleIds);
-
-    private List<SecurityRole> SelectedRoles =>
-        _allRoles.Where(r => _selectedRoleIds.Contains(r.Id)).OrderBy(r => r.Name).ToList();
-
-    private List<SecurityRole> AvailableRolesToAdd =>
-        _allRoles.Where(r => !_selectedRoleIds.Contains(r.Id)).OrderBy(r => r.Name).ToList();
-
-    private string RoleChangeMessage
-    {
-        get
-        {
-            var added = _allRoles.Where(r => _selectedRoleIds.Contains(r.Id) && !_savedRoleIds.Contains(r.Id)).Select(r => r.Name).ToList();
-            var removed = _allRoles.Where(r => _savedRoleIds.Contains(r.Id) && !_selectedRoleIds.Contains(r.Id)).Select(r => r.Name).ToList();
-
-            var parts = new List<string>();
-            if (added.Count > 0) parts.Add($"Se agregará: {string.Join(", ", added)}");
-            if (removed.Count > 0) parts.Add($"Se quitará: {string.Join(", ", removed)}");
-            if (parts.Count == 0) parts.Add("No hay cambios pendientes");
-
-            return $"{string.Join(". ", parts)} para {_user?.FullName}.";
-        }
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
-        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
-
-        _user = await SecurityService.GetUserByIdAsync(UserId);
-        _allRoles = await SecurityService.GetAllRolesAsync();
-
-        var userRoles = await SecurityService.GetUserRolesAsync(UserId);
-        _savedRoleIds = userRoles.Select(r => r.Id).ToHashSet();
-        _selectedRoleIds = new HashSet<Guid>(_savedRoleIds);
-
-        _loading = false;
-    }
-
-    private void AddRole()
-    {
-        if (!_canWrite || string.IsNullOrEmpty(_roleToAdd)) return;
-        if (Guid.TryParse(_roleToAdd, out var id)) _selectedRoleIds.Add(id);
-        _roleToAdd = "";
-    }
-
-    private void RemoveRole(Guid roleId)
-    {
-        if (!_canWrite) return;
-        _selectedRoleIds.Remove(roleId);
-    }
-
-    private void DiscardRoleChanges() => _selectedRoleIds = new HashSet<Guid>(_savedRoleIds);
-
-    private void RequestRoleChange()
-    {
-        if (!_canWrite || !_isDirty) return;
-        _confirmingRoleChange = true;
-    }
-
-    private async Task ChangeRole()
-    {
-        _confirmingRoleChange = false;
-        if (!_canWrite || _user is null) return;
-
-        var toAdd = _selectedRoleIds.Except(_savedRoleIds).ToList();
-        var toRemove = _savedRoleIds.Except(_selectedRoleIds).ToList();
-
-        foreach (var roleId in toRemove)
-            await SecurityService.RemoveRoleFromUserAsync(UserId, roleId);
-
-        foreach (var roleId in toAdd)
-            await SecurityService.AssignRoleToUserAsync(UserId, roleId, _actingUser);
-
-        var addedNames = _allRoles.Where(r => toAdd.Contains(r.Id)).Select(r => r.Name).ToList();
-        var removedNames = _allRoles.Where(r => toRemove.Contains(r.Id)).Select(r => r.Name).ToList();
-
-        var detailParts = new List<string>();
-        if (addedNames.Count > 0) detailParts.Add($"Agregados: {string.Join(", ", addedNames)}");
-        if (removedNames.Count > 0) detailParts.Add($"Removidos: {string.Join(", ", removedNames)}");
-
-        await SecurityService.LogAuditAsync(UserId, _user.Username, "ROLES_CHANGED", string.Join(" | ", detailParts));
-
-        _savedRoleIds = new HashSet<Guid>(_selectedRoleIds);
-        _toastMessage = "Roles actualizados correctamente.";
-        _showToast = true;
-        StateHasChanged();
-        await Task.Delay(2500);
-        _showToast = false;
-        StateHasChanged();
-    }
-
-    private async Task ToggleActive()
-    {
-        _confirmingToggle = false;
-
-        if (_user is null || !_canWrite)
-            return;
-
-        try
-        {
-            var success = await SecurityService.ToggleUserActiveAsync(_user.Id);
-            if (!success)
-            {
-                _toastMessage = "No se pudo actualizar el estado del usuario.";
-                _showToast = true;
-                return;
-            }
-
-            var updatedUser = await SecurityService.GetUserByIdAsync(_user.Id);
-            if (updatedUser is not null)
-            {
-                _user.IsActive = updatedUser.IsActive;
-            }
-
-            await SecurityService.LogAuditAsync(
-                _user.Id,
-                _actingUser,
-                _user.IsActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
-                $"Usuario afectado: {_user.Username}");
-
-            _toastMessage = _user.IsActive
-                ? "Usuario activado correctamente."
-                : "Usuario desactivado correctamente.";
-
-            _showToast = true;
-        }
-        catch (Exception)
-        {
-            _toastMessage = "Ocurrió un error al actualizar el usuario.";
-            _showToast = true;
-        }
-        finally
-        {
-            StateHasChanged();
-        }
-    }
-
-    private static string GetInitials(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return "U";
-        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 1 ? parts[0][..1].ToUpper() : $"{parts[0][0]}{parts[1][0]}".ToUpper();
-    }
+    return ids.ToDictionary(id => id, id => rows.Where(r => r.UserId == id).Select(r => r.Role).ToList());
 }
 
 
@@ -337,374 +46,63 @@ else
 
 
 
-
-@page "/admin/seguridad/usuarios"
-@attribute [Authorize(Policy = "ADMIN:READ")]
-
-@inject ISecurityService SecurityService
-@inject AuthenticationStateProvider AuthStateProvider
-@inject NavigationManager Navigation
-@using CorpWiki.Domain.Entities.Security
-@using CorpWiki.Web.Security
-@using CorpWiki.Web.Components.Shared.Security
-<PageTitle>DaviWiki - Usuarios</PageTitle>
-
-<AdminNav />
-
-<SecurityPageHeader Title="Usuarios" Subtitle="Provisionados automáticamente desde el Active Directory en el primer login." />
-
-@if (_loading)
-{
-    <div class="card" style="padding: var(--space-4)">
-        @for (int i = 0; i < 5; i++)
-        {
-            <div class="skeleton" style="height:48px; margin-bottom:8px; border-radius:var(--radius-md)"></div>
-        }
-    </div>
-}
-else if (_users.Count == 0)
-{
-    <SecurityEmptyState IconName="users" Title="Todavía no hay usuarios"
-                        Description="Los usuarios se crean automáticamente cuando alguien inicia sesión por primera vez con su cuenta corporativa." />
-}
-else
-{
-    <div class="security-toolbar">
-        <div class="security-search">
-            <Icon Name="search" />
-            <input type="text" placeholder="Buscar por nombre, usuario o correo..."
-                   aria-label="Buscar usuarios"
-                   @bind="_searchTerm" @bind:event="oninput" />
-        </div>
-        <div class="security-filter-group" role="group" aria-label="Filtrar por estado">
-            <button class="security-filter-btn @(_statusFilter == "all" ? "security-filter-btn--active" : "")" @onclick='() => _statusFilter = "all"'>Todos</button>
-            <button class="security-filter-btn @(_statusFilter == "active" ? "security-filter-btn--active" : "")" @onclick='() => _statusFilter = "active"'>Activos</button>
-            <button class="security-filter-btn @(_statusFilter == "inactive" ? "security-filter-btn--active" : "")" @onclick='() => _statusFilter = "inactive"'>Inactivos</button>
-        </div>
-        <select class="input" style="max-width:200px" @bind="_roleFilter" aria-label="Filtrar por rol">
-            <option value="">Todos los roles</option>
-            @foreach (var r in _allRoles)
-            {
-                <option value="@r.Id">@r.Name</option>
-            }
-        </select>
-        <span class="security-toolbar__count">@FilteredUsers.Count de @_users.Count</span>
-    </div>
-
-    @if (_selectedIds.Count > 0 && _canWrite)
-    {
-        <div class="bulk-action-bar" role="status" aria-live="polite">
-            <span><strong>@_selectedIds.Count</strong> usuario(s) seleccionado(s)</span>
-            <div class="bulk-action-bar__actions">
-                <button class="btn btn--secondary btn--sm" @onclick="() => RequestBulkToggle(true)">Activar</button>
-                <button class="btn btn--danger btn--sm" @onclick="() => RequestBulkToggle(false)">Desactivar</button>
-                <button class="btn btn--ghost btn--sm" @onclick="ClearSelection">Cancelar</button>
-            </div>
-        </div>
-    }
-
-    @if (FilteredUsers.Count == 0)
-    {
-        <SecurityEmptyState IconName="search" Title="Sin resultados"
-                            Description="No encontramos usuarios que coincidan con la búsqueda o el filtro aplicado." />
-    }
-    else
-    {
-        <div class="card data-table-wrap">
-            <table class="data-table data-table--clickable">
-                <thead>
-                    <tr>
-                        @if (_canWrite)
-                        {
-                            <th style="width:36px">
-                                <input type="checkbox" aria-label="Seleccionar todos los usuarios visibles"
-                                       checked="@AllVisibleSelected"
-                                       @onchange="@(e => ToggleSelectAll((bool)e.Value!))" />
-                            </th>
-                        }
-                        <th>Usuario</th>
-                        <th>Correo</th>
-                        <th>Departamento</th>
-                        <th>Roles</th>
-                        <th>Estado</th>
-                        <th class="data-table__actions">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var u in FilteredUsers)
-                    {
-                        <tr @onclick="() => GoToDetail(u.Id)">
-                            @if (_canWrite)
-                            {
-                                <td @onclick:stopPropagation="true">
-                                    <input type="checkbox" aria-label="@($"Seleccionar {u.FullName}")"
-                                           checked="@_selectedIds.Contains(u.Id)"
-                                           @onchange="@(e => ToggleSelect(u.Id, (bool)e.Value!))" />
-                                </td>
-                            }
-                            <td>
-                                <div class="data-table__user-cell">
-                                    <span class="avatar avatar--sm" style="background: linear-gradient(135deg, @u.AvatarColorFrom, @u.AvatarColorTo)">
-                                        @GetInitials(u.FullName)
-                                    </span>
-                                    <div class="data-table__user-info">
-                                        <span class="data-table__user-name">@u.FullName</span>
-                                        <span class="data-table__user-sub">@u.Username</span>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>@u.Email</td>
-                            <td>@u.Department</td>
-                            <td>
-                                <div class="role-chip-list role-chip-list--compact">
-                                    @if (_userRoles.TryGetValue(u.Id, out var roles) && roles.Count > 0)
-                                    {
-                                        @foreach (var r in roles.Take(2))
-                                        {
-                                            <span class="chip chip--sm">@r.Name</span>
-                                        }
-                                        @if (roles.Count > 2)
-                                        {
-                                            <span class="chip chip--sm chip--muted">+@(roles.Count - 2)</span>
-                                        }
-                                    }
-                                    else
-                                    {
-                                        <span class="role-chip-list__empty">Sin rol</span>
-                                    }
-                                </div>
-                            </td>
-                            <td><SecurityStatusBadge Active="u.IsActive" /></td>
-                            <td class="data-table__actions" @onclick:stopPropagation="true">
-                                <div class="row-actions">
-                                    <button class="btn btn--secondary btn--sm" @onclick="() => GoToDetail(u.Id)">
-                                        Ver detalle
-                                    </button>
-                                    @if (_canWrite)
-                                    {
-                                        <button class="btn @(u.IsActive ? "btn--danger" : "btn--primary") btn--sm"
-                                                @onclick="() => RequestToggle(u)">
-                                            @(u.IsActive ? "Desactivar" : "Activar")
-                                        </button>
-                                    }
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-
-    <SecurityConfirmDialog Visible="_confirmingUser is not null"
-                           Title="@(_confirmingUser?.IsActive == true ? "Desactivar usuario" : "Activar usuario")"
-                           Message="@ConfirmMessage"
-                           ConfirmText="@(_confirmingUser?.IsActive == true ? "Desactivar" : "Activar")"
-                           Dangerous="@(_confirmingUser?.IsActive == true)"
-                           OnConfirm="ConfirmToggle"
-                           OnCancel="() => _confirmingUser = null" />
-
-    <SecurityConfirmDialog Visible="_confirmingBulk"
-                           Title="@(_bulkActivate ? "Activar usuarios" : "Desactivar usuarios")"
-                           Message="@BulkConfirmMessage"
-                           ConfirmText="@(_bulkActivate ? "Activar" : "Desactivar")"
-                           Dangerous="@(!_bulkActivate)"
-                           OnConfirm="ConfirmBulkToggle"
-                           OnCancel="() => _confirmingBulk = false" />
-
-    @if (_showToast)
-    {
-        <div class="toast" role="status" aria-live="polite"><Icon Name="check-circle" /> @_toastMessage</div>
-    }
+/* ===== Switch (toggle) ===== */
+.switch {
+  position: relative;
+  display: inline-flex;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
 }
 
-@code {
-    private List<SecurityUser> _users = new();
-    private List<SecurityRole> _allRoles = new();
-    private Dictionary<Guid, List<SecurityRole>> _userRoles = new();
-    private bool _loading = true;
-    private bool _canWrite;
-    private string _actingUser = "unknown";
-    private string _searchTerm = "";
-    private string _statusFilter = "all";
-    private string _roleFilter = "";
-    private SecurityUser? _confirmingUser;
-    private HashSet<Guid> _selectedIds = new();
-    private bool _confirmingBulk;
-    private bool _bulkActivate;
-    private bool _showToast;
-    private string _toastMessage = "";
-
-    private IReadOnlyList<SecurityUser> FilteredUsers =>
-        _users.Where(u =>
-            (_statusFilter == "all" || (_statusFilter == "active" == u.IsActive)) &&
-            (string.IsNullOrEmpty(_roleFilter) ||
-             (Guid.TryParse(_roleFilter, out var rid) && _userRoles.TryGetValue(u.Id, out var roles) && roles.Any(r => r.Id == rid))) &&
-            (string.IsNullOrWhiteSpace(_searchTerm) ||
-             u.FullName.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
-             u.Username.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
-             (u.Email?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)))
-        .OrderBy(u => u.FullName)
-        .ToList();
-
-    private bool AllVisibleSelected =>
-        FilteredUsers.Count > 0 && FilteredUsers.All(u => _selectedIds.Contains(u.Id));
-
-    private string ConfirmMessage => _confirmingUser?.IsActive == true
-        ? $"'{_confirmingUser.FullName}' no podrá iniciar sesión hasta que vuelva a activarse. ¿Continuar?"
-        : $"'{_confirmingUser?.FullName}' recuperará acceso al sistema. ¿Continuar?";
-
-    private string BulkConfirmMessage => _bulkActivate
-        ? $"Se activarán {_selectedIds.Count} usuario(s). ¿Continuar?"
-        : $"Se desactivarán {_selectedIds.Count} usuario(s), quienes perderán acceso al sistema. ¿Continuar?";
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
-        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
-
-        _users = await SecurityService.GetAllUsersAsync();
-        _allRoles = await SecurityService.GetAllRolesAsync();
-
-        // NOTA: si el volumen de usuarios crece, reemplazar por un endpoint batch
-        // (ej. GetUserRolesForUsersAsync(IEnumerable<Guid>)) para evitar N llamadas.
-        var roleLookups = await Task.WhenAll(_users.Select(async u => (u.Id, Roles: await SecurityService.GetUserRolesAsync(u.Id))));
-        _userRoles = roleLookups.ToDictionary(x => x.Id, x => x.Roles.ToList());
-
-        _loading = false;
-    }
-
-    private void GoToDetail(Guid id) => Navigation.NavigateTo($"/admin/seguridad/usuarios/{id}");
-
-    private void ToggleSelect(Guid id, bool value)
-    {
-        if (value) _selectedIds.Add(id);
-        else _selectedIds.Remove(id);
-    }
-
-    private void ToggleSelectAll(bool value)
-    {
-        if (value)
-        {
-            foreach (var u in FilteredUsers) _selectedIds.Add(u.Id);
-        }
-        else
-        {
-            foreach (var u in FilteredUsers) _selectedIds.Remove(u.Id);
-        }
-    }
-
-    private void ClearSelection() => _selectedIds.Clear();
-
-    private void RequestToggle(SecurityUser u)
-    {
-        if (!_canWrite) return;
-        _confirmingUser = u;
-    }
-
-    private void RequestBulkToggle(bool activate)
-    {
-        if (!_canWrite || _selectedIds.Count == 0) return;
-        _bulkActivate = activate;
-        _confirmingBulk = true;
-    }
-
-    private async Task ConfirmBulkToggle()
-    {
-        _confirmingBulk = false;
-        if (!_canWrite) return;
-
-        var targets = _users.Where(u => _selectedIds.Contains(u.Id) && u.IsActive != _bulkActivate).ToList();
-        int successCount = 0;
-
-        foreach (var u in targets)
-        {
-            var success = await SecurityService.ToggleUserActiveAsync(u.Id);
-            if (!success) continue;
-
-            u.IsActive = _bulkActivate;
-            successCount++;
-
-            await SecurityService.LogAuditAsync(
-                u.Id, _actingUser,
-                u.IsActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
-                $"Usuario afectado (acción masiva): {u.Username}");
-        }
-
-        _toastMessage = _bulkActivate
-            ? $"{successCount} usuario(s) activado(s)."
-            : $"{successCount} usuario(s) desactivado(s).";
-
-        _selectedIds.Clear();
-        _showToast = true;
-        StateHasChanged();
-        await Task.Delay(2500);
-        _showToast = false;
-        StateHasChanged();
-    }
-
-    private async Task ConfirmToggle()
-    {
-        var user = _confirmingUser;
-        if (user is null || !_canWrite)
-            return;
-
-        _confirmingUser = null;
-        var previousState = user.IsActive;
-
-        try
-        {
-            var success = await SecurityService.ToggleUserActiveAsync(user.Id);
-            if (!success)
-            {
-                _toastMessage = "No se pudo actualizar el estado del usuario.";
-                _showToast = true;
-                return;
-            }
-
-            var updatedUser = await SecurityService.GetUserByIdAsync(user.Id);
-            if (updatedUser is not null)
-            {
-                user.IsActive = updatedUser.IsActive;
-            }
-            else
-            {
-                user.IsActive = !previousState;
-            }
-
-            await SecurityService.LogAuditAsync(
-                user.Id, _actingUser,
-                user.IsActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
-                $"Usuario afectado: {user.Username}");
-
-            _toastMessage = user.IsActive
-                ? "Usuario activado correctamente."
-                : "Usuario desactivado correctamente.";
-
-            _showToast = true;
-        }
-        catch (Exception)
-        {
-            _toastMessage = "Ocurrió un error al actualizar el usuario.";
-            _showToast = true;
-        }
-        finally
-        {
-            StateHasChanged();
-        }
-    }
-
-    private static string GetInitials(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return "U";
-        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 1 ? parts[0][..1].ToUpper() : $"{parts[0][0]}{parts[1][0]}".ToUpper();
-    }
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
 }
 
+.switch__track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-surface-3);
+  border-radius: var(--radius-full);
+  transition: background var(--transition-fast);
+}
 
+.switch__track::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  transition: transform var(--transition-fast);
+}
 
+.switch input:checked + .switch__track {
+  background: var(--brand-500);
+}
+
+.switch input:checked + .switch__track::before {
+  transform: translateX(16px);
+}
+
+.switch input:disabled + .switch__track {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.switch input:focus-visible + .switch__track {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
 
 
 
@@ -727,7 +125,7 @@ else
 @if (_loading)
 {
     <div class="skeleton" style="height:60px; border-radius:var(--radius-lg); margin-bottom:var(--space-4)"></div>
-    <div class="skeleton" style="height:320px; border-radius:var(--radius-lg)"></div>
+    <div class="skeleton" style="height:400px; border-radius:var(--radius-lg)"></div>
 }
 else if (_role is null)
 {
@@ -736,7 +134,7 @@ else if (_role is null)
 else
 {
     <SecurityPageHeader BackHref="/admin/seguridad/roles" BackText="Roles" Title="@($"Permisos: {_role.Name}")"
-                        Subtitle="Marcá qué puede hacer este rol en cada pantalla del sistema.">
+                        Subtitle="Elegí un nivel de acceso por pantalla. Usá 'Detalle' solo si necesitás algo distinto a los niveles estándar.">
         @if (_canWrite && _isDirty)
         {
             <button class="btn btn--ghost" @onclick="Discard">Descartar</button>
@@ -750,7 +148,7 @@ else
     {
         <div class="callout callout--tip" role="status" aria-live="polite">
             <Icon Name="alert-triangle" />
-            <p>Tenés cambios sin guardar (@_changedCount permiso(s) modificado(s)).</p>
+            <p>Tenés cambios sin guardar (@_changedCount pantalla(s) modificada(s)).</p>
         </div>
     }
 
@@ -760,6 +158,20 @@ else
             <input type="text" placeholder="Buscar pantalla..." aria-label="Buscar pantalla"
                    @bind="_screenSearch" @bind:event="oninput" />
         </div>
+
+        @if (_canWrite)
+        {
+            <div class="matrix-bulk">
+                <span>Aplicar a todas las visibles:</span>
+                <div class="segmented" role="group" aria-label="Aplicar nivel a todas las pantallas visibles">
+                    <button class="segmented__btn" @onclick='() => ApplyPresetToAllVisible("none")'>Sin acceso</button>
+                    <button class="segmented__btn" @onclick='() => ApplyPresetToAllVisible("read")'>Lectura</button>
+                    <button class="segmented__btn" @onclick='() => ApplyPresetToAllVisible("write")'>Editor</button>
+                    <button class="segmented__btn" @onclick='() => ApplyPresetToAllVisible("admin")'>Total</button>
+                </div>
+            </div>
+        }
+
         <span class="security-toolbar__count">@FilteredScreens.Count de @_screens.Count pantallas</span>
     </div>
 
@@ -769,47 +181,52 @@ else
     }
     else
     {
-        <div class="card permission-matrix-wrap">
-            <table class="permission-matrix">
-                <colgroup>
-                    <col class="permission-matrix__screen-col" />
-                    @for (int i = 0; i < _permissions.Count; i++)
+        <div class="matrix-card-list">
+            @foreach (var s in FilteredScreens)
+            {
+                var preset = GetPreset(s.Id);
+                var expanded = _expandedScreens.Contains(s.Id);
+                var changed = HasChanged(s.Id);
+
+                <div class="matrix-card @(changed ? "matrix-card--changed" : "")">
+                    <div class="matrix-card__header">
+                        <div class="matrix-card__name">
+                            @s.Name
+                            @if (changed)
+                            {
+                                <span class="matrix-card__dot" title="Modificado"></span>
+                            }
+                        </div>
+
+                        <div class="segmented" role="group" aria-label="@($"Nivel de acceso para {s.Name}")">
+                            <button class="segmented__btn @(preset == "none" ? "segmented__btn--active" : "")"
+                                    disabled="@(!_canWrite)" @onclick="() => ApplyPreset(s.Id, "none")">Sin acceso</button>
+                            <button class="segmented__btn @(preset == "read" ? "segmented__btn--active" : "")"
+                                    disabled="@(!_canWrite)" @onclick="() => ApplyPreset(s.Id, "read")">Lectura</button>
+                            <button class="segmented__btn @(preset == "write" ? "segmented__btn--active" : "")"
+                                    disabled="@(!_canWrite)" @onclick="() => ApplyPreset(s.Id, "write")">Editor</button>
+                            <button class="segmented__btn @(preset == "admin" ? "segmented__btn--active" : "")"
+                                    disabled="@(!_canWrite)" @onclick="() => ApplyPreset(s.Id, "admin")">Total</button>
+                            @if (preset == "custom")
+                            {
+                                <span class="segmented__custom-tag">Personalizado</span>
+                            }
+                        </div>
+
+                        <button type="button" class="matrix-card__expand" @onclick="() => ToggleExpanded(s.Id)"
+                                aria-expanded="@expanded" aria-label="@(expanded ? $"Ocultar detalle de {s.Name}" : $"Ver detalle de {s.Name}")">
+                            <Icon Name="@(expanded ? "chevron-up" : "chevron-down")" /> Detalle
+                        </button>
+                    </div>
+
+                    @if (expanded)
                     {
-                        <col />
-                    }
-                </colgroup>
-                <thead>
-                    <tr>
-                        <th>Pantalla</th>
-                        @foreach (var p in _permissions)
-                        {
-                            <th>
-                                <div class="matrix-col-header">
-                                    <span>@p.Name</span>
-                                    @if (_canWrite)
-                                    {
-                                        <button type="button" class="matrix-col-toggle"
-                                                title="@(AllChecked(p) ? $"Quitar {p.Name} de todas las pantallas visibles" : $"Otorgar {p.Name} a todas las pantallas visibles")"
-                                                aria-label="@(AllChecked(p) ? $"Quitar {p.Name} de todas las pantallas visibles" : $"Otorgar {p.Name} a todas las pantallas visibles")"
-                                                @onclick="() => ToggleColumn(p, !AllChecked(p))">
-                                            <Icon Name="@(AllChecked(p) ? "check-square" : "square")" />
-                                        </button>
-                                    }
-                                </div>
-                            </th>
-                        }
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var s in FilteredScreens)
-                    {
-                        <tr>
-                            <td>@s.Name</td>
+                        <div class="matrix-card__detail">
                             @foreach (var p in _permissions)
                             {
                                 var key = (s.Id, p.Id);
-                                var changed = _original.TryGetValue(key, out var was) && was != _matrix[key];
-                                <td class="@(changed ? "matrix-changed" : "")">
+                                <label class="matrix-detail-row">
+                                    <span>@p.Name</span>
                                     <label class="switch">
                                         <input type="checkbox"
                                                disabled="@(!_canWrite)"
@@ -818,12 +235,12 @@ else
                                                @onchange="@(e => Toggle(key, (bool)e.Value!))" />
                                         <span class="switch__track"></span>
                                     </label>
-                                </td>
+                                </label>
                             }
-                        </tr>
+                        </div>
                     }
-                </tbody>
-            </table>
+                </div>
+            }
         </div>
     }
 
@@ -841,16 +258,19 @@ else
     private List<SecurityPermission> _permissions = new();
     private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _matrix = new();
     private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _original = new();
+    private HashSet<Guid> _expandedScreens = new();
     private bool _loading = true;
     private bool _canWrite;
     private string _actingUser = "unknown";
     private string _screenSearch = "";
     private bool _showToast;
     private string _toastMessage = "";
+
+    // Códigos esperados: READ, WRITE, DELETE, EXPORT, ADMIN
     private static readonly string[] PermissionOrder = { "READ", "WRITE", "DELETE", "EXPORT", "ADMIN" };
 
     private bool _isDirty => !_matrix.OrderBy(kv => kv.Key).SequenceEqual(_original.OrderBy(kv => kv.Key));
-    private int _changedCount => _matrix.Count(kv => !_original.TryGetValue(kv.Key, out var was) || was != kv.Value);
+    private int _changedCount => _screens.Count(s => HasChanged(s.Id));
 
     private IReadOnlyList<SecurityScreen> FilteredScreens =>
         string.IsNullOrWhiteSpace(_screenSearch)
@@ -884,25 +304,84 @@ else
         _loading = false;
     }
 
+    private Guid? PermIdByCode(string code) => _permissions.FirstOrDefault(p => p.Code == code)?.Id;
+
+    // Determina qué preset representa el estado actual de una pantalla.
+    // "none": nada activo. "read": solo READ. "write": READ+WRITE.
+    // "admin": todos los permisos conocidos activos. Cualquier otra combinación: "custom".
+    private string GetPreset(Guid screenId)
+    {
+        bool Has(string code)
+        {
+            var id = PermIdByCode(code);
+            return id.HasValue && _matrix.TryGetValue((screenId, id.Value), out var v) && v;
+        }
+
+        var read = Has("READ");
+        var write = Has("WRITE");
+        var del = Has("DELETE");
+        var export = Has("EXPORT");
+        var admin = Has("ADMIN");
+
+        if (!read && !write && !del && !export && !admin) return "none";
+        if (read && !write && !del && !export && !admin) return "read";
+        if (read && write && !del && !export && !admin) return "write";
+        if (read && write && del && export && admin) return "admin";
+        return "custom";
+    }
+
+    private bool HasChanged(Guid screenId) =>
+        _permissions.Any(p =>
+        {
+            var key = (screenId, p.Id);
+            return _original.TryGetValue(key, out var was) && was != _matrix[key];
+        });
+
+    private void ApplyPreset(Guid screenId, string preset)
+    {
+        if (!_canWrite) return;
+
+        bool read = preset is "read" or "write" or "admin";
+        bool write = preset is "write" or "admin";
+        bool full = preset is "admin";
+
+        foreach (var p in _permissions)
+        {
+            var key = (screenId, p.Id);
+            _matrix[key] = p.Code switch
+            {
+                "READ" => read,
+                "WRITE" => write,
+                "DELETE" => full,
+                "EXPORT" => full,
+                "ADMIN" => full,
+                _ => _matrix[key] // permisos no estándar: no se tocan
+            };
+        }
+    }
+
+    private void ApplyPresetToAllVisible(string preset)
+    {
+        if (!_canWrite) return;
+        foreach (var s in FilteredScreens) ApplyPreset(s.Id, preset);
+    }
+
     private void Toggle((Guid ScreenId, Guid PermissionId) key, bool value)
     {
         if (!_canWrite) return;
         _matrix[key] = value;
     }
 
-    private void ToggleColumn(SecurityPermission p, bool value)
+    private void ToggleExpanded(Guid screenId)
     {
-        if (!_canWrite) return;
-        foreach (var s in FilteredScreens)
-        {
-            _matrix[(s.Id, p.Id)] = value;
-        }
+        if (!_expandedScreens.Add(screenId))
+            _expandedScreens.Remove(screenId);
     }
 
-    private bool AllChecked(SecurityPermission p) =>
-        FilteredScreens.Count > 0 && FilteredScreens.All(s => _matrix[(s.Id, p.Id)]);
-
-    private void Discard() => _matrix = new Dictionary<(Guid, Guid), bool>(_original);
+    private void Discard()
+    {
+        _matrix = new Dictionary<(Guid, Guid), bool>(_original);
+    }
 
     private async Task Save()
     {
@@ -920,8 +399,9 @@ else
 
         if (changes.Count > 0)
         {
+            var affectedScreens = changes.Select(c => c.Key.ScreenId).Distinct().Count();
             await SecurityService.LogAuditAsync(null, _actingUser, "PERMISSION_CHANGED",
-                $"Rol '{_role!.Name}': {changes.Count} permiso(s) modificado(s).");
+                $"Rol '{_role!.Name}': {affectedScreens} pantalla(s) modificada(s) ({changes.Count} permiso(s)).");
         }
 
         _original = new Dictionary<(Guid, Guid), bool>(_matrix);
@@ -943,207 +423,130 @@ else
 
 
 
-@page "/admin/seguridad/roles"
-@attribute [Authorize(Policy = "ADMIN:READ")]
-@rendermode InteractiveServer
-@inject ISecurityService SecurityService
-@inject AuthenticationStateProvider AuthStateProvider
-@inject NavigationManager Navigation
-@using CorpWiki.Domain.Entities.Security
-@using CorpWiki.Web.Security
-@using CorpWiki.Web.Components.Shared.Security
-
-<PageTitle>DaviWiki - Roles</PageTitle>
-
-<SecurityPageHeader Title="Seguridad" Subtitle="Gestión de usuarios, roles y permisos del sistema." />
-<AdminNav />
-
-<SecurityPageHeader Title="Roles" Subtitle="Definí los permisos para cada grupo de usuarios.">
-    @if (_canWrite)
-    {
-        <button class="btn btn--primary btn--sm" @onclick="() => _showCreateModal = true">
-            <Icon Name="plus" /> Nuevo rol
-        </button>
-    }
-</SecurityPageHeader>
-
-@if (_loading)
-{
-    <div class="role-card-grid">
-        @for (int i = 0; i < 3; i++)
-        {
-            <div class="skeleton" style="height:140px; border-radius:var(--radius-lg)"></div>
-        }
-    </div>
-}
-else if (_roles.Count == 0)
-{
-    <SecurityEmptyState IconName="shield" Title="No hay roles creados"
-                        Description="Creá un rol para empezar a asignar permisos por pantalla."
-                        ActionText="@(_canWrite ? "Nuevo rol" : null)"
-                        OnAction="() => _showCreateModal = true" />
-}
-else
-{
-    @if (_roles.Count > 6)
-    {
-        <div class="security-toolbar">
-            <div class="security-search">
-                <Icon Name="search" />
-                <input type="text" placeholder="Buscar rol..." aria-label="Buscar rol"
-                       @bind="_searchTerm" @bind:event="oninput" />
-            </div>
-            <span class="security-toolbar__count">@FilteredRoles.Count de @_roles.Count</span>
-        </div>
-    }
-
-    @if (FilteredRoles.Count == 0)
-    {
-        <SecurityEmptyState IconName="search" Title="Sin resultados" Description="No hay roles que coincidan con la búsqueda." Inline="true" />
-    }
-    else
-    {
-        <div class="role-card-grid">
-            @foreach (var r in FilteredRoles)
-            {
-                <div class="card role-card">
-                    <div class="role-card__top">
-                        <div class="role-card__icon"><Icon Name="shield" /></div>
-                        @if (r.IsSystemRole)
-                        {
-                            <span class="badge">Sistema</span>
-                        }
-                    </div>
-                    <div class="role-card__name">@r.Name</div>
-                    <p class="role-card__desc">@(string.IsNullOrWhiteSpace(r.Description) ? "Sin descripción." : r.Description)</p>
-                    <div class="role-card__footer">
-                        <button class="btn btn--secondary btn--sm" @onclick="() => GoToMatrix(r.Id)">
-                            <Icon Name="grid-3x3" /> Permisos
-                        </button>
-                        @if (_canWrite && !r.IsSystemRole)
-                        {
-                            <button class="btn btn--ghost btn--sm" @onclick="() => _confirmingDelete = r" aria-label="@($"Eliminar rol {r.Name}")">
-                                <Icon Name="trash-2" />
-                            </button>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-    }
+/* ===== Matriz de permisos v2: tarjetas + presets ===== */
+.matrix-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
 }
 
-@if (_showCreateModal)
-{
-    <div class="modal-overlay" @onclick="() => _showCreateModal = false">
-        <div class="modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="createRoleTitle">
-            <div class="modal__header">
-                <h3 id="createRoleTitle">Nuevo rol</h3>
-                <button class="btn btn--ghost btn--sm" @onclick="() => _showCreateModal = false" aria-label="Cerrar"><Icon Name="x" /></button>
-            </div>
-            <div class="modal__body">
-                <div class="form-group">
-                    <label class="form-label" for="roleName">Nombre <span class="form-required">*</span></label>
-                    <input id="roleName" class="input" placeholder="Ej: Colaborador externo" @bind="_newRoleName" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="roleDesc">Descripción</label>
-                    <input id="roleDesc" class="input" placeholder="Para qué se usa este rol" @bind="_newRoleDescription" />
-                </div>
-            </div>
-            <div class="form-actions">
-                <button class="btn btn--ghost btn--sm" @onclick="() => _showCreateModal = false">Cancelar</button>
-                <button class="btn btn--primary btn--sm" disabled="@string.IsNullOrWhiteSpace(_newRoleName)" @onclick="CreateRole">Crear rol</button>
-            </div>
-        </div>
-    </div>
+.matrix-bulk {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  flex-wrap: wrap;
 }
 
-<SecurityConfirmDialog Visible="_confirmingDelete is not null"
-                       Title="Eliminar rol"
-                       Message="@($"El rol '{_confirmingDelete?.Name}' se eliminará. Los usuarios que lo tengan asignado quedarán sin ese rol (podrían conservar otros). Esta acción no se puede deshacer.")"
-                       ConfirmText="Eliminar"
-                       Dangerous="true"
-                       OnConfirm="DeleteRole"
-                       OnCancel="() => _confirmingDelete = null" />
-
-@if (_showToast)
-{
-    <div class="toast" role="status" aria-live="polite"><Icon Name="check-circle" /> @_toastMessage</div>
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--bg-surface-2);
+  border-radius: var(--radius-md);
+  gap: 2px;
+  flex-wrap: wrap;
 }
 
-@code {
-    private List<SecurityRole> _roles = new();
-    private bool _loading = true;
-    private bool _canWrite;
-    private bool _showCreateModal;
-    private string _newRoleName = "";
-    private string _newRoleDescription = "";
-    private string _actingUser = "unknown";
-    private string _searchTerm = "";
-    private SecurityRole? _confirmingDelete;
-    private bool _showToast;
-    private string _toastMessage = "";
-
-    private IReadOnlyList<SecurityRole> FilteredRoles =>
-        string.IsNullOrWhiteSpace(_searchTerm)
-            ? _roles
-            : _roles.Where(r => r.Name.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
-        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
-
-        _roles = await SecurityService.GetAllRolesAsync();
-        _loading = false;
-    }
-
-    private void GoToMatrix(Guid roleId) => Navigation.NavigateTo($"/admin/seguridad/roles/{roleId}/permisos");
-
-    private async Task CreateRole()
-    {
-        if (!_canWrite || string.IsNullOrWhiteSpace(_newRoleName)) return;
-
-        var role = await SecurityService.CreateRoleAsync(_newRoleName.Trim(), _newRoleDescription.Trim());
-        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_CREATED", $"Rol creado: {role.Name}");
-
-        _newRoleName = "";
-        _newRoleDescription = "";
-        _showCreateModal = false;
-        _roles = await SecurityService.GetAllRolesAsync();
-
-        _toastMessage = "Rol creado correctamente.";
-        await ShowToast();
-    }
-
-    private async Task DeleteRole()
-    {
-        var role = _confirmingDelete;
-        _confirmingDelete = null;
-        if (!_canWrite || role is null || role.IsSystemRole) return;
-
-        await SecurityService.DeleteRoleAsync(role.Id);
-        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_DELETED", $"Rol eliminado: {role.Name}");
-
-        _roles = await SecurityService.GetAllRolesAsync();
-        _toastMessage = "Rol eliminado.";
-        await ShowToast();
-    }
-
-    private async Task ShowToast()
-    {
-        _showToast = true;
-        StateHasChanged();
-        await Task.Delay(2500);
-        _showToast = false;
-        StateHasChanged();
-    }
+.segmented__btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
+.segmented__btn:hover:not(:disabled) { color: var(--text-primary); }
+.segmented__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.segmented__btn--active {
+  background: var(--bg-elevated);
+  color: var(--brand-500);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.1));
+}
 
+.segmented__custom-tag {
+  align-self: center;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #d97706;
+}
+
+.matrix-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.matrix-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  transition: border-color var(--transition-fast);
+}
+
+.matrix-card--changed {
+  border-color: var(--brand-500);
+}
+
+.matrix-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.matrix-card__name {
+  font-weight: 600;
+  min-width: 160px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.matrix-card__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-500);
+}
+
+.matrix-card__expand {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.matrix-card__expand:hover { color: var(--brand-500); }
+.matrix-card__expand .icon { width: 14px; height: 14px; }
+
+.matrix-card__detail {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.matrix-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
 
 
 
@@ -1186,7 +589,7 @@ else
     <div class="security-toolbar">
         <div class="security-search">
             <Icon Name="search" />
-            <input type="text" placeholder="Buscar por usuario o detalle..." aria-label="Buscar en auditoría"
+            <input type="text" placeholder="Buscar por nombre, usuario o detalle..." aria-label="Buscar en auditoría"
                    @bind="_searchTerm" @bind:event="oninput" @bind:after="ResetPage" />
         </div>
         <select class="input" style="max-width:220px" @bind="_actionFilter" @bind:after="ResetPage" aria-label="Filtrar por tipo de acción">
@@ -1224,12 +627,19 @@ else
                 <tbody>
                     @foreach (var log in PagedLogs)
                     {
+                        var display = ResolveDisplayName(log.Username);
                         <tr @onclick="() => _selectedLog = log">
                             <td style="white-space:nowrap; color:var(--text-tertiary)">@log.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
                             <td>
                                 <div class="data-table__user-cell">
-                                    <span class="activity-row__avatar">@(log.Username.Length > 0 ? log.Username[..1].ToUpper() : "?")</span>
-                                    <strong>@log.Username</strong>
+                                    <span class="activity-row__avatar">@(display.Length > 0 ? display[..1].ToUpper() : "?")</span>
+                                    <div class="data-table__user-info">
+                                        <strong>@display</strong>
+                                        @if (display != log.Username)
+                                        {
+                                            <span class="data-table__user-sub">@log.Username</span>
+                                        }
+                                    </div>
                                 </div>
                             </td>
                             <td><span class="badge">@FormatAction(log.Action)</span></td>
@@ -1271,7 +681,13 @@ else
                     </div>
                     <div class="drawer__row">
                         <span class="drawer__row-label">Usuario</span>
-                        <span class="drawer__row-value">@_selectedLog.Username</span>
+                        <span class="drawer__row-value">
+                            @ResolveDisplayName(_selectedLog.Username)
+                            @if (ResolveDisplayName(_selectedLog.Username) != _selectedLog.Username)
+                            {
+                                <span style="color:var(--text-tertiary); font-weight:400"> (@_selectedLog.Username)</span>
+                            }
+                        </span>
                     </div>
                     <div class="drawer__row">
                         <span class="drawer__row-label">Acción</span>
@@ -1292,6 +708,7 @@ else
 
 @code {
     private List<SecurityAuditLog> _logs = new();
+    private Dictionary<string, string> _usernameToFullName = new(StringComparer.OrdinalIgnoreCase);
     private bool _loading = true;
     private string _searchTerm = "";
     private string _actionFilter = "";
@@ -1303,12 +720,15 @@ else
 
     private IEnumerable<string> DistinctActions => _logs.Select(l => l.Action).Distinct().OrderBy(a => a);
 
+    // Busca por nombre visible además de por el ID/username crudo,
+    // para que "buscar por nombre" funcione como pediste.
     private IReadOnlyList<SecurityAuditLog> FilteredLogs =>
         _logs.Where(l =>
             (string.IsNullOrEmpty(_actionFilter) || l.Action == _actionFilter) &&
             (_dateFrom is null || l.OccurredAt.ToLocalTime().Date >= _dateFrom.Value.Date) &&
             (_dateTo is null || l.OccurredAt.ToLocalTime().Date <= _dateTo.Value.Date) &&
             (string.IsNullOrWhiteSpace(_searchTerm) ||
+             ResolveDisplayName(l.Username).Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
              l.Username.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
              (l.Details?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)))
         .ToList();
@@ -1321,15 +741,23 @@ else
     protected override async Task OnInitializedAsync()
     {
         _logs = await SecurityService.GetAuditLogsAsync(200);
+
+        var users = await SecurityService.GetAllUsersAsync();
+        _usernameToFullName = users
+            .Where(u => !string.IsNullOrWhiteSpace(u.Username))
+            .ToDictionary(u => u.Username, u => u.FullName, StringComparer.OrdinalIgnoreCase);
+
         _loading = false;
     }
 
+    // Si no encontramos el usuario (por ejemplo, fue eliminado desde AD),
+    // mostramos el username crudo como respaldo en vez de romper la vista.
+    private string ResolveDisplayName(string username) =>
+        _usernameToFullName.TryGetValue(username, out var name) ? name : username;
+
     private void ResetPage() => _page = 1;
 
-    private void GoToPage(int page)
-    {
-        _page = Math.Clamp(page, 1, _totalPages);
-    }
+    private void GoToPage(int page) => _page = Math.Clamp(page, 1, _totalPages);
 
     private void ClearFilters()
     {
@@ -1350,6 +778,8 @@ else
         "ROLE_CREATED" => "Rol creado",
         "ROLE_DELETED" => "Rol eliminado",
         "PERMISSION_CHANGED" => "Permisos modificados",
+        "LOGIN_SUCCESS" => "Inicio de sesión",
+        "LOGOUT" => "Cierre de sesión",
         _ => action
     };
 }
@@ -1359,521 +789,3 @@ else
 
 
 
-
-
-/* ===== Toast (feedback de guardado) ===== */
-.toast {
-  position: fixed;
-  bottom: var(--space-6);
-  right: var(--space-6);
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-left: 3px solid #10b981;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  animation: slideInLeft 0.2s var(--ease);
-}
-
-.toast .icon { color: #10b981; width: 16px; height: 16px; }
-
-@keyframes slideInLeft {
-  from { transform: translateX(24px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-/* ===== Chips (roles) ===== */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px 4px 10px;
-  border-radius: var(--radius-full);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  background: var(--brand-50, rgba(99, 102, 241, 0.1));
-  color: var(--brand-600, var(--brand-500));
-  white-space: nowrap;
-}
-
-.chip--sm { padding: 3px 8px; font-size: 11px; }
-
-.chip--muted {
-  background: var(--bg-surface-3);
-  color: var(--text-tertiary);
-}
-
-.chip__remove {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 50%;
-  color: inherit;
-  opacity: 0.65;
-  transition: opacity var(--transition-fast), background var(--transition-fast);
-}
-
-.chip__remove:hover { opacity: 1; background: rgba(0, 0, 0, 0.08); }
-.chip__remove .icon { width: 12px; height: 12px; }
-
-.role-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: var(--space-3) 0;
-}
-
-.role-chip-list--compact { margin: 0; gap: 4px; }
-
-.role-chip-list__empty {
-  font-size: var(--fs-sm);
-  color: var(--text-tertiary);
-  font-style: italic;
-}
-
-.role-assign-row {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  margin-top: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.role-assign-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border-subtle);
-  flex-wrap: wrap;
-}
-
-.role-assign-actions__hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-xs);
-  color: var(--text-tertiary);
-  margin-right: auto;
-}
-
-.role-assign-actions__hint .icon { width: 14px; height: 14px; color: #d97706; }
-
-/* ===== Acciones masivas ===== */
-.bulk-action-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-4);
-  background: var(--brand-50, rgba(99, 102, 241, 0.08));
-  border: 1px solid var(--brand-500);
-  border-radius: var(--radius-md);
-  font-size: var(--fs-sm);
-  flex-wrap: wrap;
-}
-
-.bulk-action-bar__actions {
-  display: flex;
-  gap: var(--space-2);
-}
-
-/* ===== Permission matrix: toggle por columna ===== */
-.matrix-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.matrix-col-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.matrix-col-toggle { color: var(--text-tertiary); transition: color var(--transition-fast); }
-.matrix-col-toggle:hover { color: var(--brand-500); }
-.matrix-col-toggle .icon { width: 14px; height: 14px; }
-
-.matrix-group-header td {
-  background: var(--bg-surface-2);
-  font-weight: 700;
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--text-tertiary);
-  padding: 6px var(--space-2) !important;
-}
-
-.matrix-changed { position: relative; }
-
-.matrix-changed::after {
-  content: "";
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--brand-500);
-}
-
-/* ===== Paginación ===== */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-4);
-  margin-top: var(--space-4);
-}
-
-.pagination__info {
-  font-size: var(--fs-sm);
-  color: var(--text-tertiary);
-}
-
-/* ===== Security Page Header ===== */
-.security-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  flex-wrap: wrap;
-}
-
-.security-header__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--text-tertiary);
-  margin-bottom: var(--space-2);
-  transition: color var(--transition-fast);
-}
-
-.security-header__back:hover { color: var(--brand-500); }
-.security-header__back .icon { width: 14px; height: 14px; }
-.security-header__titles h1 { margin-bottom: 4px; }
-.security-header__titles p { color: var(--text-tertiary); font-size: var(--fs-sm); max-width: 560px; }
-
-.security-header__actions {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  flex-shrink: 0;
-}
-
-/* ===== Toolbar: búsqueda + filtros ===== */
-.security-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.security-search { position: relative; flex: 1; min-width: 220px; max-width: 340px; }
-
-.security-search .icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 15px;
-  height: 15px;
-  color: var(--text-tertiary);
-  pointer-events: none;
-}
-
-.security-search input {
-  width: 100%;
-  padding: 8px 12px 8px 34px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated);
-  font-size: var(--fs-sm);
-  transition: border-color var(--transition-fast);
-}
-
-.security-search input:focus { border-color: var(--brand-500); }
-
-.security-filter-group {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  background: var(--bg-surface-2);
-  border-radius: var(--radius-md);
-}
-
-.security-filter-btn {
-  padding: 6px 12px;
-  border-radius: var(--radius-sm, 6px);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-tertiary);
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.security-filter-btn:hover { color: var(--text-primary); }
-
-.security-filter-btn--active {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.1));
-}
-
-.security-toolbar__count {
-  margin-left: auto;
-  font-size: var(--fs-xs);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
-/* ===== Data table ===== */
-.data-table-wrap { overflow-x: auto; }
-
-.data-table { width: 100%; border-collapse: collapse; min-width: 640px; }
-
-.data-table thead th {
-  text-align: left;
-  padding: var(--space-3) var(--space-3);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-bottom: 1px solid var(--border-default);
-  white-space: nowrap;
-}
-
-.data-table tbody td {
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--border-subtle);
-  vertical-align: middle;
-  font-size: var(--fs-sm);
-}
-
-.data-table tbody tr { transition: background var(--transition-fast); }
-.data-table tbody tr:hover { background: var(--bg-hover); }
-.data-table tbody tr:last-child td { border-bottom: none; }
-
-.data-table__user-cell { display: flex; align-items: center; gap: var(--space-3); }
-.data-table__user-info { display: flex; flex-direction: column; line-height: 1.3; }
-.data-table__user-name { font-weight: 600; color: var(--text-primary); }
-.data-table__user-sub { font-size: var(--fs-xs); color: var(--text-tertiary); }
-.data-table__actions { text-align: right; }
-.data-table--clickable tbody tr { cursor: pointer; }
-
-.data-table th.sortable { cursor: pointer; user-select: none; }
-.data-table th.sortable:hover { color: var(--text-primary); }
-.data-table th.sortable .icon { width: 12px; height: 12px; vertical-align: -1px; margin-left: 2px; opacity: 0.6; }
-
-/* ===== Status badge ===== */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 9px;
-  border-radius: var(--radius-full);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-}
-
-.status-badge__dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.status-badge--active { background: rgba(16, 185, 129, 0.12); color: #0a8a5f; }
-.status-badge--active .status-badge__dot { background: #10b981; }
-[data-theme="dark"] .status-badge--active { color: #34d399; }
-.status-badge--inactive { background: var(--bg-surface-3); color: var(--text-tertiary); }
-.status-badge--inactive .status-badge__dot { background: var(--text-tertiary); }
-
-/* ===== Role cards ===== */
-.role-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--space-4);
-}
-
-.role-card { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
-.role-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
-
-.role-card__icon {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md);
-  background: var(--gradient-brand);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.role-card__icon .icon { width: 18px; height: 18px; }
-.role-card__name { font-weight: 700; font-size: var(--fs-md); }
-.role-card__desc { font-size: var(--fs-sm); color: var(--text-tertiary); flex: 1; line-height: 1.5; }
-
-.role-card__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border-subtle);
-}
-
-/* ===== Entity header (detalle) ===== */
-.entity-header { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
-.entity-header__avatar { width: 56px; height: 56px; font-size: var(--fs-lg); }
-
-.entity-header__meta {
-  font-size: var(--fs-sm);
-  color: var(--text-tertiary);
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-
-/* ===== Tabs (detalle) ===== */
-.security-tabs {
-  display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--border-default);
-  margin: var(--space-6) 0 var(--space-6);
-}
-
-.security-tab {
-  padding: var(--space-2) var(--space-3);
-  margin-bottom: -1px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--text-tertiary);
-  border-bottom: 2px solid transparent;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
-}
-
-.security-tab:hover { color: var(--text-primary); }
-.security-tab--active { color: var(--brand-500); border-color: var(--brand-500); }
-
-/* ===== Drawer (auditoría) ===== */
-.drawer-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  background: rgba(0, 0, 0, 0.45);
-  animation: fadeIn 0.15s var(--ease);
-  display: flex;
-  justify-content: flex-end;
-}
-
-.drawer {
-  width: 100%;
-  max-width: 420px;
-  height: 100%;
-  background: var(--bg-elevated);
-  border-left: 1px solid var(--border-default);
-  box-shadow: var(--shadow-lg);
-  display: flex;
-  flex-direction: column;
-  animation: slideInRight 0.2s var(--ease);
-}
-
-@keyframes slideInRight {
-  from { transform: translateX(24px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-.drawer__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-5);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.drawer__body { padding: var(--space-5); overflow-y: auto; flex: 1; }
-
-.drawer__row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.drawer__row:last-child { border-bottom: none; }
-
-.drawer__row-label {
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--text-tertiary);
-}
-
-/* ===== Responsive ===== */
-@media (max-width: 720px) {
-  .security-header { flex-direction: column; }
-  .security-toolbar__count { margin-left: 0; }
-  .entity-header { flex-direction: column; align-items: flex-start; }
-  .bulk-action-bar { flex-direction: column; align-items: flex-start; }
-
-  .security-nav {
-    display: flex;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: var(--space-2);
-    margin-bottom: var(--space-6);
-    padding-bottom: var(--space-2);
-    border-bottom: 1px solid var(--border-default);
-  }
-
-  .security-nav__label {
-    font-size: var(--fs-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-tertiary);
-    white-space: nowrap;
-  }
-
-  .security-nav__items {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    width: 100%;
-    overflow-x: auto;
-  }
-
-  .security-nav__item {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 8px 12px;
-    border-radius: var(--radius-md);
-    color: var(--text-tertiary);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    text-decoration: none;
-    white-space: nowrap;
-    transition: background var(--transition-fast), color var(--transition-fast);
-  }
-
-  .security-nav__item .icon { width: 16px; height: 16px; }
-  .security-nav__item:hover { color: var(--text-primary); background: var(--bg-hover); }
-  .security-nav__item--active { color: var(--brand-500); background: var(--bg-surface-2); }
-}
