@@ -684,3 +684,378 @@ public class CommentDataService : ICommentDataService
         }
     }
 }
+
+----------
+STATS
+----------
+// IStatsDataService.cs
+using CorpWiki.Application.DTOs;
+
+namespace CorpWiki.Application.Interfaces;
+
+public interface IStatsDataService
+{
+    Task<StatsSnapshot> GetStatsAsync();
+}
+
+-----------------
+
+// StatsDataService.cs
+using CorpWiki.Application.DTOs;
+using CorpWiki.Application.Interfaces;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Infrastructure.Persistence;
+
+public class StatsDataService : IStatsDataService
+{
+    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
+
+    public StatsDataService(IDbContextFactory<DaviWikiDbContext> dbFactory)
+    {
+        _dbFactory = dbFactory;
+    }
+
+    public async Task<StatsSnapshot> GetStatsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var totalArticles = await db.Articles.CountAsync();
+        var totalCategories = await db.Categories.CountAsync();
+        var totalTags = await db.Tags.CountAsync();
+        var totalMediaFiles = await db.MediaFiles.CountAsync();
+        var totalAuthors = await db.Authors.CountAsync();
+        var totalViews = await db.Articles.SumAsync(a => (int?)a.ViewCount) ?? 0;
+        var featuredArticles = await db.Articles.CountAsync(a => a.IsFeatured);
+
+        return new StatsSnapshot
+        {
+            TotalArticles = totalArticles,
+            TotalCategories = totalCategories,
+            TotalTags = totalTags,
+            TotalMediaFiles = totalMediaFiles,
+            TotalAuthors = totalAuthors,
+            TotalViews = totalViews,
+            FeaturedArticles = featuredArticles,
+            WeeklyActivity = new List<WeeklyActivityPoint>() // Actividad semanal (Verificar en BD si existe)
+        };
+    }
+}
+
+
+----------------
+SEARCH
+----------------
+// ISearchDataService.cs
+using CorpWiki.Application.DTOs;
+
+namespace CorpWiki.Application.Interfaces;
+
+public interface ISearchDataService
+{
+    Task<IReadOnlyList<SearchResultDto>> SearchAsync(string query, int maxResults = 20);
+}
+
+------------------
+// SearchDataService.cs
+using CorpWiki.Application.DTOs;
+using CorpWiki.Application.Interfaces;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Infrastructure.Persistence;
+
+public class SearchDataService : ISearchDataService
+{
+    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
+
+    public SearchDataService(IDbContextFactory<DaviWikiDbContext> dbFactory)
+    {
+        _dbFactory = dbFactory;
+    }
+
+    public async Task<IReadOnlyList<SearchResultDto>> SearchAsync(string query, int maxResults = 20)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var articles = await db.Articles
+            .Where(a => EF.Functions.Like(a.SearchText, $"%{query}%"))
+            .AsNoTracking()
+            .Take(maxResults)
+            .ToListAsync();
+
+        var results = new List<SearchResultDto>();
+        foreach (var a in articles)
+        {
+            results.Add(new SearchResultDto { Title = a.Title, Subtitle = a.Summary, Url = $"/articulo/{a.Slug}", Icon = "file-text" });
+        }
+        return results;
+    }
+}
+
+
+-------------
+MEDIAFILE
+-------------
+using CorpWiki.Domain.Entities;
+
+namespace CorpWiki.Application.Interfaces;
+
+public interface IMediaFileDataService
+{
+    Task<MediaFile?> GetMediaFileAsync(Guid id);
+    Task<MediaFile> CreateMediaFileAsync(MediaFile mediaFile);
+    Task<MediaFile> UpdateMediaFileAsync(MediaFile mediaFile);
+    Task<IReadOnlyList<MediaFile>> GetMediaFilesAsync();
+    Task<MediaFile?> GetMediaFileByIdAsync(Guid id);
+    Task<IReadOnlyList<MediaFile>> GetMediaFilesByTypeAsync(MediaType type);
+    Task<bool> DeleteMediaFileAsync(Guid id);
+}
+
+----------------
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Application.Interfaces.Repositories;
+using CorpWiki.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Infrastructure.Persistence;
+
+public class MediaFileDataService : IMediaFileDataService
+{
+    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
+    private readonly IMediaFileRepository _mediaRepo;
+
+    public MediaFileDataService(
+        IDbContextFactory<DaviWikiDbContext> dbFactory,
+        IMediaFileRepository mediaRepo)
+    {
+        _dbFactory = dbFactory;
+        _mediaRepo = mediaRepo;
+    }
+
+    public async Task<MediaFile?> GetMediaFileAsync(Guid id) => await _mediaRepo.GetByIdAsync(id);
+
+    public async Task<MediaFile> CreateMediaFileAsync(MediaFile mediaFile) => await _mediaRepo.AddAsync(mediaFile);
+
+    public async Task<MediaFile> UpdateMediaFileAsync(MediaFile mediaFile) => await _mediaRepo.UpdateAsync(mediaFile);
+
+    public async Task<IReadOnlyList<MediaFile>> GetMediaFilesAsync() => await _mediaRepo.GetAllAsync();
+
+    public async Task<MediaFile?> GetMediaFileByIdAsync(Guid id) => await _mediaRepo.GetByIdAsync(id);
+
+    public async Task<IReadOnlyList<MediaFile>> GetMediaFilesByTypeAsync(MediaType type) => await _mediaRepo.GetByTypeAsync(type);
+
+    public async Task<bool> DeleteMediaFileAsync(Guid id)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var mediaFile = await db.MediaFiles.FindAsync(id);
+        if (mediaFile is null)
+            return false;
+
+        db.MediaFiles.Remove(mediaFile);
+        await db.SaveChangesAsync();
+        return true;
+    }
+}
+
+
+----------------
+COLLECTION
+----------------
+using CorpWiki.Domain.Entities;
+
+namespace CorpWiki.Application.Interfaces;
+
+public interface ICollectionDataService
+{
+    Task<IReadOnlyList<Collection>> GetCollectionsAsync();
+    Task<Collection?> GetCollectionBySlugAsync(string slug);
+    Task<Collection?> GetCollectionByIdAsync(Guid id);
+    Task<Collection> CreateCollectionAsync(string name, string description, string icon, string coverImageUrl);
+    Task<Collection?> UpdateCollectionAsync(Guid id, string name, string description, string icon, string coverImageUrl);
+    Task<bool> DeleteCollectionAsync(Guid id);
+    Task<IReadOnlyList<Article>> GetArticlesInCollectionAsync(Guid collectionId);
+    Task<bool> AddArticleToCollectionAsync(Guid collectionId, Guid articleId);
+    Task<bool> RemoveArticleFromCollectionAsync(Guid collectionId, Guid articleId);
+    Task<IReadOnlyList<Collection>> GetFeaturedCollectionsAsync(int count = 6);
+}
+
+
+----------------
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Infrastructure.Persistence;
+
+public class CollectionDataService : ICollectionDataService
+{
+    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
+
+    public CollectionDataService(IDbContextFactory<DaviWikiDbContext> dbFactory)
+    {
+        _dbFactory = dbFactory;
+    }
+
+    public async Task<IReadOnlyList<Collection>> GetCollectionsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Collections.ToListAsync();
+    }
+
+    public async Task<Collection?> GetCollectionBySlugAsync(string slug)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var collection = await db.Collections.FirstOrDefaultAsync(c => c.Slug == slug);
+        if (collection != null) await PopulateCollectionArticleIdAsync(db, collection);
+        return collection;
+    }
+
+    public async Task<Collection?> GetCollectionByIdAsync(Guid id)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        // Nota: el original tampoco poblaba ArticleIds aquí (a diferencia de GetCollectionBySlugAsync).
+        return await db.Collections.FindAsync(id);
+    }
+
+    public async Task<Collection> CreateCollectionAsync(string name, string description, string icon, string coverImageUrl)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var collection = new Collection
+        {
+            Id = Guid.NewGuid(),
+            Name = name.Trim(),
+            Slug = Slugify(name),
+            Description = description?.Trim() ?? string.Empty,
+            Icon = string.IsNullOrWhiteSpace(icon) ? "Library" : icon,
+            CoverImageUrl = coverImageUrl?.Trim() ?? string.Empty,
+            ArticleIds = new List<Guid>(),
+            IsFeatured = false
+        };
+
+        db.Collections.Add(collection);
+        await db.SaveChangesAsync();
+
+        return collection;
+    }
+
+    public async Task<Collection?> UpdateCollectionAsync(Guid id, string name, string description, string icon, string coverImageUrl)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var collection = await db.Collections.FindAsync(id);
+        if (collection == null) return null;
+
+        collection.Name = name.Trim();
+        collection.Slug = Slugify(name);
+        collection.Description = description?.Trim() ?? string.Empty;
+        collection.Icon = string.IsNullOrWhiteSpace(icon) ? "Library" : icon;
+        collection.CoverImageUrl = coverImageUrl?.Trim() ?? string.Empty;
+
+        await db.SaveChangesAsync();
+        return collection;
+    }
+
+    public async Task<bool> DeleteCollectionAsync(Guid id)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var collection = await db.Collections.FindAsync(id);
+        if (collection == null) return false;
+
+        db.Collections.Remove(collection); // cascade elimina collection_articles
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<IReadOnlyList<Article>> GetArticlesInCollectionAsync(Guid collectionId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var articleIds = await db.CollectionArticles
+            .Where(ca => ca.CollectionId == collectionId)
+            .Select(ca => ca.ArticleId)
+            .ToListAsync();
+
+        var articles = await db.Articles
+            .Where(a => articleIds.Contains(a.Id))
+            .ToListAsync();
+
+        foreach (var article in articles)
+            await PopulateNotMappedListsAsync(db, article);
+
+        return articles;
+    }
+
+    public async Task<bool> AddArticleToCollectionAsync(Guid collectionId, Guid articleId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var exists = await db.CollectionArticles
+            .AnyAsync(ca => ca.CollectionId == collectionId && ca.ArticleId == articleId);
+        if (exists) return false;
+
+        db.CollectionArticles.Add(new CollectionArticle { CollectionId = collectionId, ArticleId = articleId });
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> RemoveArticleFromCollectionAsync(Guid collectionId, Guid articleId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var link = await db.CollectionArticles
+            .FirstOrDefaultAsync(ca => ca.CollectionId == collectionId && ca.ArticleId == articleId);
+        if (link == null) return false;
+
+        db.CollectionArticles.Remove(link);
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    public Task<IReadOnlyList<Collection>> GetFeaturedCollectionsAsync(int count = 6) =>
+        Task.FromResult<IReadOnlyList<Collection>>(new List<Collection>());
+
+    private static async Task PopulateCollectionArticleIdAsync(DaviWikiDbContext db, Collection collection)
+    {
+        collection.ArticleIds = await db.CollectionArticles
+            .Where(ca => ca.CollectionId == collection.Id)
+            .Select(ca => ca.ArticleId)
+            .ToListAsync();
+    }
+
+    // TODO: usado también en ArticleDataService (PopulateNotMappedListsAsync) —
+    // pendiente decidir si se comparte o se deja duplicado por servicio.
+    private static async Task PopulateNotMappedListsAsync(DaviWikiDbContext db, Article article)
+    {
+        article.TagIds = await db.ArticleTags.Where(at => at.ArticleId == article.Id).Select(at => at.TagId).ToListAsync();
+        article.RelatedArticleIds = await db.ArticleRelateds.Where(ar => ar.ArticleId == article.Id).Select(ar => ar.RelatedArticleId).ToListAsync();
+        article.AttachmentMediaIds = await db.ArticleAttachments.Where(aa => aa.ArticleId == article.Id).Select(aa => aa.MediaFileId).ToListAsync();
+    }
+
+    // TODO: duplicado del Slugify local que ya existía — el documento también señala
+    // que CategoryDataService usa _slugGenerator.GenerateSlug() en su lugar. Pendiente unificar.
+    private static string Slugify(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+
+        var s = value.Trim().ToLowerInvariant();
+        var sb = new System.Text.StringBuilder();
+
+        foreach (var c in s)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                sb.Append(c);
+            }
+            else if (sb.Length > 0 && sb[sb.Length - 1] != '-')
+            {
+                sb.Append('-');
+            }
+        }
+
+        return sb.ToString().Trim('-');
+    }
+}
