@@ -1059,3 +1059,658 @@ public class CollectionDataService : ICollectionDataService
         return sb.ToString().Trim('-');
     }
 }
+
+-----------
+ARTICLE
+-----------
+using CorpWiki.Application.DTOs;
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Application.Interfaces.Repositories;
+using CorpWiki.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Infrastructure.Persistence;
+
+public interface IArticleDataService
+{
+    Task<IReadOnlyList<Article>> GetArticlesAsync();
+    Task<Article?> GetArticleByIdAsync(Guid id, bool track = false);
+    Task<Article?> GetArticleBySlugAsync(string slug, bool track = false);
+    Task<bool> IsFavoriteAsync(Guid articleId);
+    Task<bool> ToggleFavoriteAsync(Guid articleId);
+    Task IncrementArticleViewCountAsync(Guid articleId);
+    Task<bool> HasUserRatedAsync(Guid articleId);
+    Task<double?> GetUserRatingAsync(Guid articleId);
+    Task RateArticleAsync(Guid articleId, double score);
+    Task<IReadOnlyList<Article>> GetFeaturedArticlesAsync(int count = 10);
+    Task<IReadOnlyList<Article>> GetArticlesByCategoryAsync(Guid categoryId);
+    Task<IReadOnlyList<Article>> GetArticlesByTagAsync(Guid tagId);
+    Task<IReadOnlyList<Article>> GetArticlesByAuthorAsync(Guid authorId);
+    Task<IReadOnlyList<Article>> GetRecentArticlesAsync(int count = 8);
+    Task<IReadOnlyList<Article>> GetPopularArticlesAsync(int count = 8);
+    Task<IReadOnlyList<Article>> GetRelatedArticlesAsync(Guid articleId);
+    Task<ArticleCardDto> ToCardDtoAsync(Article article);
+    Task<IReadOnlyList<ArticleCardDto>> ToCardDtosAsync(IEnumerable<Article> articles);
+    Task<Article> CreateArticleAsync(
+        string title, string summary, Guid categoryId, Guid authorId, Guid? coverImageMediaId,
+        bool isFeatured, ArticleStatus status, List<ArticleContentBlock>? content = null,
+        IEnumerable<Guid>? tagIds = null, IEnumerable<Guid>? relatedArticleIds = null,
+        IEnumerable<Guid>? attachmentMediaIds = null);
+    Task<Article?> UpdateArticleAsync(
+        Guid id, string title, string summary, Guid categoryId, Guid authorId, Guid? coverImageMediaId,
+        bool isFeatured, ArticleStatus status, List<ArticleContentBlock>? content = null,
+        IEnumerable<Guid>? tagIds = null, IEnumerable<Guid>? relatedArticleIds = null,
+        IEnumerable<Guid>? attachmentMediaIds = null);
+    Task<IReadOnlyList<Article>> GetFavoriteArticlesAsync();
+    Task<IReadOnlyList<Article>> GetHistoryArticlesAsync(int count = 20);
+    Task RegisterArticleViewAsync(Guid articleId);
+    Task<IReadOnlyDictionary<Guid, DateTime>> GetHistoryLastViewAsync(int count = 20);
+}
+
+public class ArticleDataService : IArticleDataService
+{
+    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
+    private readonly ISecurityService _securityService;
+    private readonly IArticleRepository _articleRepo;
+    private readonly ICategoryRepository _categoryRepo;
+    private readonly IAuthorRepository _authorRepo;
+
+    public ArticleDataService(
+        IDbContextFactory<DaviWikiDbContext> dbFactory,
+        ISecurityService securityService,
+        IArticleRepository articleRepo,
+        ICategoryRepository categoryRepo,
+        IAuthorRepository authorRepo)
+    {
+        _dbFactory = dbFactory;
+        _securityService = securityService;
+        _articleRepo = articleRepo;
+        _categoryRepo = categoryRepo;
+        _authorRepo = authorRepo;
+    }
+
+    public async Task<IReadOnlyList<Article>> GetArticlesAsync() => await _articleRepo.GetAllAsync();
+
+    public async Task<Article?> GetArticleByIdAsync(Guid id, bool track = false) => await _articleRepo.GetByIdAsync(id, track);
+
+    public async Task<Article?> GetArticleBySlugAsync(string slug, bool track = false) => await _articleRepo.GetBySlugAsync(slug, track);
+
+    private static string GetInitials(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return "US";
+
+        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return string.Join("", parts.Take(2).Select(s => s[0])).ToUpper();
+    }
+
+    public async Task<bool> IsFavoriteAsync(Guid articleId)
+    {
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return false;
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.ArticleFavorites.AnyAsync(f => f.UserId == userId && f.ArticleId == articleId);
+    }
+
+    public async Task IncrementArticleViewCountAsync(Guid articleId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var article = await db.Articles.FindAsync(articleId);
+        if (article != null)
+        {
+            article.ViewCount++;
+            await db.SaveChangesAsync();
+        }
+    }
+
+    public async Task<bool> ToggleFavoriteAsync(Guid articleId)
+    {
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return false;
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var favorite = await db.ArticleFavorites.FirstOrDefaultAsync(f => f.UserId == userId && f.ArticleId == articleId);
+        if (favorite != null)
+        {
+            db.ArticleFavorites.Remove(favorite);
+            await db.SaveChangesAsync();
+            return false;
+        }
+
+        var newFavorite = new ArticleFavorite
+        {
+            UserId = userId,
+            ArticleId = articleId,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await db.ArticleFavorites.AddAsync(newFavorite);
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> HasUserRatedAsync(Guid articleId)
+    {
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return false;
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.ArticleRatings.AnyAsync(r => r.ArticleId == articleId && r.UserId == userId);
+    }
+
+    public async Task<double?> GetUserRatingAsync(Guid articleId)
+    {
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return null;
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var score = await db.ArticleRatings
+            .Where(r => r.ArticleId == articleId && r.UserId == userId)
+            .Select(r => (byte?)r.Score)
+            .FirstOrDefaultAsync();
+
+        return score is null ? null : score.Value / 2.0;
+    }
+
+    public async Task RateArticleAsync(Guid articleId, double score)
+    {
+        if (score < 0.5 || score > 5.0 || (score * 2) % 1 != 0)
+            throw new ArgumentOutOfRangeException(nameof(score), "La puntuación debe ir de 0.5 a 5.0 en pasos de 0.5.");
+
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty)
+            throw new UnauthorizedAccessException("Debes iniciar sesión para calificar.");
+
+        var byteScore = (byte)Math.Round(score * 2);
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.ArticleRatings
+            .FirstOrDefaultAsync(r => r.ArticleId == articleId && r.UserId == userId);
+
+        if (existing is null)
+        {
+            db.ArticleRatings.Add(new ArticleRating
+            {
+                Id = Guid.NewGuid(),
+                ArticleId = articleId,
+                UserId = userId,
+                Score = byteScore,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            existing.Score = byteScore;
+        }
+
+        await db.SaveChangesAsync();
+        await RecalculateArticleRatingAsync(articleId);
+    }
+
+    // ⚠️ Excepción al patrón estándar: crea su propio db de principio a fin,
+    // sin pasar por _articleRepo, para evitar el fallo silencioso descrito en el documento.
+    private async Task RecalculateArticleRatingAsync(Guid articleId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var ratings = await db.ArticleRatings
+            .Where(r => r.ArticleId == articleId)
+            .Select(r => (int)r.Score)
+            .ToListAsync();
+
+        var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == articleId);
+        if (article is not null)
+        {
+            article.Rating = ratings.Count == 0 ? 0 : ratings.Average(s => s / 2.0);
+            article.RatingCount = ratings.Count;
+            await db.SaveChangesAsync();
+        }
+    }
+
+    public async Task<IReadOnlyList<Article>> GetFeaturedArticlesAsync(int count = 10)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var articles = await db.Articles
+            .Where(a => a.IsFeatured || a.ViewCount > 0 || a.RatingCount > 0)
+            .ToListAsync();
+
+        if (articles.Count == 0) return Array.Empty<Article>();
+
+        var maxViews = articles.Max(a => a.ViewCount);
+        var maxRatingCount = articles.Max(a => a.RatingCount);
+
+        double Score(Article a)
+        {
+            var viewsNorm = maxViews == 0 ? 0 : (double)a.ViewCount / maxViews;
+            var ratingCountNorm = maxRatingCount == 0 ? 0 : (double)a.RatingCount / maxRatingCount;
+            var ratingNorm = a.Rating / 5.0;
+
+            return (a.IsFeatured ? 1.0 : 0.0) + (viewsNorm * 0.4) + (ratingNorm * 0.4) + (ratingCountNorm * 0.2);
+        }
+
+        var topFeatured = articles
+            .OrderByDescending(Score)
+            .Take(count)
+            .ToList();
+
+        foreach (var article in topFeatured)
+            article.IsFeatured = true;
+
+        return topFeatured;
+    }
+
+    public async Task<IReadOnlyList<Article>> GetArticlesByCategoryAsync(Guid categoryId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Articles.Where(a => a.CategoryId == categoryId).AsNoTracking().ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<Article>> GetArticlesByTagAsync(Guid tagId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.ArticleTags.Where(at => at.TagId == tagId)
+            .Join(db.Articles, at => at.ArticleId, a => a.Id, (at, a) => a)
+            .AsNoTracking().ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<Article>> GetArticlesByAuthorAsync(Guid authorId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Articles.Where(a => a.AuthorId == authorId).AsNoTracking().ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<Article>> GetRecentArticlesAsync(int count = 8)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Articles.OrderByDescending(a => a.CreatedAt).Take(count).AsNoTracking().ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<Article>> GetPopularArticlesAsync(int count = 8)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Articles.OrderByDescending(a => a.ViewCount).Take(count).AsNoTracking().ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<Article>> GetRelatedArticlesAsync(Guid articleId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.ArticleRelateds.Where(ar => ar.ArticleId == articleId)
+            .Join(db.Articles, ar => ar.RelatedArticleId, a => a.Id, (ar, a) => a)
+            .AsNoTracking().ToListAsync();
+    }
+
+    public async Task<ArticleCardDto> ToCardDtoAsync(Article article)
+    {
+        var category = await _categoryRepo.GetByIdAsync(article.CategoryId);
+        var author = await _authorRepo.GetByIdAsync(article.AuthorId);
+        return new ArticleCardDto { Article = article, Category = category!, Author = author! };
+    }
+
+    public async Task<IReadOnlyList<ArticleCardDto>> ToCardDtosAsync(IEnumerable<Article> articles)
+    {
+        var result = new List<ArticleCardDto>();
+        foreach (var a in articles) result.Add(await ToCardDtoAsync(a));
+        return result;
+    }
+
+    // ⚠️ Excepción al patrón estándar: db propio de principio a fin, no usa _articleRepo dentro de la transacción.
+    public async Task<Article> CreateArticleAsync(
+        string title, string summary, Guid categoryId, Guid authorId, Guid? coverImageMediaId,
+        bool isFeatured, ArticleStatus status, List<ArticleContentBlock>? content = null,
+        IEnumerable<Guid>? tagIds = null, IEnumerable<Guid>? relatedArticleIds = null,
+        IEnumerable<Guid>? attachmentMediaIds = null)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var strategy = db.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            try
+            {
+                var article = new Article
+                {
+                    Id = Guid.NewGuid(),
+                    Title = title,
+                    Summary = summary,
+                    CategoryId = categoryId,
+                    AuthorId = authorId,
+                    CoverImageMediaId = coverImageMediaId,
+                    IsFeatured = isFeatured,
+                    Status = status,
+                    Content = content ?? new List<ArticleContentBlock>()
+                };
+
+                db.Articles.Add(article);
+                await db.SaveChangesAsync();
+
+                if (tagIds != null && tagIds.Any())
+                {
+                    await db.ArticleTags.AddRangeAsync(tagIds.Select(tId => new ArticleTag { ArticleId = article.Id, TagId = tId }));
+                    await db.SaveChangesAsync();
+                }
+
+                if (relatedArticleIds != null && relatedArticleIds.Any())
+                {
+                    await db.ArticleRelateds.AddRangeAsync(relatedArticleIds.Select(rId => new ArticleRelated { ArticleId = article.Id, RelatedArticleId = rId }));
+                    await db.SaveChangesAsync();
+                }
+
+                if (attachmentMediaIds != null && attachmentMediaIds.Any())
+                {
+                    await db.ArticleAttachments.AddRangeAsync(attachmentMediaIds.Select(mId => new ArticleAttachment { ArticleId = article.Id, MediaFileId = mId }));
+                    await db.SaveChangesAsync();
+                }
+
+                await transaction.CommitAsync();
+                await PopulateNotMappedListsAsync(db, article);
+                return article;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
+    }
+
+    // ⚠️ Excepción al patrón estándar: db propio de principio a fin, opera sobre db.Articles directo
+    // en vez de _articleRepo (el repo trackearía la entidad en un DbContext distinto al de la transacción).
+    public async Task<Article?> UpdateArticleAsync(
+        Guid id, string title, string summary, Guid categoryId, Guid authorId, Guid? coverImageMediaId,
+        bool isFeatured, ArticleStatus status, List<ArticleContentBlock>? content = null,
+        IEnumerable<Guid>? tagIds = null, IEnumerable<Guid>? relatedArticleIds = null,
+        IEnumerable<Guid>? attachmentMediaIds = null)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var strategy = db.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            try
+            {
+                var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == id);
+                if (article == null) return null;
+
+                article.Title = title;
+                article.Summary = summary;
+                article.CategoryId = categoryId;
+                article.CoverImageMediaId = coverImageMediaId;
+                article.IsFeatured = isFeatured;
+                article.Status = status;
+
+                if (content != null)
+                    article.Content = content;
+
+                await db.SaveChangesAsync();
+
+                if (tagIds != null)
+                {
+                    var incomingTags = tagIds.ToHashSet();
+                    var existingTagLinks = await db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
+
+                    var toRemove = existingTagLinks.Where(at => !incomingTags.Contains(at.TagId)).ToList();
+                    if (toRemove.Count > 0)
+                        db.ArticleTags.RemoveRange(toRemove);
+
+                    var existingTagIds = existingTagLinks.Select(at => at.TagId).ToHashSet();
+                    var newTags = incomingTags.Except(existingTagIds).Select(tId => new ArticleTag { ArticleId = id, TagId = tId });
+
+                    if (newTags.Any())
+                        await db.ArticleTags.AddRangeAsync(newTags);
+
+                    await db.SaveChangesAsync();
+                }
+
+                if (relatedArticleIds != null)
+                {
+                    var incomingRelated = relatedArticleIds.ToHashSet();
+                    await db.ArticleRelateds
+                        .Where(ar => ar.ArticleId == id && !incomingRelated.Contains(ar.RelatedArticleId))
+                        .ExecuteDeleteAsync();
+
+                    var existingRelated = await db.ArticleRelateds
+                        .Where(ar => ar.ArticleId == id).Select(ar => ar.RelatedArticleId).ToListAsync();
+
+                    var newRelated = incomingRelated.Except(existingRelated)
+                        .Select(rId => new ArticleRelated { ArticleId = id, RelatedArticleId = rId });
+
+                    if (newRelated.Any())
+                    {
+                        await db.ArticleRelateds.AddRangeAsync(newRelated);
+                        await db.SaveChangesAsync();
+                    }
+                }
+
+                if (attachmentMediaIds != null)
+                {
+                    var incomingAttachments = attachmentMediaIds.ToHashSet();
+                    await db.ArticleAttachments
+                        .Where(aa => aa.ArticleId == id && !incomingAttachments.Contains(aa.MediaFileId))
+                        .ExecuteDeleteAsync();
+
+                    var existingAttachments = await db.ArticleAttachments
+                        .Where(aa => aa.ArticleId == id).Select(aa => aa.MediaFileId).ToListAsync();
+
+                    var newAttachments = incomingAttachments.Except(existingAttachments)
+                        .Select(mId => new ArticleAttachment { ArticleId = id, MediaFileId = mId });
+
+                    if (newAttachments.Any())
+                    {
+                        await db.ArticleAttachments.AddRangeAsync(newAttachments);
+                        await db.SaveChangesAsync();
+                    }
+                }
+
+                await transaction.CommitAsync();
+                await PopulateNotMappedListsAsync(db, article);
+
+                return article;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
+    }
+
+    public async Task<IReadOnlyList<Article>> GetFavoriteArticlesAsync()
+    {
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return new List<Article>();
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var favoriteArticles = await db.ArticleFavorites.Include(f => f.Article)
+            .Where(f => f.UserId == userId).OrderByDescending(f => f.CreatedAt).Select(f => f.Article).ToListAsync();
+
+        foreach (var article in favoriteArticles)
+            await PopulateNotMappedListsAsync(db, article);
+
+        return favoriteArticles;
+    }
+
+    public async Task<IReadOnlyList<Article>> GetHistoryArticlesAsync(int count = 20)
+    {
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return new List<Article>();
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var query = from h in db.ArticleHistories
+                    where h.UserId == userId
+                    group h by h.ArticleId into g
+                    select new { ArticleId = g.Key, LastViewedAt = g.Max(h => h.ViewedAt) };
+
+        var ordered = from lv in query
+                      join a in db.Articles on lv.ArticleId equals a.Id
+                      orderby lv.LastViewedAt descending
+                      select a;
+
+        var articles = await ordered.Take(count).ToListAsync();
+
+        foreach (var article in articles)
+            await PopulateNotMappedListsAsync(db, article);
+
+        return articles;
+    }
+
+    public async Task RegisterArticleViewAsync(Guid articleId)
+    {
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return;
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var existing = await db.ArticleHistories
+            .FirstOrDefaultAsync(h => h.UserId == userId && h.ArticleId == articleId);
+
+        if (existing != null)
+            existing.ViewedAt = DateTime.UtcNow;
+        else
+            db.ArticleHistories.Add(new ArticleHistory
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                ArticleId = articleId,
+                ViewedAt = DateTime.UtcNow
+            });
+
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, DateTime>> GetHistoryLastViewAsync(int count = 20)
+    {
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return new Dictionary<Guid, DateTime>();
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var lastViews = await db.ArticleHistories
+            .Where(h => h.UserId == userId)
+            .GroupBy(h => h.ArticleId)
+            .Select(g => new { ArticleId = g.Key, LastViewedAt = g.Max(h => h.ViewedAt) })
+            .OrderByDescending(x => x.LastViewedAt)
+            .Take(count)
+            .ToListAsync();
+
+        return lastViews.ToDictionary(x => x.ArticleId, x => x.LastViewedAt);
+    }
+
+    private async Task PopulateNotMappedListsAsync(Article article)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        await PopulateNotMappedListsAsync(db, article);
+    }
+
+    private static async Task PopulateNotMappedListsAsync(DaviWikiDbContext db, Article article)
+    {
+        article.TagIds = await db.ArticleTags.Where(at => at.ArticleId == article.Id).Select(at => at.TagId).ToListAsync();
+        article.RelatedArticleIds = await db.ArticleRelateds.Where(ar => ar.ArticleId == article.Id).Select(ar => ar.RelatedArticleId).ToListAsync();
+        article.AttachmentMediaIds = await db.ArticleAttachments.Where(aa => aa.ArticleId == article.Id).Select(aa => aa.MediaFileId).ToListAsync();
+    }
+}
+
+-------------
+CATEGORY
+-------------
+using CorpWiki.Application.Helpers;
+using CorpWiki.Application.Interfaces.Repositories;
+using CorpWiki.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Infrastructure.Persistence;
+
+public interface ICategoryDataService
+{
+    Task<IReadOnlyList<Category>> GetCategoriesAsync();
+    Task<Category?> GetCategoryByIdAsync(Guid id);
+    Task<Category?> GetCategoryBySlugAsync(string slug);
+    Task<IReadOnlyList<Category>> GetFeaturedCategoriesAsync(int count = 8);
+    Task<Category> CreateCategoryAsync(string name, string description, string icon, string color);
+    Task<Category?> UpdateCategoryAsync(Guid id, string name, string description, string icon, string color);
+}
+
+public class CategoryDataService : ICategoryDataService
+{
+    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
+    private readonly ICategoryRepository _categoryRepo;
+    private readonly ISlugGenerator _slugGenerator;
+
+    public CategoryDataService(
+        IDbContextFactory<DaviWikiDbContext> dbFactory,
+        ICategoryRepository categoryRepo,
+        ISlugGenerator slugGenerator)
+    {
+        _dbFactory = dbFactory;
+        _categoryRepo = categoryRepo;
+        _slugGenerator = slugGenerator;
+    }
+
+    public async Task<IReadOnlyList<Category>> GetCategoriesAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Categories.Select(c => new Category
+        {
+            Id = c.Id,
+            Name = c.Name,
+            Slug = c.Slug,
+            Description = c.Description,
+            Icon = c.Icon,
+            Color = c.Color,
+            ArticlesCount = db.Articles.Count(a => a.CategoryId == c.Id)
+        }).ToListAsync();
+    }
+
+    public async Task<Category?> GetCategoryByIdAsync(Guid id) => await _categoryRepo.GetByIdAsync(id);
+
+    public async Task<Category?> GetCategoryBySlugAsync(string slug) => await _categoryRepo.GetBySlugAsync(slug);
+
+    public async Task<IReadOnlyList<Category>> GetFeaturedCategoriesAsync(int count = 8)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Categories.AsNoTracking().Select(c => new Category
+        {
+            Id = c.Id,
+            Name = c.Name,
+            Slug = c.Slug,
+            Description = c.Description,
+            Icon = c.Icon,
+            Color = c.Color,
+            IsFeatured = c.IsFeatured,
+            ArticlesCount = db.Articles.Count(a => a.CategoryId == c.Id)
+        }).OrderByDescending(c => c.ArticlesCount).Take(count).ToListAsync();
+    }
+
+    public async Task<Category> CreateCategoryAsync(string name, string description, string icon, string color)
+    {
+        var category = new Category
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Description = description,
+            Icon = icon,
+            Color = color,
+            Slug = _slugGenerator.GenerateSlug(name)
+        };
+        return await _categoryRepo.AddAsync(category);
+    }
+
+    public async Task<Category?> UpdateCategoryAsync(Guid id, string name, string description, string icon, string color)
+    {
+        var cat = await _categoryRepo.GetByIdAsync(id);
+        if (cat == null) return null;
+
+        cat.Name = name;
+        cat.Description = description;
+        cat.Icon = icon;
+        cat.Color = color;
+
+        return await _categoryRepo.UpdateAsync(cat);
+    }
+}
