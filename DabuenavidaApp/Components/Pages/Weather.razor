@@ -167,3 +167,520 @@ public class AuthorDataService : IAuthorDataService
         return string.Join("", parts.Take(2).Select(s => s[0])).ToUpper();
     }
 }
+
+------------------
+NOTIFICATION
+------------------
+// IHnotificationDataService.cs
+using CorpWiki.Application.DTOs;
+using CorpWiki.Domain.Entities;
+
+namespace CorpWiki.Application.Interfaces;
+
+public interface INotificationDataService
+{
+    Task<IReadOnlyList<NotificationItem>> GetNotificationsAsync();
+    Task<int> GetUnreadNotificationsCountAsync();
+    Task MarkNotificationAsReadAsync(Guid id);
+    Task MarkAllNotificationsAsReadAsync();
+
+    /// <summary>
+    /// Crea una notificación y la difunde por SignalR. Público porque otros
+    /// dominios (p. ej. CommentDataService) necesitan disparar notificaciones.
+    /// No hace nada si recipientUserId == actorUserId.
+    /// </summary>
+    Task CreateNotificationAsync(Guid recipientUserId, Guid actorUserId, Guid commentId, NotificationType type);
+}
+
+---------------
+
+// NotificationDataService.cs
+using CorpWiki.Application.DTOs;
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Infrastructure.Persistence;
+
+public class NotificationDataService : INotificationDataService
+{
+    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
+    private readonly ISecurityService _securityService;
+    private readonly INotificationBroadcaster _notificationBroadcaster;
+
+    public NotificationDataService(
+        IDbContextFactory<DaviWikiDbContext> dbFactory,
+        ISecurityService securityService,
+        INotificationBroadcaster notificationBroadcaster)
+    {
+        _dbFactory = dbFactory;
+        _securityService = securityService;
+        _notificationBroadcaster = notificationBroadcaster;
+    }
+
+    private static NotificationItem ToNotificationItem(Notification n)
+    {
+        var actorName = n.Actor?.FullName ?? "Alguien";
+
+        var (title, message, icon) = n.Type switch
+        {
+            NotificationType.CommentOnArticle => (
+                "Nuevo comentario",
+                $"{actorName} respondió a tu comentario.",
+                "corner-down-right"
+            ),
+            NotificationType.CommentLike => (
+                "Le gustó tu comentario",
+                $"A {actorName} le gustó tu comentario.",
+                "thumbs-up"
+            ),
+            _ => ("Notificación", "Tienes una nueva notificación.", "bell")
+        };
+
+        return new NotificationItem
+        {
+            Id = n.Id,
+            Title = title,
+            Message = message,
+            Icon = icon,
+            Url = n.Comment is not null ? $"/articulo/{n.Comment.ArticleId}#comment-{n.CommentId}" : null,
+            CreatedAt = n.CreatedAt,
+            IsRead = n.IsRead
+        };
+    }
+
+    public async Task<IReadOnlyList<NotificationItem>> GetNotificationsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var userId = await _securityService.GetCurrentUserIdAsync();
+
+        var notifications = await db.Notifications
+            .Where(n => n.RecipientUserId == userId)
+            .Include(n => n.Actor)
+            .Include(n => n.Comment)
+            .OrderByDescending(n => n.CreatedAt)
+            .Take(30)
+            .ToListAsync();
+
+        return notifications.Select(ToNotificationItem).ToList();
+    }
+
+    public async Task<int> GetUnreadNotificationsCountAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var userId = await _securityService.GetCurrentUserIdAsync();
+
+        return await db.Notifications
+            .CountAsync(n => n.RecipientUserId == userId && !n.IsRead);
+    }
+
+    public async Task MarkNotificationAsReadAsync(Guid id)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var userId = await _securityService.GetCurrentUserIdAsync();
+
+        var notification = await db.Notifications
+            .FirstOrDefaultAsync(n => n.Id == id && n.RecipientUserId == userId);
+
+        if (notification is null || notification.IsRead) return;
+
+        notification.IsRead = true;
+        notification.ReadAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task MarkAllNotificationsAsReadAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        var now = DateTime.UtcNow;
+
+        await db.Notifications
+            .Where(n => n.RecipientUserId == userId && !n.IsRead)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(n => n.IsRead, true)
+                .SetProperty(n => n.ReadAt, now));
+    }
+
+    public async Task CreateNotificationAsync(
+        Guid recipientUserId, Guid actorUserId, Guid commentId, NotificationType type)
+    {
+        if (recipientUserId == actorUserId) return;
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var notification = new Notification
+        {
+            Id = Guid.NewGuid(),
+            RecipientUserId = recipientUserId,
+            ActorUserId = actorUserId,
+            CommentId = commentId,
+            Type = type,
+            IsRead = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        db.Notifications.Add(notification);
+        await db.SaveChangesAsync();
+
+        await db.Entry(notification).Reference(n => n.Actor).LoadAsync();
+        await db.Entry(notification).Reference(n => n.Comment).LoadAsync();
+
+        var item = ToNotificationItem(notification);
+        await _notificationBroadcaster.RaiseNotificationCreatedAsync(recipientUserId, item);
+    }
+}
+
+--------
+COMMENT
+-----------
+// ICommentDataService.cs
+using CorpWiki.Application.DTOs;
+
+namespace CorpWiki.Application.Interfaces;
+
+public interface ICommentDataService
+{
+    Task<IReadOnlyList<CommentDto>> GetCommentsByArticleAsync(Guid articleId);
+    Task<CommentDto> CreateCommentAsync(Guid articleId, Guid? parentCommentId, string content);
+    Task<bool> UpdateCommentAsync(Guid commentId, string content);
+    Task<bool> DeleteCommentAsync(Guid commentId);
+    Task<bool> ToggleCommentLikeAsync(Guid commentId);
+}
+
+
+--------------
+// CommentDataService.cs
+using CorpWiki.Application.DTOs;
+using CorpWiki.Application.Interfaces;
+using CorpWiki.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace CorpWiki.Infrastructure.Persistence;
+
+public class CommentDataService : ICommentDataService
+{
+    private readonly IDbContextFactory<DaviWikiDbContext> _dbFactory;
+    private readonly ISecurityService _securityService;
+    private readonly ICommentBroadcaster _commentBroadcaster;
+    private readonly INotificationDataService _notificationService;
+
+    public CommentDataService(
+        IDbContextFactory<DaviWikiDbContext> dbFactory,
+        ISecurityService securityService,
+        ICommentBroadcaster commentBroadcaster,
+        INotificationDataService notificationService)
+    {
+        _dbFactory = dbFactory;
+        _securityService = securityService;
+        _commentBroadcaster = commentBroadcaster;
+        _notificationService = notificationService;
+    }
+
+    // TODO: candidato a mover a un helper estático compartido (CorpWiki.Application.Helpers)
+    // junto con la copia que use ArticleDataService, según nota pendiente del doc de refactor.
+    private static string GetInitials(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return "US";
+
+        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return string.Join("", parts.Take(2).Select(s => s[0])).ToUpper();
+    }
+
+    public async Task<IReadOnlyList<CommentDto>> GetCommentsByArticleAsync(Guid articleId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var currentUserId = await _securityService.GetCurrentUserIdAsync();
+
+        var all = await db.ArticleComments
+            .Include(c => c.User)
+            .Where(c => c.ArticleId == articleId)
+            .OrderBy(c => c.CreatedAt)
+            .ToListAsync();
+
+        if (all.Count == 0) return new List<CommentDto>();
+
+        var likeCounts = await db.ArticleCommentLikes
+            .Where(l => db.ArticleComments.Any(c => c.Id == l.CommentId && c.ArticleId == articleId))
+            .GroupBy(l => l.CommentId)
+            .Select(g => new { CommentId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.CommentId, x => x.Count);
+
+        var likedByMe = currentUserId != Guid.Empty
+            ? (await db.ArticleCommentLikes
+                .Where(l => l.UserId == currentUserId && db.ArticleComments.Any(c => c.Id == l.CommentId && c.ArticleId == articleId))
+                .Select(l => l.CommentId)
+                .ToListAsync()).ToHashSet()
+            : new HashSet<Guid>();
+
+        // Mapa comentario -> raíz de su hilo, y comentario -> autor (para menciones)
+        var byId = all.ToDictionary(c => c.Id);
+        Guid GetRootId(ArticleComment c)
+        {
+            var current = c;
+            while (current.ParentCommentId is Guid pid && byId.TryGetValue(pid, out var parent))
+                current = parent;
+            return current.Id;
+        }
+
+        CommentDto Map(ArticleComment c)
+        {
+            var dto = new CommentDto
+            {
+                Id = c.Id,
+                ParentCommentId = c.ParentCommentId,
+                Content = c.Content,
+                CreatedAt = c.CreatedAt,
+                UpdatedAt = c.UpdatedAt,
+                AuthorName = c.User?.FullName ?? "Usuario",
+                AuthorInitials = GetInitials(c.User?.FullName),
+                AuthorColorFrom = c.User?.AvatarColorFrom ?? "#6366f1",
+                AuthorColorTo = c.User?.AvatarColorTo ?? "#8b5cf6",
+                LikesCount = likeCounts.TryGetValue(c.Id, out var lc) ? lc : 0,
+                IsLikedByCurrentUser = likedByMe.Contains(c.Id),
+                CanEditOrDelete = currentUserId != Guid.Empty && c.UserId == currentUserId,
+                UserId = c.UserId
+            };
+            return dto;
+        }
+
+        var roots = all.Where(c => c.ParentCommentId == null)
+            .OrderBy(c => c.CreatedAt)
+            .Select(Map)
+            .ToList();
+
+        var rootsById = roots.ToDictionary(r => r.Id);
+        // Aplanar: cualquier comentario cuya raíz de hilo sea un root, va a Replies de ese root
+        foreach (var c in all.Where(c => c.ParentCommentId != null).OrderBy(c => c.CreatedAt))
+        {
+            var rootId = GetRootId(c);
+            if (!rootsById.TryGetValue(rootId, out var rootDto)) continue;
+            var replyDto = Map(c);
+            // Si respondió a otra respuesta (no a la raíz), guardar mención
+            if (c.ParentCommentId != rootId && byId.TryGetValue(c.ParentCommentId!.Value, out var directParent))
+            {
+                replyDto.ReplyingToCommentId = directParent.Id;
+                replyDto.ReplyingToAuthorName = directParent.User?.FullName ?? "Usuario";
+            }
+            rootDto.Replies.Add(replyDto);
+        }
+
+        return roots;
+    }
+
+    public async Task<CommentDto> CreateCommentAsync(Guid articleId, Guid? parentCommentId, string content)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) throw new InvalidOperationException("Usuario no autenticado.");
+        if (string.IsNullOrWhiteSpace(content)) throw new ArgumentException("El comentario no puede estar vacío.");
+
+        var comment = new ArticleComment
+        {
+            Id = Guid.NewGuid(),
+            ArticleId = articleId,
+            UserId = userId,
+            ParentCommentId = parentCommentId,
+            Content = content.Trim(),
+            CreatedAt = DateTime.UtcNow,
+            IsDeleted = false
+        };
+
+        db.ArticleComments.Add(comment);
+        await db.SaveChangesAsync();
+
+        await CreateNotificationForNewCommentAsync(comment, userId);
+
+        var saved = await db.ArticleComments.Include(c => c.User)
+            .FirstAsync(c => c.Id == comment.Id);
+
+        var dto = new CommentDto
+        {
+            Id = saved.Id,
+            ParentCommentId = saved.ParentCommentId,
+            Content = saved.Content,
+            CreatedAt = saved.CreatedAt,
+            UserId = saved.UserId,
+            AuthorName = saved.User?.FullName ?? "Usuario",
+            AuthorInitials = GetInitials(saved.User?.FullName),
+            AuthorColorFrom = saved.User?.AvatarColorFrom ?? "#6366f1",
+            AuthorColorTo = saved.User?.AvatarColorTo ?? "#8b5cf6",
+            CanEditOrDelete = true
+        };
+
+        await _commentBroadcaster.CommentAddedAsync(articleId, dto);
+        return dto;
+    }
+
+    public async Task<bool> UpdateCommentAsync(Guid commentId, string content)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return false;
+
+        if (string.IsNullOrWhiteSpace(content)) return false;
+
+        var comment = await db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
+        if (comment is null || comment.UserId != userId) return false;
+
+        comment.Content = content.Trim();
+        comment.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var updated = await db.ArticleComments.Include(c => c.User).FirstAsync(c => c.Id == commentId);
+        var likesCount = await db.ArticleCommentLikes.CountAsync(l => l.CommentId == commentId);
+        var isLikedByCurrentUser = await db.ArticleCommentLikes.AnyAsync(l => l.CommentId == commentId && l.UserId == userId);
+
+        var dto = new CommentDto
+        {
+            Id = updated.Id,
+            ParentCommentId = updated.ParentCommentId,
+            Content = updated.Content,
+            CreatedAt = updated.CreatedAt,
+            UpdatedAt = updated.UpdatedAt,
+            UserId = updated.UserId,
+            AuthorName = updated.User?.FullName ?? "Usuario",
+            AuthorInitials = GetInitials(updated.User?.FullName),
+            AuthorColorFrom = updated.User?.AvatarColorFrom ?? "#6366f1",
+            AuthorColorTo = updated.User?.AvatarColorTo ?? "#8b5cf6",
+            LikesCount = likesCount,
+            IsLikedByCurrentUser = isLikedByCurrentUser,
+            CanEditOrDelete = true,
+        };
+
+        await _commentBroadcaster.CommentUpdatedAsync(updated.ArticleId, dto);
+        return true;
+    }
+
+    public async Task<bool> DeleteCommentAsync(Guid commentId)
+    {
+        // Método especial (ver doc de refactor): transacción manual con SaveChanges
+        // secuenciales -> un único db de principio a fin, sin factory-por-sub-operación.
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return false;
+
+        var root = await db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
+        if (root is null || root.UserId != userId) return false;
+
+        var allInArticle = await db.ArticleComments
+            .Where(c => c.ArticleId == root.ArticleId)
+            .ToListAsync();
+
+        var toDelete = new List<ArticleComment> { root };
+        var frontier = new HashSet<Guid> { root.Id };
+        while (frontier.Count > 0)
+        {
+            var children = allInArticle
+                .Where(c => c.ParentCommentId is Guid pid && frontier.Contains(pid))
+                .ToList();
+            if (children.Count == 0) break;
+            toDelete.AddRange(children);
+            frontier = children.Select(c => c.Id).ToHashSet();
+        }
+        var articleId = root.ArticleId;
+
+        // La transacción manual debe envolverse en la execution strategy configurada
+        // (EnableRetryOnFailure), o EF Core rechaza el BeginTransactionAsync directo.
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync();
+            try
+            {
+                for (int i = toDelete.Count - 1; i >= 0; i--)
+                {
+                    db.ArticleComments.Remove(toDelete[i]);
+                    await db.SaveChangesAsync();
+                }
+                await tx.CommitAsync();
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
+            }
+        });
+
+        var deletedIds = toDelete.Select(c => c.Id).ToArray();
+        await _commentBroadcaster.CommentDeletedAsync(articleId, deletedIds);
+        return true;
+    }
+
+    public async Task<bool> ToggleCommentLikeAsync(Guid commentId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var userId = await _securityService.GetCurrentUserIdAsync();
+        if (userId == Guid.Empty) return false;
+
+        var existing = await db.ArticleCommentLikes
+            .FirstOrDefaultAsync(l => l.CommentId == commentId && l.UserId == userId);
+        bool liked;
+        if (existing != null)
+        {
+            db.ArticleCommentLikes.Remove(existing);
+            liked = false;
+        }
+        else
+        {
+            db.ArticleCommentLikes.Add(new ArticleCommentLike
+            {
+                CommentId = commentId,
+                UserId = userId,
+                CreatedAt = DateTime.UtcNow
+            });
+            liked = true;
+        }
+        await db.SaveChangesAsync();
+
+        if (liked)
+        {
+            var comment = await db.ArticleComments.FirstOrDefaultAsync(c => c.Id == commentId);
+            if (comment != null && comment.UserId != userId)
+            {
+                await _notificationService.CreateNotificationAsync(
+                    recipientUserId: comment.UserId,
+                    actorUserId: userId,
+                    commentId: comment.Id,
+                    type: NotificationType.CommentLike);
+            }
+        }
+
+        var likesCount = await db.ArticleCommentLikes.CountAsync(l => l.CommentId == commentId);
+        var articleId = (await db.ArticleComments.FirstAsync(c => c.Id == commentId)).ArticleId;
+        await _commentBroadcaster.CommentLikeToggledAsync(articleId, commentId, likesCount, userId, liked);
+        return liked;
+    }
+
+    private async Task CreateNotificationForNewCommentAsync(ArticleComment comment, Guid actorUserId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        if (comment.ParentCommentId is null)
+        {
+            var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == comment.ArticleId);
+            if (article is null) return;
+
+            var author = await db.Authors.FirstOrDefaultAsync(a => a.Id == article.AuthorId);
+            if (author?.SecurityUserId is not Guid recipientId || recipientId == actorUserId) return;
+
+            await _notificationService.CreateNotificationAsync(
+                recipientUserId: recipientId,
+                actorUserId: actorUserId,
+                commentId: comment.Id,
+                type: NotificationType.CommentOnArticle);
+        }
+        else
+        {
+            var parent = await db.ArticleComments.FirstOrDefaultAsync(c => c.Id == comment.ParentCommentId);
+            if (parent is null || parent.UserId == actorUserId) return;
+
+            await _notificationService.CreateNotificationAsync(
+                recipientUserId: parent.UserId,
+                actorUserId: actorUserId,
+                commentId: comment.Id,
+                type: NotificationType.ReplyToComment);
+        }
+    }
+}
