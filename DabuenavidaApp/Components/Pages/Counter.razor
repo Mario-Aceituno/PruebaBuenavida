@@ -1,380 +1,78 @@
-@page "/admin/seguridad/roles"
-@attribute [Authorize(Policy = "ADMIN:READ")]
-@rendermode InteractiveServer
-@inject ISecurityService SecurityService
-@inject AuthenticationStateProvider AuthStateProvider
-@inject NavigationManager Navigation
-@using CorpWiki.Domain.Entities.Security
-@using CorpWiki.Web.Security
-@using CorpWiki.Web.Components.Shared.Security
-
-<PageTitle>DaviWiki - Roles</PageTitle>
-
-<AdminNav />
-
-<SecurityPageHeader Title="Roles" Subtitle="Definí los permisos para cada grupo de usuarios.">
-    @if (_canWrite)
-    {
-        <button class="btn btn--primary btn--sm" @onclick="OpenCreateModal">
-            <Icon Name="plus" /> Nuevo rol
-        </button>
-    }
-</SecurityPageHeader>
-
-@if (_loading)
-{
-    <div class="role-card-grid">
-        @for (int i = 0; i < 3; i++)
-        {
-            <div class="skeleton" style="height:140px; border-radius:var(--radius-lg)"></div>
-        }
-    </div>
-}
-else if (_roles.Count == 0)
-{
-    <SecurityEmptyState IconName="shield" Title="No hay roles creados"
-                        Description="Creá un rol para empezar a asignar permisos por pantalla."
-                        ActionText="@(_canWrite ? "Nuevo rol" : null)"
-                        OnAction="OpenCreateModal" />
-}
-else
-{
-    @if (_roles.Count > 6)
-    {
-        <div class="security-toolbar">
-            <div class="security-search">
-                <Icon Name="search" />
-                <input type="text" placeholder="Buscar rol..." aria-label="Buscar rol"
-                       @bind="_searchTerm" @bind:event="oninput" />
-            </div>
-            <span class="security-toolbar__count">@FilteredRoles.Count de @_roles.Count</span>
-        </div>
-    }
-
-    @if (FilteredRoles.Count == 0)
-    {
-        <SecurityEmptyState IconName="search" Title="Sin resultados" Description="No hay roles que coincidan con la búsqueda." Inline="true" />
-    }
-    else
-    {
-        <div class="role-card-grid">
-            @foreach (var r in FilteredRoles)
-            {
-                <div class="card role-card">
-                    <div class="role-card__top">
-                        <div class="role-card__icon"><Icon Name="shield" /></div>
-                        @if (r.IsSystemRole)
-                        {
-                            <span class="badge">Sistema</span>
-                        }
-                        else
-                        {
-                            <span class="role-card__count">@GetPermissionCount(r.Id) permiso(s)</span>
-                        }
-                    </div>
-                    <div class="role-card__name">@r.Name</div>
-                    <p class="role-card__desc">@(string.IsNullOrWhiteSpace(r.Description) ? "Sin descripción." : r.Description)</p>
-                    <div class="role-card__footer">
-                        <button class="btn btn--secondary btn--sm" @onclick="() => GoToMatrix(r.Id)">
-                            <Icon Name="grid-3x3" /> Permisos
-                        </button>
-                        @if (_canWrite && !r.IsSystemRole)
-                        {
-                            <button class="btn btn--ghost btn--sm" @onclick="() => _confirmingDelete = r" aria-label="@($"Eliminar rol {r.Name}")">
-                                <Icon Name="trash-2" />
-                            </button>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-    }
+/* ===== AdminNav / security-nav — estilos base (desktop y default) ===== */
+.security-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-default);
 }
 
-@if (_showCreateModal)
-{
-    <div class="modal-overlay" @onclick="CloseCreateModal">
-        <div class="modal modal--wide" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="createRoleTitle">
-            <div class="modal__header">
-                <h3 id="createRoleTitle">Nuevo rol</h3>
-                <button class="btn btn--ghost btn--sm" @onclick="CloseCreateModal" aria-label="Cerrar"><Icon Name="x" /></button>
-            </div>
-
-            <div class="modal__body modal__body--scrollable">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="roleName">Nombre <span class="form-required">*</span></label>
-                        <input id="roleName" class="input" placeholder="Ej: Colaborador externo" @bind="_newRoleName" />
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="roleDesc">Descripción</label>
-                        <input id="roleDesc" class="input" placeholder="Para qué se usa este rol" @bind="_newRoleDescription" />
-                    </div>
-                </div>
-
-                <div class="modal__section-title">
-                    <span>Permisos del rol — por pantalla</span>
-                    <span class="modal__section-count">@_newRolePermissionCount de @_maxPossiblePermissions seleccionados</span>
-                </div>
-
-                <div class="permission-group-list">
-                    @foreach (var group in ScreenGroups)
-                    {
-                        var groupKey = group.Key;
-                        var groupChecked = GroupChecked(groupKey);
-                        var groupTotal = group.Sum(s => _permissions.Count);
-                        var groupSelected = group.Sum(s => _permissions.Count(p => _newRoleMatrix.GetValueOrDefault((s.Id, p.Id))));
-
-                        <div class="permission-group">
-                            <button type="button" class="permission-group__header" @onclick="() => ToggleGroupExpanded(groupKey)">
-                                <label class="checkbox-inline" @onclick:stopPropagation="true">
-                                    <input type="checkbox" checked="@groupChecked" @onchange="@(e => ToggleGroup(groupKey, (bool)e.Value!))" />
-                                    <span>@groupKey</span>
-                                </label>
-                                <span class="permission-group__count">(@groupSelected/@groupTotal)</span>
-                                <Icon Name="@(_expandedGroups.Contains(groupKey) ? "chevron-up" : "chevron-down")" />
-                            </button>
-
-                            @if (_expandedGroups.Contains(groupKey))
-                            {
-                                <div class="permission-group__body">
-                                    @foreach (var s in group)
-                                    {
-                                        <div class="permission-item-row">
-                                            <div class="permission-item-row__name">@s.Name</div>
-                                            <div class="segmented segmented--sm" role="group" aria-label="@($"Nivel de acceso para {s.Name}")">
-                                                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "none" ? "segmented__btn--active" : "")"
-                                                        @onclick='() => ApplyNewRolePreset(s.Id, "none")'>Sin acceso</button>
-                                                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "read" ? "segmented__btn--active" : "")"
-                                                        @onclick='() => ApplyNewRolePreset(s.Id, "read")'>Lectura</button>
-                                                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "write" ? "segmented__btn--active" : "")"
-                                                        @onclick='() => ApplyNewRolePreset(s.Id, "write")'>Editor</button>
-                                                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "admin" ? "segmented__btn--active" : "")"
-                                                        @onclick='() => ApplyNewRolePreset(s.Id, "admin")'>Total</button>
-                                            </div>
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-            </div>
-
-            <div class="form-actions">
-                <button class="btn btn--ghost btn--sm" @onclick="CloseCreateModal">Cancelar</button>
-                <button class="btn btn--primary btn--sm" disabled="@string.IsNullOrWhiteSpace(_newRoleName)" @onclick="CreateRole">
-                    Crear rol
-                </button>
-            </div>
-        </div>
-    </div>
+.security-nav__label {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-<SecurityConfirmDialog Visible="_confirmingDelete is not null"
-                       Title="Eliminar rol"
-                       Message="@($"El rol '{_confirmingDelete?.Name}' se eliminará. Los usuarios que lo tengan asignado quedarán sin ese rol (podrían conservar otros). Esta acción no se puede deshacer.")"
-                       ConfirmText="Eliminar"
-                       Dangerous="true"
-                       OnConfirm="DeleteRole"
-                       OnCancel="() => _confirmingDelete = null" />
-
-@if (_showToast)
-{
-    <div class="toast" role="status" aria-live="polite"><Icon Name="check-circle" /> @_toastMessage</div>
+.security-nav__items {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
-@code {
-    private List<SecurityRole> _roles = new();
-    private List<SecurityScreen> _screens = new();
-    private List<SecurityPermission> _permissions = new();
-    private Dictionary<Guid, int> _rolePermissionCounts = new();
+.security-nav__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
 
-    private bool _loading = true;
-    private bool _canWrite;
-    private string _actingUser = "unknown";
-    private string _searchTerm = "";
-    private SecurityRole? _confirmingDelete;
-    private bool _showToast;
-    private string _toastMessage = "";
+.security-nav__item .icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
 
-    // Estado del modal de creación
-    private bool _showCreateModal;
-    private string _newRoleName = "";
-    private string _newRoleDescription = "";
-    private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _newRoleMatrix = new();
-    private HashSet<string> _expandedGroups = new();
+.security-nav__item:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
 
-    private static readonly string[] PermissionOrder = { "READ", "WRITE", "DELETE", "EXPORT", "ADMIN" };
+.security-nav__item--active {
+  color: var(--brand-500);
+  background: var(--bg-surface-2);
+}
 
-    private IReadOnlyList<SecurityRole> FilteredRoles =>
-        string.IsNullOrWhiteSpace(_searchTerm)
-            ? _roles
-            : _roles.Where(r => r.Name.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
 
-    // Agrupa por Category; si es null/vacío cae en "General".
-    // Cuando agregues el campo Category a SecurityScreen, esto se ordena solo.
-    private IEnumerable<IGrouping<string, SecurityScreen>> ScreenGroups =>
-        _screens
-            .GroupBy(s => string.IsNullOrWhiteSpace(s.Category) ? "General" : s.Category!)
-            .OrderBy(g => g.Key == "General" ? 1 : 0)
-            .ThenBy(g => g.Key);
 
-    private int _newRolePermissionCount => _newRoleMatrix.Count(kv => kv.Value);
-    private int _maxPossiblePermissions => _screens.Count * _permissions.Count;
 
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
-        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
 
-        await LoadRoles();
-        _screens = (await SecurityService.GetAllScreensAsync()).OrderBy(s => s.DisplayOrder).ToList();
-        _permissions = (await SecurityService.GetAllPermissionsAsync())
-            .OrderBy(p => Array.IndexOf(PermissionOrder, p.Code))
-            .ToList();
+@media (max-width: 720px) {
+  .security-header { flex-direction: column; }
+  .security-toolbar__count { margin-left: 0; }
+  .entity-header { flex-direction: column; align-items: flex-start; }
+  .bulk-action-bar { flex-direction: column; align-items: flex-start; }
 
-        _loading = false;
-    }
+  /* El nav pasa de fila a columna, con los items en scroll horizontal */
+  .security-nav {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
 
-    private async Task LoadRoles()
-    {
-        _roles = await SecurityService.GetAllRolesAsync();
-
-        // Secuencial: mismo DbContext scoped, no llamadas concurrentes.
-        _rolePermissionCounts = new Dictionary<Guid, int>();
-        foreach (var r in _roles)
-        {
-            var perms = await SecurityService.GetRolePermissionsAsync(r.Id);
-            _rolePermissionCounts[r.Id] = perms.Count();
-        }
-    }
-
-    private int GetPermissionCount(Guid roleId) => _rolePermissionCounts.GetValueOrDefault(roleId);
-
-    private void GoToMatrix(Guid roleId) => Navigation.NavigateTo($"/admin/seguridad/roles/{roleId}/permisos");
-
-    private void OpenCreateModal()
-    {
-        _newRoleName = "";
-        _newRoleDescription = "";
-        _newRoleMatrix = new Dictionary<(Guid, Guid), bool>();
-        foreach (var s in _screens)
-            foreach (var p in _permissions)
-                _newRoleMatrix[(s.Id, p.Id)] = false;
-
-        // Primer grupo abierto por defecto para que no arranque todo colapsado
-        _expandedGroups = ScreenGroups.Take(1).Select(g => g.Key).ToHashSet();
-        _showCreateModal = true;
-    }
-
-    private void CloseCreateModal() => _showCreateModal = false;
-
-    private Guid? PermIdByCode(string code) => _permissions.FirstOrDefault(p => p.Code == code)?.Id;
-
-    private string GetNewRolePreset(Guid screenId)
-    {
-        bool Has(string code)
-        {
-            var id = PermIdByCode(code);
-            return id.HasValue && _newRoleMatrix.GetValueOrDefault((screenId, id.Value));
-        }
-
-        var read = Has("READ"); var write = Has("WRITE"); var del = Has("DELETE");
-        var export = Has("EXPORT"); var admin = Has("ADMIN");
-
-        if (!read && !write && !del && !export && !admin) return "none";
-        if (read && !write && !del && !export && !admin) return "read";
-        if (read && write && !del && !export && !admin) return "write";
-        if (read && write && del && export && admin) return "admin";
-        return "custom";
-    }
-
-    private void ApplyNewRolePreset(Guid screenId, string preset)
-    {
-        bool read = preset is "read" or "write" or "admin";
-        bool write = preset is "write" or "admin";
-        bool full = preset is "admin";
-
-        foreach (var p in _permissions)
-        {
-            var key = (screenId, p.Id);
-            _newRoleMatrix[key] = p.Code switch
-            {
-                "READ" => read,
-                "WRITE" => write,
-                "DELETE" => full,
-                "EXPORT" => full,
-                "ADMIN" => full,
-                _ => _newRoleMatrix[key]
-            };
-        }
-    }
-
-    private bool GroupChecked(string groupKey) =>
-        ScreenGroups.First(g => g.Key == groupKey)
-            .All(s => _permissions.All(p => _newRoleMatrix.GetValueOrDefault((s.Id, p.Id))));
-
-    private void ToggleGroup(string groupKey, bool value)
-    {
-        foreach (var s in ScreenGroups.First(g => g.Key == groupKey))
-            ApplyNewRolePreset(s.Id, value ? "admin" : "none");
-    }
-
-    private void ToggleGroupExpanded(string groupKey)
-    {
-        if (!_expandedGroups.Add(groupKey))
-            _expandedGroups.Remove(groupKey);
-    }
-
-    private async Task CreateRole()
-    {
-        if (!_canWrite || string.IsNullOrWhiteSpace(_newRoleName)) return;
-
-        var role = await SecurityService.CreateRoleAsync(_newRoleName.Trim(), _newRoleDescription.Trim());
-
-        var grantedCount = 0;
-        foreach (var kv in _newRoleMatrix.Where(kv => kv.Value))
-        {
-            var (screenId, permissionId) = kv.Key;
-            await SecurityService.SetRolePermissionAsync(role.Id, screenId, permissionId, true);
-            grantedCount++;
-        }
-
-        var detail = grantedCount > 0
-            ? $"Rol creado: {role.Name} (con {grantedCount} permiso(s) inicial(es))"
-            : $"Rol creado: {role.Name} (sin permisos asignados)";
-
-        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_CREATED", detail);
-
-        _showCreateModal = false;
-        await LoadRoles();
-
-        _toastMessage = "Rol creado correctamente.";
-        await ShowToast();
-    }
-
-    private async Task DeleteRole()
-    {
-        var role = _confirmingDelete;
-        _confirmingDelete = null;
-        if (!_canWrite || role is null || role.IsSystemRole) return;
-
-        await SecurityService.DeleteRoleAsync(role.Id);
-        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_DELETED", $"Rol eliminado: {role.Name}");
-
-        await LoadRoles();
-        _toastMessage = "Rol eliminado.";
-        await ShowToast();
-    }
-
-    private async Task ShowToast()
-    {
-        _showToast = true;
-        StateHasChanged();
-        await Task.Delay(2500);
-        _showToast = false;
-        StateHasChanged();
-    }
+  .security-nav__items {
+    width: 100%;
+    overflow-x: auto;
+  }
 }
