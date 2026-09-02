@@ -1,77 +1,115 @@
-<div class="permission-flat-list">
-    @foreach (var s in _screens)
-    {
-        <div class="permission-item-row">
-            <div class="permission-item-row__name">@s.Name</div>
-            <div class="segmented segmented--sm" role="group" aria-label="@($"Nivel de acceso para {s.Name}")">
-                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "none" ? "segmented__btn--active" : "")"
-                        @onclick='() => ApplyNewRolePreset(s.Id, "none")'>Sin acceso</button>
-                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "read" ? "segmented__btn--active" : "")"
-                        @onclick='() => ApplyNewRolePreset(s.Id, "read")'>Lectura</button>
-                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "write" ? "segmented__btn--active" : "")"
-                        @onclick='() => ApplyNewRolePreset(s.Id, "write")'>Editor</button>
-                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "admin" ? "segmented__btn--active" : "")"
-                        @onclick='() => ApplyNewRolePreset(s.Id, "admin")'>Total</button>
-            </div>
-        </div>
-    }
-</div>
+/* ===== Elevación y profundidad ===== */
+.card {
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.06));
+  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
 
+.role-card {
+  transition: box-shadow var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
 
+.role-card:hover {
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,0.08));
+  transform: translateY(-1px);
+  border-color: var(--border-default);
+}
 
+/* ===== Foco accesible y consistente en toda la app ===== */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible,
+.security-nav__item:focus-visible,
+.segmented__btn:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
+}
 
-<div class="modal__section-title">
-    <span>Permisos del rol — por pantalla</span>
-    <span class="modal__section-count">@_newRolePermissionCount de @_maxPossiblePermissions seleccionados</span>
-</div>
+/* ===== Scrollbar más discreto (tablas, modales) ===== */
+.data-table-wrap::-webkit-scrollbar,
+.modal__body--scrollable::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
 
-<div class="matrix-bulk" style="margin-bottom: var(--space-3)">
-    <div class="security-search" style="max-width:none; flex:1">
-        <Icon Name="search" />
-        <input type="text" placeholder="Buscar pantalla..." aria-label="Buscar pantalla" @bind="_screenSearchModal" @bind:event="oninput" />
-    </div>
-    <span>Aplicar a todas:</span>
-    <div class="segmented" role="group" aria-label="Aplicar nivel a todas las pantallas">
-        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("none")'>Sin acceso</button>
-        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("read")'>Lectura</button>
-        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("write")'>Editor</button>
-        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("admin")'>Total</button>
-    </div>
-</div>
+.data-table-wrap::-webkit-scrollbar-thumb,
+.modal__body--scrollable::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+}
 
-<div class="permission-flat-list">
-    @foreach (var s in FilteredScreensModal)
-    {
-        <div class="permission-item-row">
-            <div class="permission-item-row__name">@s.Name</div>
-            <div class="segmented segmented--sm" role="group" aria-label="@($"Nivel de acceso para {s.Name}")">
-                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "none" ? "segmented__btn--active" : "")"
-                        @onclick='() => ApplyNewRolePreset(s.Id, "none")'>Sin acceso</button>
-                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "read" ? "segmented__btn--active" : "")"
-                        @onclick='() => ApplyNewRolePreset(s.Id, "read")'>Lectura</button>
-                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "write" ? "segmented__btn--active" : "")"
-                        @onclick='() => ApplyNewRolePreset(s.Id, "write")'>Editor</button>
-                <button type="button" class="segmented__btn @(GetNewRolePreset(s.Id) == "admin" ? "segmented__btn--active" : "")"
-                        @onclick='() => ApplyNewRolePreset(s.Id, "admin")'>Total</button>
-            </div>
-        </div>
-    }
-</div>
+.data-table-wrap::-webkit-scrollbar-thumb:hover,
+.modal__body--scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
 
 
 
 
 
-private string _screenSearchModal = "";
 
-private IReadOnlyList<SecurityScreen> FilteredScreensModal =>
-    string.IsNullOrWhiteSpace(_screenSearchModal)
-        ? _screens
-        : _screens.Where(s => s.Name.Contains(_screenSearchModal, StringComparison.OrdinalIgnoreCase)).ToList();
 
-private void ApplyPresetToAllNewRole(string preset)
+
+/* ===== Tabla: sticky header + legibilidad ===== */
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elevated);
+  z-index: 2;
+}
+
+.data-table-wrap {
+  max-height: 640px;
+  overflow-y: auto;
+}
+
+.data-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--bg-surface-2) 40%, transparent);
+}
+
+.data-table tbody tr:nth-child(even):hover {
+  background: var(--bg-hover);
+}
+
+/* Fila recién modificada (útil tras guardar, con animación breve) */
+@keyframes rowHighlight {
+  0% { background: color-mix(in srgb, var(--brand-500) 12%, transparent); }
+  100% { background: transparent; }
+}
+
+.data-table tbody tr.row--updated {
+  animation: rowHighlight 1.6s ease-out;
+}
+
+
+
+
+
+
+
+
+
+@if (!_loading && _users.Count > 0)
 {
-    foreach (var s in FilteredScreensModal) ApplyNewRolePreset(s.Id, preset);
+    <div class="stat-summary">
+        <div class="stat-chip">
+            <span class="stat-chip__value">@_users.Count</span>
+            <span class="stat-chip__label">Total</span>
+        </div>
+        <div class="stat-chip stat-chip--positive">
+            <span class="stat-chip__value">@_users.Count(u => u.IsActive)</span>
+            <span class="stat-chip__label">Activos</span>
+        </div>
+        <div class="stat-chip stat-chip--muted">
+            <span class="stat-chip__value">@_users.Count(u => !u.IsActive)</span>
+            <span class="stat-chip__label">Inactivos</span>
+        </div>
+        <div class="stat-chip">
+            <span class="stat-chip__value">@_users.Count(u => !_userRoles.GetValueOrDefault(u.Id)?.Any() ?? true)</span>
+            <span class="stat-chip__label">Sin rol asignado</span>
+        </div>
+    </div>
 }
 
 
@@ -79,29 +117,198 @@ private void ApplyPresetToAllNewRole(string preset)
 
 
 
-.permission-flat-list {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+
+@if (!_loading && _roles.Count > 0)
+{
+    <div class="stat-summary">
+        <div class="stat-chip">
+            <span class="stat-chip__value">@_roles.Count</span>
+            <span class="stat-chip__label">Roles totales</span>
+        </div>
+        <div class="stat-chip">
+            <span class="stat-chip__value">@_roles.Count(r => r.IsSystemRole)</span>
+            <span class="stat-chip__label">De sistema</span>
+        </div>
+        <div class="stat-chip stat-chip--positive">
+            <span class="stat-chip__value">@_roles.Count(r => !r.IsSystemRole)</span>
+            <span class="stat-chip__label">Personalizados</span>
+        </div>
+    </div>
 }
 
-.permission-item-row {
+
+
+
+
+
+
+
+/* ===== Resumen de KPIs ===== */
+.stat-summary {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-5);
   flex-wrap: wrap;
 }
 
-.permission-item-row:last-child { border-bottom: none; }
-.permission-item-row:nth-child(even) { background: var(--bg-surface-2); }
+.stat-chip {
+  flex: 1;
+  min-width: 130px;
+  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 
-.permission-item-row__name {
-  font-size: var(--fs-sm);
-  font-weight: 500;
+.stat-chip__value {
+  font-size: var(--fs-xl, 28px);
+  font-weight: 800;
   color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.stat-chip__label {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.stat-chip--positive .stat-chip__value { color: #0a8a5f; }
+[data-theme="dark"] .stat-chip--positive .stat-chip__value { color: #34d399; }
+
+.stat-chip--muted .stat-chip__value { color: var(--text-tertiary); }
+
+@media (max-width: 640px) {
+  .stat-chip { min-width: 45%; }
+}
+
+
+
+
+
+
+
+/* ===== Avatar con anillo de estado ===== */
+.avatar {
+  position: relative;
+}
+
+.avatar::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-elevated);
+}
+
+.avatar--sm::after {
+  width: 8px;
+  height: 8px;
+}
+
+.avatar[data-status="active"]::after { background: #10b981; }
+.avatar[data-status="inactive"]::after { background: var(--text-tertiary); }
+
+
+
+
+
+
+
+/* ===== Skeleton con shimmer real (en vez de bloque estático gris) ===== */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface-2) 25%,
+    var(--bg-surface-3) 50%,
+    var(--bg-surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeletonShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+
+
+
+
+
+/* ===== Badges semánticos para auditoría ===== */
+.badge--danger { background: rgba(239, 68, 68, 0.12); color: #dc2626; }
+[data-theme="dark"] .badge--danger { color: #f87171; }
+
+.badge--success { background: rgba(16, 185, 129, 0.12); color: #0a8a5f; }
+[data-theme="dark"] .badge--success { color: #34d399; }
+
+.badge--info { background: rgba(59, 130, 246, 0.12); color: #2563eb; }
+[data-theme="dark"] .badge--info { color: #60a5fa; }
+
+.badge--neutral { background: var(--bg-surface-3); color: var(--text-tertiary); }
+
+
+
+
+
+
+
+<td><span class="badge @GetActionBadgeClass(log.Action)">@FormatAction(log.Action)</span></td>
+
+
+private static string GetActionBadgeClass(string action) => action switch
+{
+    "USER_DEACTIVATED" or "ROLE_DELETED" => "badge--danger",
+    "USER_ACTIVATED" or "ROLE_CREATED" or "LOGIN_SUCCESS" => "badge--success",
+    "ROLES_CHANGED" or "PERMISSION_CHANGED" or "ROLE_ASSIGNED" or "ROLE_REMOVED" => "badge--info",
+    _ => "badge--neutral"
+};
+
+
+
+/* ===== Ritmo vertical consistente entre secciones del panel ===== */
+.admin-section + .admin-section {
+  margin-top: var(--space-5);
+}
+
+.card + .card {
+  margin-top: var(--space-4);
+}
+
+/* Contenedor raíz de cada página admin, para que el margen lateral y superior
+   sea idéntico en Usuarios, Roles, Auditoría y Detalle */
+.admin-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 var(--space-2);
+}
+
+
+
+
+
+
+/* ===== Botones: pulido general ===== */
+.btn {
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform 0.1s ease;
+  min-height: 34px;
+}
+
+.btn--sm { min-height: 30px; }
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
