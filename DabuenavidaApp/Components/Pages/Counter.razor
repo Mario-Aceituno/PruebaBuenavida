@@ -1,7 +1,3 @@
-SELECT 
-    fk.name AS FK_Name,
-    OBJECT_NAME(fk.parent_object_id) AS TablaHija,
-    COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS Columna
-FROM sys.foreign_keys fk
-INNER JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
-WHERE fk.referenced_object_id = OBJECT_ID('dbo.Authors');
+"globe" or "public" => "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z\"/><path d=\"M2 12h20\"/>",
+
+"lock" or "private" => "<rect x=\"3\" y=\"11\" width=\"18\" height=\"11\" rx=\"2\" ry=\"2\"/><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/>",
