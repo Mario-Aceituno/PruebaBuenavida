@@ -1,16 +1,7 @@
--- 1. Identifica los Authors huérfanos
-SELECT a.Id
-INTO #OrphanAuthors
-FROM Authors a
-LEFT JOIN dbo.security_users su ON su.Id = a.SecurityUserId
-WHERE a.SecurityUserId IS NOT NULL AND su.Id IS NULL;
-
--- 2. Revisa dependencias antes de borrar (ajusta nombres de FK según tu esquema)
-SELECT * FROM Notifications WHERE RecipientUserId IN (SELECT Id FROM #OrphanAuthors);
-SELECT * FROM Articles WHERE AuthorId IN (SELECT Id FROM #OrphanAuthors);
-SELECT * FROM Article_Comments WHERE AuthorId IN (SELECT Id FROM #OrphanAuthors);
-
--- 3. Si no hay dependencias críticas, elimina
-DELETE FROM Authors WHERE Id IN (SELECT Id FROM #OrphanAuthors);
-
-DROP TABLE #OrphanAuthors;
+SELECT 
+    fk.name AS FK_Name,
+    OBJECT_NAME(fk.parent_object_id) AS TablaHija,
+    COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS Columna
+FROM sys.foreign_keys fk
+INNER JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+WHERE fk.referenced_object_id = OBJECT_ID('dbo.Authors');
