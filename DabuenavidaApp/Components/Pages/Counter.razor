@@ -1,46 +1,512 @@
-/* Overlay fijo a la pantalla (viewport) */
-.role-modal-overlay {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    background: rgba(15, 23, 42, 0.6);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 99999 !important; /* Garantiza estar sobre cualquier layout o sidebar */
-    padding: 20px;
-    box-sizing: border-box;
+@page "/admin/seguridad/roles/{RoleId:guid}/permisos"
+@attribute [Authorize(Policy = "ADMIN:READ")]
+@rendermode InteractiveServer
+@inject ISecurityService SecurityService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@using CorpWiki.Domain.Entities.Security
+@using CorpWiki.Web.Security
+@using CorpWiki.Web.Components.Shared.Security
+
+<PageTitle>DaviWiki - Permisos de rol</PageTitle>
+
+<AdminNav />
+
+@if (_loading)
+{
+    <div class="skeleton" style="height:60px; border-radius:var(--radius-lg); margin-bottom:var(--space-4)"></div>
+    <div class="skeleton" style="height:400px; border-radius:var(--radius-lg)"></div>
+}
+else if (_role is null)
+{
+    <SecurityEmptyState IconName="shield" Title="Rol no encontrado" Description="El rol que buscás no existe o fue eliminado." />
+}
+else
+{
+    <SecurityPageHeader BackHref="/admin/seguridad/roles" BackText="Roles" Title="@($"Permisos: {_role.Name}")"
+                        Subtitle="Organizado por sección. Las pantallas de consulta simple usan un solo interruptor de acceso.">
+        @if (_canWrite && _isDirty)
+        {
+            <button class="btn btn--ghost" @onclick="Discard">Descartar</button>
+            <button class="btn btn--primary" @onclick="Save">
+                <Icon Name="check-circle" /> Guardar cambios
+            </button>
+        }
+    </SecurityPageHeader>
+
+    @if (_isDirty)
+    {
+        <div class="callout callout--tip" role="status" aria-live="polite">
+            <Icon Name="alert-triangle" />
+            <p>Tenés cambios sin guardar (@_changedCount pantalla(s) modificada(s)).</p>
+        </div>
+    }
+
+    @* ===== Usuarios con este rol ===== *@
+    <div class="card role-users-card">
+        <div class="role-users-card__header">
+            <h3><Icon Name="users" /> Usuarios con este rol (@_usersInRole.Count)</h3>
+            <button class="btn btn--secondary btn--sm" @onclick="GoToUsersFilteredByRole">
+                <Icon Name="plus" /> Agregar usuarios
+            </button>
+        </div>
+
+        @if (_usersInRole.Count == 0)
+        {
+            <p class="role-users-card__empty">Ningún usuario tiene este rol asignado todavía.</p>
+        }
+        else
+        {
+            <div class="role-chip-list">
+                @foreach (var u in _usersInRole)
+                {
+                    <span class="chip chip--active">
+                        @u.FullName
+                        @if (_canWrite)
+                        {
+                            <button type="button" class="chip__remove" aria-label="@($"Quitar rol a {u.FullName}")"
+                                    @onclick="() => RemoveUserFromRole(u)">
+                                <Icon Name="x" />
+                            </button>
+                        }
+                    </span>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="perm-legend">
+        <span class="perm-legend__item"><span class="perm-legend__dot perm-pill--read"></span> Lectura</span>
+        <span class="perm-legend__item"><span class="perm-legend__dot perm-pill--write"></span> Escritura</span>
+        <span class="perm-legend__item"><span class="perm-legend__dot perm-pill--delete"></span> Eliminación</span>
+        <span class="perm-legend__item"><span class="perm-legend__dot perm-pill--export"></span> Exportar</span>
+        <span class="perm-legend__item"><span class="perm-legend__dot perm-pill--admin"></span> Administración</span>
+    </div>
+
+    <div class="matrix-toolbar">
+        <div class="security-search">
+            <Icon Name="search" />
+            <input type="text" placeholder="Buscar pantalla..." aria-label="Buscar pantalla"
+                   @bind="_screenSearch" @bind:event="oninput" />
+        </div>
+
+        @if (_canWrite)
+        {
+            <div class="matrix-bulk">
+                <span>Aplicar a todas las visibles (pantallas con CRUD):</span>
+                <div class="segmented" role="group" aria-label="Aplicar nivel a todas las pantallas visibles">
+                    <button class="segmented__btn" @onclick='() => ApplyPresetToAllVisible("none")'>Sin acceso</button>
+                    <button class="segmented__btn" @onclick='() => ApplyPresetToAllVisible("read")'>Lectura</button>
+                    <button class="segmented__btn" @onclick='() => ApplyPresetToAllVisible("write")'>Editor</button>
+                    <button class="segmented__btn" @onclick='() => ApplyPresetToAllVisible("admin")'>Total</button>
+                </div>
+            </div>
+        }
+
+        <span class="security-toolbar__count">@FilteredScreens.Count de @_screens.Count pantallas</span>
+    </div>
+
+    @if (FilteredScreens.Count == 0)
+    {
+        <SecurityEmptyState IconName="search" Title="Sin resultados" Description="No hay pantallas que coincidan con la búsqueda." Inline="true" />
+    }
+    else
+    {
+        @foreach (var group in GroupedFilteredScreens)
+        {
+            <div class="matrix-group">
+                <h4 class="matrix-group__title">@group.Key</h4>
+                <div class="matrix-card-list">
+                    @foreach (var s in group)
+                    {
+                        var changed = HasChanged(s.Id);
+                        var applicable = GetApplicablePermissions(s.Name);
+                        var levelLabel = GetLevelLabel(s.Id, applicable);
+
+                        <div class="matrix-card @(changed ? "matrix-card--changed" : "")">
+                            <div class="matrix-card__row">
+                                <div class="matrix-card__name">
+                                    @s.Name
+                                    @if (changed)
+                                    {
+                                        <span class="matrix-card__dot" title="Modificado"></span>
+                                    }
+                                </div>
+                                <span class="matrix-card__level matrix-card__level--@levelLabel.CssSuffix">@levelLabel.Text</span>
+                            </div>
+
+                            @if (applicable.Count == 1)
+                            {
+                                @* Pantalla de solo consulta: un único interruptor de acceso, sin prometer CRUD que no existe *@
+                                var readKey = (s.Id, PermIdByCode("READ")!.Value);
+                                <label class="matrix-card__simple-toggle">
+                                    <span>Acceso habilitado</span>
+                                    <label class="switch">
+                                        <input type="checkbox" disabled="@(!_canWrite)" checked="@_matrix[readKey]"
+                                               aria-label="@($"Acceso a {s.Name}")"
+                                               @onchange="@(e => Toggle(readKey, (bool)e.Value!))" />
+                                        <span class="switch__track"></span>
+                                    </label>
+                                </label>
+                            }
+                            else
+                            {
+                                <div class="perm-pills">
+                                    @foreach (var p in _permissions.Where(p => applicable.Contains(p.Code)))
+                                    {
+                                        var key = (s.Id, p.Id);
+                                        var isOn = _matrix[key];
+                                        var (label, cssClass) = GetPermVisual(p.Code);
+
+                                        <button type="button"
+                                                class="perm-pill @cssClass @(isOn ? "perm-pill--active" : "")"
+                                                disabled="@(!_canWrite)"
+                                                aria-pressed="@isOn"
+                                                aria-label="@($"{label} en {s.Name}")"
+                                                @onclick="() => Toggle(key, !isOn)">
+                                            @label
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+    @if (_showToast)
+    {
+        <div class="toast" role="status" aria-live="polite"><Icon Name="check-circle" /> @_toastMessage</div>
+    }
 }
 
-/* Modal contenedor estricto */
-.role-modal {
-    background: #ffffff;
-    width: 100%;
-    max-width: 900px;
-    max-height: 85vh; /* Ocupa máximo el 85% del alto de la pantalla */
-    border-radius: 16px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden; /* Prohibido scroll en el contenedor principal */
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+@code {
+    [Parameter] public Guid RoleId { get; set; }
+
+    private SecurityRole? _role;
+    private List<SecurityScreen> _screens = new();
+    private List<SecurityPermission> _permissions = new();
+    private List<SecurityUser> _usersInRole = new();
+    private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _matrix = new();
+    private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _original = new();
+    private bool _loading = true;
+    private bool _canWrite;
+    private string _actingUser = "unknown";
+    private string _screenSearch = "";
+    private bool _showToast;
+    private string _toastMessage = "";
+
+    private static readonly string[] PermissionOrder = { "READ", "WRITE", "DELETE", "EXPORT", "ADMIN" };
+
+    // Agrupación por Name — ajustá esta tabla si cambian los nombres de pantalla.
+    // Cualquier pantalla no listada cae en "Otras pantallas".
+    private static readonly Dictionary<string, string> ScreenGroupMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Artículos"] = "Contenido", ["Artículo Detalle"] = "Contenido", ["Nuevo Artículo"] = "Contenido",
+        ["Editor de Artículos"] = "Contenido", ["Categorías"] = "Contenido", ["Categoría Detalle"] = "Contenido",
+        ["Etiquetas"] = "Contenido", ["Etiqueta Detalle"] = "Contenido", ["Colecciones"] = "Contenido",
+        ["Colección Detalle"] = "Contenido", ["Multimedia"] = "Contenido", ["Autores"] = "Contenido",
+        ["Inicio"] = "Sistema", ["Dashboard"] = "Sistema", ["Administración"] = "Sistema",
+        ["Perfil"] = "Personal", ["Actividad"] = "Personal", ["Favoritos"] = "Personal", ["Historial"] = "Personal",
+        ["Incidencias"] = "Soporte", ["Estadísticas"] = "Soporte", ["Centro de ayuda"] = "Soporte",
+        ["Búsqueda"] = "Navegación", ["Explorar"] = "Navegación",
+    };
+
+    private static readonly string[] GroupOrder = { "Sistema", "Contenido", "Soporte", "Navegación", "Personal", "Otras pantallas" };
+
+    // Pantallas de solo consulta/navegación: no tienen operaciones CRUD reales,
+    // así que solo exponen un interruptor de acceso (mapeado internamente a READ).
+    private static readonly HashSet<string> ReadOnlyScreens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Explorar", "Búsqueda", "Dashboard", "Perfil", "Actividad", "Favoritos", "Historial", "Centro de ayuda"
+    };
+
+    private bool _isDirty => !_matrix.OrderBy(kv => kv.Key).SequenceEqual(_original.OrderBy(kv => kv.Key));
+    private int _changedCount => _screens.Count(s => HasChanged(s.Id));
+
+    private IReadOnlyList<SecurityScreen> FilteredScreens =>
+        string.IsNullOrWhiteSpace(_screenSearch)
+            ? _screens
+            : _screens.Where(s => s.Name.Contains(_screenSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private IEnumerable<IGrouping<string, SecurityScreen>> GroupedFilteredScreens =>
+        FilteredScreens
+            .GroupBy(s => ScreenGroupMap.GetValueOrDefault(s.Name, "Otras pantallas"))
+            .OrderBy(g => Array.IndexOf(GroupOrder, g.Key) is var i && i >= 0 ? i : 999);
+
+    private List<string> GetApplicablePermissions(string screenName) =>
+        ReadOnlyScreens.Contains(screenName) ? new List<string> { "READ" } : PermissionOrder.ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
+        _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
+
+        await LoadData();
+        _loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        _role = await SecurityService.GetRoleByIdAsync(RoleId);
+        _screens = (await SecurityService.GetAllScreensAsync()).OrderBy(s => s.DisplayOrder).ToList();
+        _permissions = (await SecurityService.GetAllPermissionsAsync())
+            .OrderBy(p => Array.IndexOf(PermissionOrder, p.Code))
+            .ToList();
+
+        var granted = await SecurityService.GetRolePermissionsAsync(RoleId);
+        var grantedSet = granted.Select(rp => (rp.ScreenId, rp.PermissionId)).ToHashSet();
+
+        _matrix = new Dictionary<(Guid, Guid), bool>();
+        foreach (var s in _screens)
+        {
+            var applicable = GetApplicablePermissions(s.Name);
+            foreach (var p in _permissions)
+            {
+                // Si el permiso no aplica a esta pantalla, se fuerza a false y no se muestra.
+                _matrix[(s.Id, p.Id)] = applicable.Contains(p.Code) && grantedSet.Contains((s.Id, p.Id));
+            }
+        }
+        _original = new Dictionary<(Guid, Guid), bool>(_matrix);
+
+        _usersInRole = await SecurityService.GetUsersInRoleAsync(RoleId);
+    }
+
+    private static (string Label, string CssClass) GetPermVisual(string code) => code switch
+    {
+        "READ" => ("Lectura", "perm-pill--read"),
+        "WRITE" => ("Escritura", "perm-pill--write"),
+        "DELETE" => ("Eliminación", "perm-pill--delete"),
+        "EXPORT" => ("Exportar", "perm-pill--export"),
+        "ADMIN" => ("Administración", "perm-pill--admin"),
+        _ => (code, "perm-pill--default")
+    };
+
+    // Resumen de nivel para lectura rápida (lo que antes daba "Detalle").
+    private (string Text, string CssSuffix) GetLevelLabel(Guid screenId, List<string> applicable)
+    {
+        bool Has(string code)
+        {
+            var id = PermIdByCode(code);
+            return id.HasValue && applicable.Contains(code) && _matrix.GetValueOrDefault((screenId, id.Value));
+        }
+
+        if (applicable.Count == 1)
+            return Has("READ") ? ("Habilitado", "on") : ("Deshabilitado", "off");
+
+        var read = Has("READ"); var write = Has("WRITE"); var del = Has("DELETE");
+        var export = Has("EXPORT"); var admin = Has("ADMIN");
+
+        if (!read && !write && !del && !export && !admin) return ("Sin acceso", "none");
+        if (read && !write && !del && !export && !admin) return ("Lectura", "read");
+        if (read && write && !del && !export && !admin) return ("Editor", "write");
+        if (read && write && del && export && admin) return ("Total", "admin");
+        return ("Personalizado", "custom");
+    }
+
+    private Guid? PermIdByCode(string code) => _permissions.FirstOrDefault(p => p.Code == code)?.Id;
+
+    private void Toggle((Guid ScreenId, Guid PermissionId) key, bool value)
+    {
+        if (!_canWrite) return;
+        _matrix[key] = value;
+    }
+
+    private void ApplyPreset(Guid screenId, string preset)
+    {
+        if (!_canWrite) return;
+
+        var screen = _screens.First(s => s.Id == screenId);
+        if (ReadOnlyScreens.Contains(screen.Name)) return; // los presets solo aplican a pantallas con CRUD
+
+        bool read = preset is "read" or "write" or "admin";
+        bool write = preset is "write" or "admin";
+        bool full = preset is "admin";
+
+        foreach (var p in _permissions)
+        {
+            var key = (screenId, p.Id);
+            _matrix[key] = p.Code switch
+            {
+                "READ" => read, "WRITE" => write, "DELETE" => full, "EXPORT" => full, "ADMIN" => full,
+                _ => _matrix[key]
+            };
+        }
+    }
+
+    private void ApplyPresetToAllVisible(string preset)
+    {
+        if (!_canWrite) return;
+        foreach (var s in FilteredScreens) ApplyPreset(s.Id, preset);
+    }
+
+    private bool HasChanged(Guid screenId) =>
+        _permissions.Any(p =>
+        {
+            var key = (screenId, p.Id);
+            return _original.TryGetValue(key, out var was) && was != _matrix[key];
+        });
+
+    private void Discard() => _matrix = new Dictionary<(Guid, Guid), bool>(_original);
+
+    private async Task Save()
+    {
+        if (!_canWrite) return;
+
+        var changes = _matrix
+            .Where(kv => !_original.TryGetValue(kv.Key, out var was) || was != kv.Value)
+            .ToList();
+
+        foreach (var kv in changes)
+        {
+            var (screenId, permissionId) = kv.Key;
+            await SecurityService.SetRolePermissionAsync(RoleId, screenId, permissionId, kv.Value);
+        }
+
+        if (changes.Count > 0)
+        {
+            var affectedScreens = changes.Select(c => c.Key.ScreenId).Distinct().Count();
+            await SecurityService.LogAuditAsync(null, _actingUser, "PERMISSION_CHANGED",
+                $"Rol '{_role!.Name}': {affectedScreens} pantalla(s) modificada(s) ({changes.Count} permiso(s)).");
+        }
+
+        _original = new Dictionary<(Guid, Guid), bool>(_matrix);
+        _toastMessage = $"{changes.Count} permiso(s) guardado(s).";
+        _showToast = true;
+        StateHasChanged();
+        await Task.Delay(2500);
+        _showToast = false;
+        StateHasChanged();
+    }
+
+    private async Task RemoveUserFromRole(SecurityUser u)
+    {
+        if (!_canWrite) return;
+
+        await SecurityService.RemoveRoleFromUserAsync(u.Id, RoleId);
+        await SecurityService.LogAuditAsync(u.Id, _actingUser, "ROLES_CHANGED", $"Removidos: {_role!.Name}");
+
+        _usersInRole = await SecurityService.GetUsersInRoleAsync(RoleId);
+        _toastMessage = $"Rol quitado a {u.FullName}.";
+        _showToast = true;
+        StateHasChanged();
+        await Task.Delay(2500);
+        _showToast = false;
+        StateHasChanged();
+    }
+
+    private void GoToUsersFilteredByRole() => Navigation.NavigateTo($"/admin/seguridad/usuarios?roleId={RoleId}");
 }
 
-/* Solo el cuerpo del modal tiene scroll */
-.role-modal__body {
-    padding: 24px;
-    overflow-y: auto !important; /* El único scroll permitido */
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
+
+
+
+
+
+
+// ISecurityService
+Task<List<SecurityUser>> GetUsersInRoleAsync(Guid roleId);
+
+// Implementación
+public async Task<List<SecurityUser>> GetUsersInRoleAsync(Guid roleId)
+{
+    return await _db.SecurityUserRoles
+        .Where(ur => ur.RoleId == roleId)
+        .Include(ur => ur.User)
+        .Select(ur => ur.User)
+        .OrderBy(u => u.FullName)
+        .ToListAsync();
 }
 
 
 
 
 
+/* ===== Grupos de pantallas en la matriz ===== */
+.matrix-group { margin-bottom: var(--space-6); }
 
+.matrix-group__title {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* ===== Nivel resumen por tarjeta (reemplaza el viejo "Detalle") ===== */
+.matrix-card__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.matrix-card__level {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.matrix-card__level--none  { background: var(--bg-surface-3); color: var(--text-tertiary); }
+.matrix-card__level--on,
+.matrix-card__level--read  { background: rgba(37,99,235,0.12); color: #2563eb; }
+.matrix-card__level--write { background: rgba(124,58,237,0.12); color: #7c3aed; }
+.matrix-card__level--admin { background: rgba(217,119,6,0.12); color: #d97706; }
+.matrix-card__level--custom,
+.matrix-card__level--off   { background: rgba(220,38,38,0.10); color: #dc2626; }
+
+/* ===== Interruptor simple para pantallas sin CRUD ===== */
+.matrix-card__simple-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+/* ===== Contraste de píldoras inactivas (antes se veían como texto plano) ===== */
+.perm-pill {
+  background: var(--bg-surface-3);
+  border: 1.5px solid var(--border-default);
+  color: var(--text-secondary, var(--text-tertiary));
+}
+
+/* ===== Usuarios con este rol ===== */
+.role-users-card { padding: var(--space-5); margin-bottom: var(--space-5); }
+
+.role-users-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.role-users-card__header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-md);
+}
+
+.role-users-card__empty {
+  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* ===== Modal más grande ===== */
+.modal--wide {
+  max-width: 880px;
+  width: 92vw;
+}
