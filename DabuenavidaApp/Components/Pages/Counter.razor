@@ -1,56 +1,36 @@
-// CorpWiki.Web/Security/ScreenPermissionRules.cs
-using CorpWiki.Domain.Entities.Security;
+.template-card--active {
+  border-color: var(--brand-500);
+  background: var(--brand-50, rgba(99,102,241,0.06)); /* acá está el problema *//* Tarjeta de plantilla seleccionada */
+.template-card--active {
+  border-color: var(--brand-500);
+  background: color-mix(in srgb, var(--brand-500) 12%, transparent);
+}
 
-namespace CorpWiki.Web.Security;
+/* Icono del header del modal */
+.modal__header-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--brand-500) 14%, transparent);
+  color: var(--brand-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
-/// <summary>
-/// Reglas de presentación para pantallas y permisos, compartidas entre
-/// la matriz de permisos de un rol y el modal de creación de roles.
-/// </summary>
-public static class ScreenPermissionRules
-{
-    public static readonly string[] PermissionOrder = { "READ", "WRITE", "DELETE", "EXPORT", "ADMIN" };
-
-    // Agrupación por Name. Ajustá esta tabla si cambian los nombres de pantalla.
-    private static readonly Dictionary<string, string> ScreenGroupMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Artículos"] = "Contenido", ["Artículo Detalle"] = "Contenido", ["Nuevo Artículo"] = "Contenido",
-        ["Editor de Artículos"] = "Contenido", ["Categorías"] = "Contenido", ["Categoría Detalle"] = "Contenido",
-        ["Etiquetas"] = "Contenido", ["Etiqueta Detalle"] = "Contenido", ["Colecciones"] = "Contenido",
-        ["Colección Detalle"] = "Contenido", ["Multimedia"] = "Contenido", ["Autores"] = "Contenido",
-        ["Inicio"] = "Sistema", ["Dashboard"] = "Sistema", ["Administración"] = "Sistema",
-        ["Perfil"] = "Personal", ["Actividad"] = "Personal", ["Favoritos"] = "Personal", ["Historial"] = "Personal",
-        ["Incidencias"] = "Soporte", ["Estadísticas"] = "Soporte", ["Centro de ayuda"] = "Soporte",
-        ["Búsqueda"] = "Navegación", ["Explorar"] = "Navegación",
-    };
-
-    public static readonly string[] GroupOrder = { "Sistema", "Contenido", "Soporte", "Navegación", "Personal", "Otras pantallas" };
-
-    // Pantallas de solo consulta: no tienen CRUD real, solo exponen un interruptor de acceso (mapeado a READ).
-    public static readonly HashSet<string> ReadOnlyScreens = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Explorar", "Búsqueda", "Dashboard", "Perfil", "Actividad", "Favoritos", "Historial", "Centro de ayuda"
-    };
-
-    public static string GetGroup(string screenName) => ScreenGroupMap.GetValueOrDefault(screenName, "Otras pantallas");
-
-    public static List<string> GetApplicablePermissions(string screenName) =>
-        ReadOnlyScreens.Contains(screenName) ? new List<string> { "READ" } : PermissionOrder.ToList();
-
-    public static (string Label, string CssClass) GetPermVisual(string code) => code switch
-    {
-        "READ" => ("Lectura", "perm-pill--read"),
-        "WRITE" => ("Escritura", "perm-pill--write"),
-        "DELETE" => ("Eliminación", "perm-pill--delete"),
-        "EXPORT" => ("Exportar", "perm-pill--export"),
-        "ADMIN" => ("Administración", "perm-pill--admin"),
-        _ => (code, "perm-pill--default")
-    };
-
-    public static IEnumerable<IGrouping<string, SecurityScreen>> GroupScreens(IEnumerable<SecurityScreen> screens) =>
-        screens
-            .GroupBy(s => GetGroup(s.Name))
-            .OrderBy(g => Array.IndexOf(GroupOrder, g.Key) is var i && i >= 0 ? i : 999);
+/* Chip de rol activo */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--brand-500) 12%, transparent);
+  color: var(--brand-500);
+  white-space: nowrap;
 }
 
 
@@ -58,364 +38,233 @@ public static class ScreenPermissionRules
 
 
 
-@page "/admin/seguridad/roles"
+}
+
+
+
+@page "/admin/seguridad/usuarios/{UserId:guid}"
 @attribute [Authorize(Policy = "ADMIN:READ")]
-@rendermode InteractiveServer
+
 @inject ISecurityService SecurityService
 @inject AuthenticationStateProvider AuthStateProvider
-@inject NavigationManager Navigation
 @using CorpWiki.Domain.Entities.Security
 @using CorpWiki.Web.Security
 @using CorpWiki.Web.Components.Shared.Security
 
-<PageTitle>DaviWiki - Roles</PageTitle>
+<PageTitle>DaviWiki - Detalle de usuario</PageTitle>
 
 <AdminNav />
 
-<SecurityPageHeader Title="Roles" Subtitle="Definí los permisos para cada grupo de usuarios.">
-    @if (_canWrite)
-    {
-        <button class="btn btn--primary btn--sm" @onclick="() => OpenCreateModal()">
-            <Icon Name="plus" /> Nuevo rol
-        </button>
-    }
-</SecurityPageHeader>
-
 @if (_loading)
 {
-    <div class="role-card-grid">
-        @for (int i = 0; i < 3; i++)
-        {
-            <div class="skeleton" style="height:210px; border-radius:var(--radius-lg)"></div>
-        }
-    </div>
+    <div class="skeleton" style="height:120px; border-radius:var(--radius-lg)"></div>
 }
-else if (_roles.Count == 0)
+else if (_user is null)
 {
-    <SecurityEmptyState IconName="shield" Title="No hay roles creados"
-                        Description="Creá un rol para empezar a asignar permisos por pantalla."
-                        ActionText="@(_canWrite ? "Nuevo rol" : null)"
-                        OnAction="() => OpenCreateModal()" />
+    <SecurityEmptyState IconName="user" Title="Usuario no encontrado"
+                        Description="El usuario que buscás no existe o fue eliminado." />
 }
 else
 {
-    <div class="stat-summary">
-        <div class="stat-chip">
-            <span class="stat-chip__value">@_roles.Count</span>
-            <span class="stat-chip__label">Roles totales</span>
-        </div>
-        <div class="stat-chip">
-            <span class="stat-chip__value">@_roles.Count(r => r.IsSystemRole)</span>
-            <span class="stat-chip__label">De sistema</span>
-        </div>
-        <div class="stat-chip stat-chip--positive">
-            <span class="stat-chip__value">@_roles.Count(r => !r.IsSystemRole)</span>
-            <span class="stat-chip__label">Personalizados</span>
-        </div>
-    </div>
+    <SecurityPageHeader BackHref="/admin/seguridad/usuarios" BackText="Usuarios" Title="Detalle de usuario">
+        @if (_canWrite)
+        {
+            <button class="btn @(_user.IsActive ? "btn--danger" : "btn--primary") btn--sm" @onclick="() => _confirmingToggle = true">
+                @(_user.IsActive ? "Desactivar" : "Activar")
+            </button>
+        }
+    </SecurityPageHeader>
 
-    @if (_roles.Count > 6)
-    {
-        <div class="security-toolbar">
-            <div class="security-search">
-                <Icon Name="search" />
-                <input type="text" placeholder="Buscar rol..." aria-label="Buscar rol"
-                       @bind="_searchTerm" @bind:event="oninput" />
+    <div class="card" style="padding: var(--space-6)">
+        <div class="entity-header">
+            <span class="avatar entity-header__avatar" data-status="@(_user.IsActive ? "active" : "inactive")"
+                  style="background: linear-gradient(135deg, @_user.AvatarColorFrom, @_user.AvatarColorTo)">
+                @GetInitials(_user.FullName)
+            </span>
+            <div>
+                <h2 style="margin-bottom:2px">@_user.FullName</h2>
+                <div class="entity-header__meta">
+                    <span>@_user.Username</span>
+                    <span>•</span>
+                    <span>@_user.Email</span>
+                    <span>•</span>
+                    <span>@_user.Department @(string.IsNullOrEmpty(_user.Position) ? "" : $" - {_user.Position}")</span>
+                </div>
             </div>
-            <span class="security-toolbar__count">@FilteredRoles.Count de @_roles.Count</span>
-        </div>
-    }
-
-    @if (FilteredRoles.Count == 0)
-    {
-        <SecurityEmptyState IconName="search" Title="Sin resultados" Description="No hay roles que coincidan con la búsqueda." Inline="true" />
-    }
-    else
-    {
-        <div class="role-card-grid">
-            @foreach (var r in FilteredRoles)
-            {
-                <div class="card role-card">
-                    <div class="role-card__top">
-                        <div class="role-card__icon"><Icon Name="shield" /></div>
-                        @if (r.IsSystemRole)
-                        {
-                            <span class="badge">Sistema</span>
-                        }
-                        else
-                        {
-                            <span class="role-card__count">@GetPermissionCount(r.Id) permiso(s)</span>
-                        }
-                    </div>
-                    <div class="role-card__name">@r.Name</div>
-                    <p class="role-card__desc">@(string.IsNullOrWhiteSpace(r.Description) ? "Sin descripción." : r.Description)</p>
-                    <div class="role-card__footer">
-                        <button class="btn btn--secondary btn--sm" @onclick="() => GoToMatrix(r.Id)">
-                            <Icon Name="grid-3x3" /> Permisos
-                        </button>
-                        @if (_canWrite)
-                        {
-                            <button class="btn btn--ghost btn--sm" @onclick="() => OpenCreateModal(r)" title="Crear un rol nuevo copiando estos permisos">
-                                <Icon Name="copy" /> Duplicar
-                            </button>
-                        }
-                        @if (_canWrite && !r.IsSystemRole)
-                        {
-                            <button class="btn btn--ghost btn--sm" @onclick="() => _confirmingDelete = r" aria-label="@($"Eliminar rol {r.Name}")">
-                                <Icon Name="trash-2" />
-                            </button>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-    }
-}
-
-@if (_showCreateModal)
-{
-    <div class="modal-overlay" @onclick="CloseCreateModal">
-        <div class="modal modal--wide" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="createRoleTitle">
-            <div class="modal__header modal__header--icon">
-                <div class="modal__header-icon"><Icon Name="shield" /></div>
-                <div>
-                    <h3 id="createRoleTitle">Crear nuevo rol</h3>
-                    <p class="modal__header-subtitle">Configurá los datos principales y asigná los accesos por pantalla.</p>
-                </div>
-                <button class="btn btn--ghost btn--sm modal__close" @onclick="CloseCreateModal" aria-label="Cerrar"><Icon Name="x" /></button>
+            <div style="margin-left:auto">
+                <SecurityStatusBadge Active="_user.IsActive" />
             </div>
+        </div>
 
-            <div class="modal__body modal__body--scrollable">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="roleName">Nombre del rol <span class="form-required">*</span></label>
-                        <input id="roleName" class="input" placeholder="Ej: Gestor Operativo" @bind="_newRoleName" />
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="roleDesc">Descripción</label>
-                        <input id="roleDesc" class="input" placeholder="Objetivo o alcance de este rol..." @bind="_newRoleDescription" />
-                    </div>
-                </div>
+        <div class="security-tabs" role="tablist" aria-label="Secciones del usuario">
+            <button role="tab" id="tab-role" aria-controls="panel-role"
+                    aria-selected="@(_tab == "role" ? "true" : "false")"
+                    class="security-tab @(_tab == "role" ? "security-tab--active" : "")"
+                    @onclick='() => _tab = "role"'>
+                Roles y permisos
+            </button>
+            <button role="tab" id="tab-info" aria-controls="panel-info"
+                    aria-selected="@(_tab == "info" ? "true" : "false")"
+                    class="security-tab @(_tab == "info" ? "security-tab--active" : "")"
+                    @onclick='() => _tab = "info"'>
+                Información
+            </button>
+        </div>
 
-                <div class="modal__section-title">
-                    <span>Plantilla de permisos</span>
-                </div>
-                <p class="modal__section-hint">¿Querés partir de un rol existente? Se copian sus permisos automáticamente — después podés ajustarlos.</p>
+        @if (_tab == "role")
+        {
+            <div class="card admin-section" id="panel-role" role="tabpanel" aria-labelledby="tab-role">
+                <h3 class="admin-section__title"><Icon Name="shield" /> Roles asignados</h3>
+                <p class="admin-section__desc">Un usuario puede tener uno o más roles activos al mismo tiempo. Los permisos efectivos son la suma de todos sus roles.</p>
 
-                <div class="template-card-grid">
-                    <button type="button" class="template-card @(_cloneFromRoleId is null ? "template-card--active" : "")"
-                            @onclick="() => SelectTemplate(null)">
-                        <span class="template-card__name">Desde cero</span>
-                        <span class="template-card__desc">Sin permisos asignados de inicio</span>
-                    </button>
-                    @foreach (var r in _roles)
-                    {
-                        <button type="button" class="template-card @(_cloneFromRoleId == r.Id ? "template-card--active" : "")"
-                                @onclick="() => SelectTemplate(r.Id)">
-                            <span class="template-card__top">
-                                <span class="template-card__name">@r.Name</span>
-                                <span class="template-card__count">@GetPermissionCount(r.Id) permiso(s)</span>
-                            </span>
-                            <span class="template-card__desc">@(string.IsNullOrWhiteSpace(r.Description) ? "Sin descripción." : r.Description)</span>
-                        </button>
-                    }
-                </div>
-
-                <div class="modal__section-title">
-                    <span>Permisos del rol — por pantalla</span>
-                    <span class="modal__section-count">@_newRolePermissionCount de @_maxPossiblePermissions seleccionados</span>
-                </div>
-
-                <div class="matrix-bulk" style="margin-bottom: var(--space-4)">
-                    <div class="security-search" style="max-width:none; flex:1">
-                        <Icon Name="search" />
-                        <input type="text" placeholder="Buscar pantalla..." @bind="_screenSearchModal" @bind:event="oninput" />
-                    </div>
-                    <span>Aplicar a todas:</span>
-                    <div class="segmented" role="group" aria-label="Aplicar nivel a todas las pantallas">
-                        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("none")'>Sin acceso</button>
-                        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("read")'>Lectura</button>
-                        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("write")'>Editor</button>
-                        <button type="button" class="segmented__btn" @onclick='() => ApplyPresetToAllNewRole("admin")'>Total</button>
-                    </div>
-                </div>
-
-                @foreach (var group in GroupedFilteredScreensModal)
+                @if (SelectedRoles.Count > 0)
                 {
-                    <div class="matrix-group">
-                        <h4 class="matrix-group__title">@group.Key</h4>
-                        <div class="matrix-card-list">
-                            @foreach (var s in group)
-                            {
-                                var applicable = ScreenPermissionRules.GetApplicablePermissions(s.Name);
-
-                                <div class="matrix-card">
-                                    <div class="matrix-card__name">@s.Name</div>
-
-                                    @if (applicable.Count == 1)
-                                    {
-                                        var readId = PermIdByCode("READ")!.Value;
-                                        var readKey = (s.Id, readId);
-                                        var isOn = _newRoleMatrix.GetValueOrDefault(readKey);
-
-                                        <label class="matrix-card__simple-toggle">
-                                            <span>Acceso habilitado</span>
-                                            <label class="switch">
-                                                <input type="checkbox" checked="@isOn"
-                                                       aria-label="@($"Acceso a {s.Name}")"
-                                                       @onchange="@(e => ToggleNewRolePermission(s.Id, readId, (bool)e.Value!))" />
-                                                <span class="switch__track"></span>
-                                            </label>
-                                        </label>
-                                    }
-                                    else
-                                    {
-                                        <div class="perm-pills">
-                                            @foreach (var p in _permissions.Where(p => applicable.Contains(p.Code)))
-                                            {
-                                                var key = (s.Id, p.Id);
-                                                var isOn = _newRoleMatrix.GetValueOrDefault(key);
-                                                var (label, cssClass) = ScreenPermissionRules.GetPermVisual(p.Code);
-
-                                                <button type="button"
-                                                        class="perm-pill @cssClass @(isOn ? "perm-pill--active" : "")"
-                                                        aria-pressed="@isOn"
-                                                        aria-label="@($"{label} en {s.Name}")"
-                                                        @onclick="() => ToggleNewRolePermission(s.Id, p.Id, !isOn)">
-                                                    @label
-                                                </button>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                            }
+                    <div class="stat-summary" style="margin-bottom: var(--space-4)">
+                        <div class="stat-chip">
+                            <span class="stat-chip__value">@SelectedRoles.Count</span>
+                            <span class="stat-chip__label">Rol(es) activo(s)</span>
+                        </div>
+                        <div class="stat-chip stat-chip--positive">
+                            <span class="stat-chip__value">@_effectivePermissionCount</span>
+                            <span class="stat-chip__label">Permisos efectivos</span>
                         </div>
                     </div>
                 }
 
-                <div class="modal__section-title">
-                    <span>Asignar usuarios (opcional)</span>
-                    <span class="modal__section-count">@_selectedUserIds.Count seleccionado(s)</span>
-                </div>
-
-                @if (_selectedUserIds.Count > 0)
-                {
-                    <div class="role-chip-list" style="margin-bottom: var(--space-3)">
-                        @foreach (var u in _allUsersForModal.Where(u => _selectedUserIds.Contains(u.Id)))
-                        {
-                            <span class="chip chip--active">
-                                @u.FullName
-                                <button type="button" class="chip__remove" aria-label="@($"Quitar a {u.FullName} de la selección")"
-                                        @onclick="() => ToggleUserSelection(u.Id, false)">
-                                    <Icon Name="x" />
-                                </button>
-                            </span>
-                        }
-                    </div>
-                }
-
-                <div class="security-search" style="max-width:none; margin-bottom: var(--space-3)">
-                    <Icon Name="search" />
-                    <input type="text" placeholder="Buscar usuario por nombre o correo..." @bind="_userSearchModal" @bind:event="oninput" />
-                </div>
-
-                <div class="user-pick-list">
-                    @if (FilteredUsersModal.Count == 0)
+                <div class="role-chip-list">
+                    @if (SelectedRoles.Count == 0)
                     {
-                        <p class="role-users-card__empty" style="padding: var(--space-3)">No hay usuarios que coincidan con la búsqueda.</p>
+                        <span class="role-chip-list__empty">Sin roles asignados.</span>
                     }
                     else
                     {
-                        @foreach (var u in FilteredUsersModal)
+                        @foreach (var r in SelectedRoles)
                         {
-                            var isSelected = _selectedUserIds.Contains(u.Id);
-                            <label class="user-pick-row">
-                                <input type="checkbox" checked="@isSelected"
-                                       @onchange="@(e => ToggleUserSelection(u.Id, (bool)e.Value!))" />
-                                <span class="avatar avatar--sm" style="background: linear-gradient(135deg, @u.AvatarColorFrom, @u.AvatarColorTo)">
-                                    @GetInitials(u.FullName)
-                                </span>
-                                <span class="user-pick-row__info">
-                                    <span class="user-pick-row__name">@u.FullName</span>
-                                    <span class="user-pick-row__sub">@u.Email</span>
-                                </span>
-                            </label>
+                            <span class="chip chip--active">
+                                @r.Name
+                                @if (_canWrite)
+                                {
+                                    <button type="button" class="chip__remove" aria-label="@($"Quitar rol {r.Name}")" @onclick="() => RemoveRole(r.Id)">
+                                        <Icon Name="x" />
+                                    </button>
+                                }
+                            </span>
                         }
                     }
                 </div>
-            </div>
 
-            <div class="form-actions">
-                <button class="btn btn--ghost btn--sm" @onclick="CloseCreateModal">Cancelar</button>
-                <button class="btn btn--primary btn--sm" disabled="@string.IsNullOrWhiteSpace(_newRoleName)" @onclick="CreateRole">
-                    Crear rol
-                </button>
+                @if (_canWrite)
+                {
+                    <div class="role-assign-row">
+                        <select class="input" @bind="_roleToAdd" aria-label="Agregar rol">
+                            <option value="">Agregar rol...</option>
+                            @foreach (var r in AvailableRolesToAdd)
+                            {
+                                <option value="@r.Id">@r.Name</option>
+                            }
+                        </select>
+                        <button class="btn btn--secondary btn--sm" disabled="@string.IsNullOrEmpty(_roleToAdd)" @onclick="AddRole">
+                            <Icon Name="plus" /> Agregar
+                        </button>
+                    </div>
+
+                    @if (_isDirty)
+                    {
+                        <div class="role-assign-actions">
+                            <span class="role-assign-actions__hint"><Icon Name="alert-triangle" /> Tenés cambios sin guardar</span>
+                            <button class="btn btn--ghost btn--sm" @onclick="DiscardRoleChanges">Descartar</button>
+                            <button class="btn btn--primary btn--sm" @onclick="RequestRoleChange">Guardar cambios</button>
+                        </div>
+                    }
+                }
             </div>
-        </div>
+        }
+        else
+        {
+            <div class="card admin-section" id="panel-info" role="tabpanel" aria-labelledby="tab-info">
+                <h3 class="admin-section__title"><Icon Name="user" /> Información</h3>
+                <div class="drawer__row">
+                    <span class="drawer__row-label">Nombre completo</span>
+                    <span class="drawer__row-value">@_user.FullName</span>
+                </div>
+                <div class="drawer__row">
+                    <span class="drawer__row-label">Usuario</span>
+                    <span class="drawer__row-value">@_user.Username</span>
+                </div>
+                <div class="drawer__row">
+                    <span class="drawer__row-label">Correo</span>
+                    <span class="drawer__row-value">@_user.Email</span>
+                </div>
+                <div class="drawer__row">
+                    <span class="drawer__row-label">Departamento / Cargo</span>
+                    <span class="drawer__row-value">@_user.Department @(string.IsNullOrEmpty(_user.Position) ? "" : $" - {_user.Position}")</span>
+                </div>
+            </div>
+        }
     </div>
-}
 
-<SecurityConfirmDialog Visible="_confirmingDelete is not null"
-                       Title="Eliminar rol"
-                       Message="@($"El rol '{_confirmingDelete?.Name}' se eliminará. Los usuarios que lo tengan asignado quedarán sin ese rol (podrían conservar otros). Esta acción no se puede deshacer.")"
-                       ConfirmText="Eliminar"
-                       Dangerous="true"
-                       OnConfirm="DeleteRole"
-                       OnCancel="() => _confirmingDelete = null" />
+    <SecurityConfirmDialog Visible="_confirmingToggle"
+                           Title="@(_user?.IsActive == true ? "Desactivar usuario" : "Activar usuario")"
+                           Message="@($"...{_user?.FullName} {(_user?.IsActive == true ? "perderá acceso al sistema" : "recuperará acceso al sistema")}. ¿Continuar?")"
+                           ConfirmText="@(_user?.IsActive == true ? "Desactivar" : "Activar")"
+                           Dangerous="@(_user?.IsActive == true)"
+                           OnConfirm="ToggleActive"
+                           OnCancel="() => _confirmingToggle = false" />
 
-@if (_showToast)
-{
-    <div class="toast" role="status" aria-live="polite"><Icon Name="check-circle" /> @_toastMessage</div>
+    <SecurityConfirmDialog Visible="_confirmingRoleChange"
+                           Title="Cambiar roles"
+                           Message="@RoleChangeMessage"
+                           ConfirmText="Confirmar cambios"
+                           OnConfirm="ChangeRole"
+                           OnCancel="() => _confirmingRoleChange = false" />
+
+    @if (_showToast)
+    {
+        <div class="toast" role="status" aria-live="polite"><Icon Name="check-circle" /> @_toastMessage</div>
+    }
 }
 
 @code {
-    private List<SecurityRole> _roles = new();
-    private List<SecurityScreen> _screens = new();
-    private List<SecurityPermission> _permissions = new();
-    private List<SecurityUser> _allUsersForModal = new();
-    private Dictionary<Guid, int> _rolePermissionCounts = new();
+    [Parameter] public Guid UserId { get; set; }
 
+    private SecurityUser? _user;
+    private List<SecurityRole> _allRoles = new();
+    private HashSet<Guid> _savedRoleIds = new();
+    private HashSet<Guid> _selectedRoleIds = new();
+    private int _effectivePermissionCount;
+    private string _roleToAdd = "";
     private bool _loading = true;
     private bool _canWrite;
     private string _actingUser = "unknown";
-    private string _searchTerm = "";
-    private SecurityRole? _confirmingDelete;
+    private string _tab = "role";
+    private bool _confirmingToggle;
+    private bool _confirmingRoleChange;
     private bool _showToast;
     private string _toastMessage = "";
 
-    // Estado del modal
-    private bool _showCreateModal;
-    private string _newRoleName = "";
-    private string _newRoleDescription = "";
-    private Guid? _cloneFromRoleId;
-    private Dictionary<(Guid ScreenId, Guid PermissionId), bool> _newRoleMatrix = new();
-    private string _screenSearchModal = "";
-    private string _userSearchModal = "";
-    private HashSet<Guid> _selectedUserIds = new();
+    private bool _isDirty => !_selectedRoleIds.SetEquals(_savedRoleIds);
 
-    private IReadOnlyList<SecurityRole> FilteredRoles =>
-        string.IsNullOrWhiteSpace(_searchTerm)
-            ? _roles
-            : _roles.Where(r => r.Name.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+    private List<SecurityRole> SelectedRoles =>
+        _allRoles.Where(r => _selectedRoleIds.Contains(r.Id)).OrderBy(r => r.Name).ToList();
 
-    private IReadOnlyList<SecurityScreen> FilteredScreensModal =>
-        string.IsNullOrWhiteSpace(_screenSearchModal)
-            ? _screens
-            : _screens.Where(s => s.Name.Contains(_screenSearchModal, StringComparison.OrdinalIgnoreCase)).ToList();
+    private List<SecurityRole> AvailableRolesToAdd =>
+        _allRoles.Where(r => !_selectedRoleIds.Contains(r.Id)).OrderBy(r => r.Name).ToList();
 
-    private IEnumerable<IGrouping<string, SecurityScreen>> GroupedFilteredScreensModal =>
-        ScreenPermissionRules.GroupScreens(FilteredScreensModal);
+    private string RoleChangeMessage
+    {
+        get
+        {
+            var added = _allRoles.Where(r => _selectedRoleIds.Contains(r.Id) && !_savedRoleIds.Contains(r.Id)).Select(r => r.Name).ToList();
+            var removed = _allRoles.Where(r => _savedRoleIds.Contains(r.Id) && !_selectedRoleIds.Contains(r.Id)).Select(r => r.Name).ToList();
 
-    private List<SecurityUser> FilteredUsersModal =>
-        string.IsNullOrWhiteSpace(_userSearchModal)
-            ? _allUsersForModal
-            : _allUsersForModal.Where(u =>
-                u.FullName.Contains(_userSearchModal, StringComparison.OrdinalIgnoreCase) ||
-                (u.Email?.Contains(_userSearchModal, StringComparison.OrdinalIgnoreCase) ?? false))
-              .ToList();
+            var parts = new List<string>();
+            if (added.Count > 0) parts.Add($"Se agregará: {string.Join(", ", added)}");
+            if (removed.Count > 0) parts.Add($"Se quitará: {string.Join(", ", removed)}");
+            if (parts.Count == 0) parts.Add("No hay cambios pendientes");
 
-    private int _newRolePermissionCount => _newRoleMatrix.Count(kv => kv.Value);
-    private int _maxPossiblePermissions => _screens.Sum(s => ScreenPermissionRules.GetApplicablePermissions(s.Name).Count);
+            return $"{string.Join(". ", parts)} para {_user?.FullName}.";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -423,172 +272,130 @@ else
         _canWrite = authState.User.HasPermission("ADMIN", "WRITE");
         _actingUser = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "unknown";
 
-        await LoadRoles();
-        _screens = (await SecurityService.GetAllScreensAsync()).OrderBy(s => s.DisplayOrder).ToList();
-        _permissions = (await SecurityService.GetAllPermissionsAsync())
-            .OrderBy(p => Array.IndexOf(ScreenPermissionRules.PermissionOrder, p.Code))
-            .ToList();
+        _user = await SecurityService.GetUserByIdAsync(UserId);
+        _allRoles = await SecurityService.GetAllRolesAsync();
 
+        var userRoles = await SecurityService.GetUserRolesAsync(UserId);
+        _savedRoleIds = userRoles.Select(r => r.Id).ToHashSet();
+        _selectedRoleIds = new HashSet<Guid>(_savedRoleIds);
+
+        await RecalculateEffectivePermissions();
         _loading = false;
     }
 
-    private async Task LoadRoles()
+    // Cuenta permisos únicos (ScreenId, PermissionId) entre todos los roles asignados,
+    // para reflejar que el acceso real es la UNIÓN de todos los roles, no la suma ingenua.
+    private async Task RecalculateEffectivePermissions()
     {
-        _roles = await SecurityService.GetAllRolesAsync();
-
-        // Secuencial: mismo DbContext scoped, no llamadas concurrentes.
-        _rolePermissionCounts = new Dictionary<Guid, int>();
-        foreach (var r in _roles)
+        var distinctPerms = new HashSet<(Guid, Guid)>();
+        foreach (var roleId in _selectedRoleIds)
         {
-            var perms = await SecurityService.GetRolePermissionsAsync(r.Id);
-            _rolePermissionCounts[r.Id] = perms.Count();
+            var perms = await SecurityService.GetRolePermissionsAsync(roleId);
+            foreach (var p in perms) distinctPerms.Add((p.ScreenId, p.PermissionId));
         }
+        _effectivePermissionCount = distinctPerms.Count;
     }
 
-    private int GetPermissionCount(Guid roleId) => _rolePermissionCounts.GetValueOrDefault(roleId);
-
-    private void GoToMatrix(Guid roleId) => Navigation.NavigateTo($"/admin/seguridad/roles/{roleId}/permisos");
-
-    private Guid? PermIdByCode(string code) => _permissions.FirstOrDefault(p => p.Code == code)?.Id;
-
-    private async Task OpenCreateModal(SecurityRole? cloneFrom = null)
+    private async Task AddRole()
     {
-        _newRoleName = cloneFrom is null ? "" : $"Copia de {cloneFrom.Name}";
-        _newRoleDescription = cloneFrom?.Description ?? "";
-        _screenSearchModal = "";
-        _userSearchModal = "";
-        _selectedUserIds = new HashSet<Guid>();
-
-        _newRoleMatrix = new Dictionary<(Guid, Guid), bool>();
-        foreach (var s in _screens)
-            foreach (var p in _permissions)
-                _newRoleMatrix[(s.Id, p.Id)] = false;
-
-        await SelectTemplate(cloneFrom?.Id);
-
-        if (_allUsersForModal.Count == 0)
-            _allUsersForModal = (await SecurityService.GetAllUsersAsync()).OrderBy(u => u.FullName).ToList();
-
-        _showCreateModal = true;
+        if (!_canWrite || string.IsNullOrEmpty(_roleToAdd)) return;
+        if (Guid.TryParse(_roleToAdd, out var id)) _selectedRoleIds.Add(id);
+        _roleToAdd = "";
+        await RecalculateEffectivePermissions();
     }
 
-    private void CloseCreateModal() => _showCreateModal = false;
-
-    private async Task SelectTemplate(Guid? roleId)
+    private async Task RemoveRole(Guid roleId)
     {
-        _cloneFromRoleId = roleId;
-
-        foreach (var s in _screens)
-            foreach (var p in _permissions)
-                _newRoleMatrix[(s.Id, p.Id)] = false;
-
-        if (roleId.HasValue)
-        {
-            var granted = await SecurityService.GetRolePermissionsAsync(roleId.Value);
-            foreach (var rp in granted)
-                _newRoleMatrix[(rp.ScreenId, rp.PermissionId)] = true;
-        }
+        if (!_canWrite) return;
+        _selectedRoleIds.Remove(roleId);
+        await RecalculateEffectivePermissions();
     }
 
-    private void ToggleNewRolePermission(Guid screenId, Guid permissionId, bool value)
+    private async Task DiscardRoleChanges()
     {
-        _newRoleMatrix[(screenId, permissionId)] = value;
+        _selectedRoleIds = new HashSet<Guid>(_savedRoleIds);
+        await RecalculateEffectivePermissions();
     }
 
-    private void ApplyPresetToAllNewRole(string preset)
+    private void RequestRoleChange()
     {
-        foreach (var s in FilteredScreensModal)
-        {
-            if (ScreenPermissionRules.ReadOnlyScreens.Contains(s.Name))
-            {
-                var readId = PermIdByCode("READ");
-                if (readId.HasValue) _newRoleMatrix[(s.Id, readId.Value)] = preset != "none";
-                continue;
-            }
-
-            bool read = preset is "read" or "write" or "admin";
-            bool write = preset is "write" or "admin";
-            bool full = preset is "admin";
-
-            foreach (var p in _permissions)
-            {
-                var key = (s.Id, p.Id);
-                _newRoleMatrix[key] = p.Code switch
-                {
-                    "READ" => read, "WRITE" => write, "DELETE" => full, "EXPORT" => full, "ADMIN" => full,
-                    _ => _newRoleMatrix.GetValueOrDefault(key)
-                };
-            }
-        }
+        if (!_canWrite || !_isDirty) return;
+        _confirmingRoleChange = true;
     }
 
-    private void ToggleUserSelection(Guid userId, bool value)
+    private async Task ChangeRole()
     {
-        if (value) _selectedUserIds.Add(userId);
-        else _selectedUserIds.Remove(userId);
-    }
+        _confirmingRoleChange = false;
+        if (!_canWrite || _user is null) return;
 
-    private async Task CreateRole()
-    {
-        if (!_canWrite || string.IsNullOrWhiteSpace(_newRoleName)) return;
+        var toAdd = _selectedRoleIds.Except(_savedRoleIds).ToList();
+        var toRemove = _savedRoleIds.Except(_selectedRoleIds).ToList();
 
-        var role = await SecurityService.CreateRoleAsync(_newRoleName.Trim(), _newRoleDescription.Trim());
+        foreach (var roleId in toRemove)
+            await SecurityService.RemoveRoleFromUserAsync(UserId, roleId);
 
-        var grantedCount = 0;
-        foreach (var kv in _newRoleMatrix.Where(kv => kv.Value))
-        {
-            var (screenId, permissionId) = kv.Key;
-            await SecurityService.SetRolePermissionAsync(role.Id, screenId, permissionId, true);
-            grantedCount++;
-        }
+        foreach (var roleId in toAdd)
+            await SecurityService.AssignRoleToUserAsync(UserId, roleId, _actingUser);
 
-        foreach (var userId in _selectedUserIds)
-        {
-            await SecurityService.AssignRoleToUserAsync(userId, role.Id, _actingUser);
-        }
+        var addedNames = _allRoles.Where(r => toAdd.Contains(r.Id)).Select(r => r.Name).ToList();
+        var removedNames = _allRoles.Where(r => toRemove.Contains(r.Id)).Select(r => r.Name).ToList();
 
-        var detailParts = new List<string>
-        {
-            grantedCount > 0 ? $"{grantedCount} permiso(s) inicial(es)" : "sin permisos"
-        };
-        if (_selectedUserIds.Count > 0) detailParts.Add($"{_selectedUserIds.Count} usuario(s) asignado(s)");
-        if (_cloneFromRoleId.HasValue)
-        {
-            var source = _roles.FirstOrDefault(r => r.Id == _cloneFromRoleId.Value);
-            if (source is not null) detailParts.Add($"clonado de '{source.Name}'");
-        }
+        var detailParts = new List<string>();
+        if (addedNames.Count > 0) detailParts.Add($"Agregados: {string.Join(", ", addedNames)}");
+        if (removedNames.Count > 0) detailParts.Add($"Removidos: {string.Join(", ", removedNames)}");
 
-        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_CREATED",
-            $"Rol creado: {role.Name} ({string.Join(", ", detailParts)})");
+        await SecurityService.LogAuditAsync(UserId, _user.Username, "ROLES_CHANGED", string.Join(" | ", detailParts));
 
-        _showCreateModal = false;
-        await LoadRoles();
-
-        _toastMessage = "Rol creado correctamente.";
-        await ShowToast();
-    }
-
-    private async Task DeleteRole()
-    {
-        var role = _confirmingDelete;
-        _confirmingDelete = null;
-        if (!_canWrite || role is null || role.IsSystemRole) return;
-
-        await SecurityService.DeleteRoleAsync(role.Id);
-        await SecurityService.LogAuditAsync(null, _actingUser, "ROLE_DELETED", $"Rol eliminado: {role.Name}");
-
-        await LoadRoles();
-        _toastMessage = "Rol eliminado.";
-        await ShowToast();
-    }
-
-    private async Task ShowToast()
-    {
+        _savedRoleIds = new HashSet<Guid>(_selectedRoleIds);
+        _toastMessage = "Roles actualizados correctamente.";
         _showToast = true;
         StateHasChanged();
         await Task.Delay(2500);
         _showToast = false;
         StateHasChanged();
+    }
+
+    private async Task ToggleActive()
+    {
+        _confirmingToggle = false;
+        if (_user is null || !_canWrite) return;
+
+        try
+        {
+            var success = await SecurityService.ToggleUserActiveAsync(_user.Id);
+            if (!success)
+            {
+                _toastMessage = "No se pudo actualizar el estado del usuario.";
+                _showToast = true;
+                return;
+            }
+
+            var updatedUser = await SecurityService.GetUserByIdAsync(_user.Id);
+            if (updatedUser is not null)
+            {
+                _user.IsActive = updatedUser.IsActive;
+            }
+
+            await SecurityService.LogAuditAsync(
+                _user.Id, _actingUser,
+                _user.IsActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+                $"Usuario afectado: {_user.FullName} ({_user.Username})");
+
+            _toastMessage = _user.IsActive
+                ? "Usuario activado correctamente."
+                : "Usuario desactivado correctamente.";
+
+            _showToast = true;
+        }
+        catch (Exception)
+        {
+            _toastMessage = "Ocurrió un error al actualizar el usuario.";
+            _showToast = true;
+        }
+        finally
+        {
+            StateHasChanged();
+        }
     }
 
     private static string GetInitials(string name)
@@ -600,156 +407,3 @@ else
 }
 
 
-
-
-
-
-/* ===== Modal con header/footer fijos y un único scroll interno ===== */
-.modal--wide {
-  width: 92vw;
-  max-width: 880px;
-  max-height: 88vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.modal--wide .modal__header { flex-shrink: 0; }
-.modal--wide .modal__body--scrollable { flex: 1; overflow-y: auto; }
-.modal--wide .form-actions { flex-shrink: 0; border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
-
-.modal__header--icon {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-}
-
-.modal__header-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  background: var(--brand-50, rgba(99,102,241,0.1));
-  color: var(--brand-500);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.modal__header-icon .icon { width: 20px; height: 20px; }
-.modal__header--icon h3 { margin-bottom: 2px; }
-.modal__header-subtitle { font-size: var(--fs-sm); color: var(--text-tertiary); }
-.modal__close { margin-left: auto; flex-shrink: 0; }
-
-.modal__section-hint {
-  font-size: var(--fs-xs);
-  color: var(--text-tertiary);
-  margin: -8px 0 var(--space-3);
-}
-
-/* ===== Tarjetas de plantilla de rol — tamaño uniforme ===== */
-.template-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
-}
-
-.template-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  text-align: left;
-  padding: var(--space-3) var(--space-4);
-  border: 1.5px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated);
-  min-height: 84px;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
-}
-
-.template-card:hover { border-color: var(--text-tertiary); }
-
-.template-card--active {
-  border-color: var(--brand-500);
-  background: var(--brand-50, rgba(99,102,241,0.06));
-}
-
-.template-card__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.template-card__name { font-weight: 700; font-size: var(--fs-sm); }
-
-.template-card__count {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  background: var(--bg-surface-3);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  white-space: nowrap;
-}
-
-.template-card__desc {
-  font-size: var(--fs-xs);
-  color: var(--text-tertiary);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* ===== Selector de usuarios dentro del modal ===== */
-.user-pick-list {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  max-height: 260px;
-  overflow-y: auto;
-}
-
-.user-pick-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border-subtle);
-  cursor: pointer;
-}
-
-.user-pick-row:last-child { border-bottom: none; }
-.user-pick-row:hover { background: var(--bg-hover); }
-
-.user-pick-row input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--brand-500);
-  flex-shrink: 0;
-}
-
-.user-pick-row__info {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-  overflow: hidden;
-}
-
-.user-pick-row__name {
-  font-weight: 600;
-  font-size: var(--fs-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.user-pick-row__sub {
-  font-size: var(--fs-xs);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
